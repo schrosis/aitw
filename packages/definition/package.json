@@ -16,7 +16,8 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@aitw/core": "workspace:*"
+    "@aitw/core": "workspace:*",
+    "zod": "^4.6.7"
   },
   "engines": {
     "node": ">=26.13.0"

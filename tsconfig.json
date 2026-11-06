@@ -1,4 +1,10 @@
 {
   "files": [],
-  "references": []
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/definition" },
+    { "path": "packages/engine" },
+    { "path": "packages/adapter-script-local" },
+    { "path": "packages/cli" }
+  ]
 }

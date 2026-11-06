@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm -r --if-present build",
+    "build": "tsc -b && pnpm -r build",
     "typecheck": "tsc -b",
     "lint": "oxlint --type-aware",
     "format": "oxfmt",

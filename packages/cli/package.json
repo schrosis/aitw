@@ -1,0 +1,27 @@
+{
+  "name": "aitw",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@aitw/adapter-script-local": "workspace:*",
+    "@aitw/core": "workspace:*",
+    "@aitw/definition": "workspace:*",
+    "@aitw/engine": "workspace:*"
+  },
+  "engines": {
+    "node": ">=26.13.0"
+  }
+}

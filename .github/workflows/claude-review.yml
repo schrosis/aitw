@@ -43,8 +43,9 @@ jobs:
           sha="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           files="$(gh pr diff "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --name-only)"
-          # The action skips workflows that differ from the default branch.
-          if grep -Fxq .github/workflows/claude-review.yml <<< "$files"; then
+          # The action skips pull request runs of workflows that differ from the
+          # default branch. Comment-triggered runs use the default branch workflow.
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && grep -Fxq .github/workflows/claude-review.yml <<< "$files"; then
             echo "reviewable=false" >> "$GITHUB_OUTPUT"
           else
             echo "reviewable=true" >> "$GITHUB_OUTPUT"

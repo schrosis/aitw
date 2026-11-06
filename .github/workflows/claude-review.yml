@@ -178,7 +178,7 @@ jobs:
                         nodes {
                           id
                           isResolved
-                          comments(first: 1) { nodes { author { login } } }
+                          comments(first: 1) { nodes { author { login } body } }
                         }
                         pageInfo { endCursor hasNextPage }
                       }
@@ -186,7 +186,7 @@ jobs:
                   }
                 }' \
               --jq '.data.repository.pullRequest.reviewThreads.nodes[]' \
-              | jq -s '[.[] | select(.isResolved == false and .comments.nodes[0].author.login == "claude") | .id]'
+              | jq -s '[.[] | select(.isResolved == false and .comments.nodes[0].author.login == "claude") | {id, body: .comments.nodes[0].body}]'
           }
 
           verdict="$(jq -r '.verdict // empty' <<< "$STRUCTURED_OUTPUT" 2>/dev/null || true)"
@@ -200,8 +200,10 @@ jobs:
               mutation($id: ID!) {
                 resolveReviewThread(input: { threadId: $id }) { thread { id } }
               }' > /dev/null || echo "::warning::Could not resolve review thread $id"
-          done < <(jq -rn --argjson open "$open" --argjson ids "${ids:-[]}" '$open - ($open - $ids) | .[]')
-          unresolved="$(open_threads | jq length)"
+          done < <(jq -rn --argjson open "$open" --argjson ids "${ids:-[]}" '($open | map(.id)) as $open_ids | $open_ids - ($open_ids - $ids) | .[]')
+
+          # IMO and NITS comments are optional and do not block the status.
+          unresolved="$(open_threads | jq '[.[] | select(.body | test("^[^A-Za-z]*(IMO|NITS)\\b") | not)] | length')"
 
           if [ -n "$verdict" ]; then
             printf '%s\n\n%s\n' "$verdict" "$summary" \
@@ -213,7 +215,7 @@ jobs:
               if [ "$unresolved" -eq 0 ]; then
                 state=success description="Approved"
               else
-                state=pending description="Unresolved review threads remain"
+                state=pending description="Unresolved required review threads remain"
               fi
               ;;
             COMMENT) state=pending description="Awaiting replies; mention @claude to review again" ;;

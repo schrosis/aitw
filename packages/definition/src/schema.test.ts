@@ -37,6 +37,10 @@ describe("definitionSchema", () => {
     expect(definitionSchema.parse(validDefinition)).toEqual(validDefinition);
   });
 
+  it("accepts end as a transition target", () => {
+    expect(definitionSchema.safeParse(withFetchStep({ next: "end" })).success).toBe(true);
+  });
+
   it.each([
     ["an unsupported version", { ...validDefinition, version: 2 }],
     ["a missing start", { version: 1, steps: validDefinition.steps }],
@@ -55,6 +59,7 @@ describe("definitionSchema", () => {
     ["an unsupported step type", withFetchStep({ type: "ai" })],
     ["an empty run command", withFetchStep({ run: "" })],
     ["a missing next", withFetchStep({ next: undefined })],
+    ["a hyphen in next", withFetchStep({ next: "my-step" })],
     ["an unknown step field", withFetchStep({ retry: 3 })],
     ["a timeout without a unit", withFetchStep({ timeout: "5" })],
     ["a zero timeout", withFetchStep({ timeout: "0s" })],

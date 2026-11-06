@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-const identifierPattern = /^[A-Za-z][A-Za-z0-9_]*$/u;
-const stepIdPattern = /^(?!end$)[A-Za-z][A-Za-z0-9_]*$/u;
+const identifierSource = "[A-Za-z][A-Za-z0-9_]*";
+const identifierPattern = new RegExp(`^${identifierSource}$`, "u");
+const stepIdPattern = new RegExp(`^(?!end$)${identifierSource}$`, "u");
 const durationPattern = /^[1-9][0-9]*(?:s|m|h)$/u;
 
 const identifierSchema = z

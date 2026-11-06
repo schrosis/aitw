@@ -7,4 +7,5 @@ minimumReleaseAge: 4320
 # Dependency build scripts stay disabled unless they are required.
 allowBuilds:
   "@swc/core": false
+  lefthook: false
   protobufjs: false

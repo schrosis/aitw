@@ -1,0 +1,14 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended", ":semanticCommits"],
+  internalChecksFilter: "strict",
+  // Keep this value in sync with minimumReleaseAge in pnpm-workspace.yaml.
+  minimumReleaseAge: "3 days",
+  packageRules: [
+    {
+      // mise.toml and package.json must move to the same toolchain versions.
+      groupName: "toolchain",
+      matchDepNames: ["node", "pnpm"],
+    },
+  ],
+}

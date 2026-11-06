@@ -3,3 +3,8 @@ packages:
 
 # 3 days, in minutes.
 minimumReleaseAge: 4320
+
+# Dependency build scripts stay disabled unless they are required.
+allowBuilds:
+  "@swc/core": false
+  protobufjs: false

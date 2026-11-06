@@ -1,7 +1,7 @@
 packages:
   - "packages/*"
 
-# 3 days, in minutes.
+# 3 days, in minutes. Keep this value in sync with minimumReleaseAge in renovate.json5.
 minimumReleaseAge: 4320
 
 # Dependency build scripts stay disabled unless they are required.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createDefinitionJsonSchema, definitionSchema } from "./schema.ts";
+import { createDefinitionJsonSchema, defaultStepTimeout, definitionSchema } from "./schema.ts";
 
 const validDefinition = {
   version: 1,
@@ -34,7 +34,13 @@ function withFetchStep(step: Record<string, unknown>): unknown {
 
 describe("definitionSchema", () => {
   it("accepts a valid definition", () => {
-    expect(definitionSchema.parse(validDefinition)).toEqual(validDefinition);
+    expect(definitionSchema.parse(validDefinition).steps.fetch).toEqual(
+      validDefinition.steps.fetch,
+    );
+  });
+
+  it("applies the default timeout", () => {
+    expect(definitionSchema.parse(validDefinition).steps.report?.timeout).toBe(defaultStepTimeout);
   });
 
   it("accepts end as a transition target", () => {
@@ -73,6 +79,28 @@ describe("definitionSchema", () => {
 });
 
 describe("createDefinitionJsonSchema", () => {
+  it("documents the optional timeout and its default", () => {
+    expect(createDefinitionJsonSchema()).toMatchObject({
+      properties: {
+        steps: {
+          additionalProperties: {
+            oneOf: [
+              {
+                properties: {
+                  timeout: {
+                    default: defaultStepTimeout,
+                    description: "Maximum duration of the step",
+                  },
+                },
+                required: ["type", "run", "next"],
+              },
+            ],
+          },
+        },
+      },
+    });
+  });
+
   it("describes the required root fields", () => {
     expect(createDefinitionJsonSchema()).toMatchObject({
       additionalProperties: false,

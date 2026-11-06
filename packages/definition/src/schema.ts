@@ -5,6 +5,9 @@ const identifierPattern = new RegExp(`^${identifierSource}$`, "u");
 const stepIdPattern = new RegExp(`^(?!end$)${identifierSource}$`, "u");
 const durationPattern = /^[1-9][0-9]*(?:s|m|h)$/u;
 
+/** Timeout applied to a script step that does not specify one. */
+export const defaultStepTimeout = "30m";
+
 const identifierSchema = z
   .string()
   .regex(identifierPattern, "Must start with a letter and contain only letters, digits, or _");
@@ -25,7 +28,8 @@ const scriptStepSchema = z.strictObject({
   timeout: z
     .string()
     .regex(durationPattern, "Must be a positive duration such as 30s, 5m, or 1h")
-    .optional(),
+    .default(defaultStepTimeout)
+    .describe("Maximum duration of the step"),
   input: expressionMapSchema.optional(),
   output: expressionMapSchema.optional(),
 });
@@ -44,5 +48,5 @@ export type Definition = z.infer<typeof definitionSchema>;
 
 /** Creates the JSON Schema of a workflow definition for editors and other tools. */
 export function createDefinitionJsonSchema() {
-  return z.toJSONSchema(definitionSchema);
+  return z.toJSONSchema(definitionSchema, { io: "input" });
 }

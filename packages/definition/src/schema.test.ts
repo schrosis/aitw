@@ -53,8 +53,9 @@ describe("definitionSchema", () => {
   });
 
   it.each([
-    ["an unsupported version", { ...validDefinition, version: "0.0.2" }],
-    ["a numeric version", { ...validDefinition, version: 1 }],
+    ["an unsupported version", { ...validDefinition, version: "v0.2" }],
+    ["a version without the prefix", { ...validDefinition, version: "0.1" }],
+    ["a numeric version", { ...validDefinition, version: 0.1 }],
     ["a missing start", { version: definitionVersion, steps: validDefinition.steps }],
     ["end as the start", { ...validDefinition, start: "end" }],
     ["an unknown root field", { ...validDefinition, name: "daily-report" }],

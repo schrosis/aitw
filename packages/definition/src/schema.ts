@@ -6,7 +6,7 @@ const stepIdPattern = new RegExp(`^(?!end$)${identifierSource}$`, "u");
 const durationPattern = /^[1-9][0-9]*(?:s|m|h)$/u;
 
 /** Definition format version supported by this package. */
-export const definitionVersion = "0.0.1";
+export const definitionVersion = "v0.1";
 
 /** Timeout applied to a script step that does not specify one. */
 export const defaultStepTimeout = "30m";

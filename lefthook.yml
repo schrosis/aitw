@@ -1,0 +1,11 @@
+pre-commit:
+  commands:
+    format:
+      glob: "*.{js,json,ts,yaml,yml}"
+      run: pnpm exec oxfmt --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm exec commitlint --edit {1}

@@ -9,7 +9,7 @@ aitw は、AI、人間、スクリプトのステップを Temporal Workflow で
 - `pnpm typecheck`: パッケージ、テスト、設定ファイルを型検査する
 - `pnpm lint`: type-aware Lint を実行する
 - `pnpm format`: ファイルを整形する
-- `pnpm test`: テストを実行する。`@aitw/cli` のテストにはビルド結果が必要
+- `pnpm test`: テストを実行する。`aitw` パッケージのテストにはビルド結果が必要
 
 ## アーキテクチャ
 

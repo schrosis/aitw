@@ -26,8 +26,6 @@ aitw は、AI、人間、スクリプトのステップを Temporal Workflow で
 - 副作用は Activity で実行する
 - コミットメッセージは Conventional Commits に従う
 
-## レビューの基準
+## レビュー
 
-- 実行不能、データ破壊、セキュリティ、Workflow の決定性に関する問題を優先する
-- 整形や好みの問題は指摘しない
-- 問題と影響を具体的に示す
+Pull Request のレビューは `.claude/review.md` に従う。

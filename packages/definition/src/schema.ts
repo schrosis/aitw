@@ -5,6 +5,9 @@ const identifierPattern = new RegExp(`^${identifierSource}$`, "u");
 const stepIdPattern = new RegExp(`^(?!end$)${identifierSource}$`, "u");
 const durationPattern = /^[1-9][0-9]*(?:s|m|h)$/u;
 
+/** Definition format version supported by this package. */
+export const definitionVersion = "0.0.1";
+
 /** Timeout applied to a script step that does not specify one. */
 export const defaultStepTimeout = "30m";
 
@@ -38,7 +41,7 @@ const stepSchema = z.discriminatedUnion("type", [scriptStepSchema]);
 
 /** Schema for a workflow definition object, independent of its file format. */
 export const definitionSchema = z.strictObject({
-  version: z.literal(1),
+  version: z.literal(definitionVersion),
   start: stepIdSchema,
   steps: z.record(stepIdSchema, stepSchema),
 });

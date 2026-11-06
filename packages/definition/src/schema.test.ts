@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { createDefinitionJsonSchema, defaultStepTimeout, definitionSchema } from "./schema.ts";
+import {
+  createDefinitionJsonSchema,
+  defaultStepTimeout,
+  definitionSchema,
+  definitionVersion,
+} from "./schema.ts";
 
 const validDefinition = {
-  version: 1,
+  version: definitionVersion,
   start: "fetch",
   steps: {
     fetch: {
@@ -48,8 +53,9 @@ describe("definitionSchema", () => {
   });
 
   it.each([
-    ["an unsupported version", { ...validDefinition, version: 2 }],
-    ["a missing start", { version: 1, steps: validDefinition.steps }],
+    ["an unsupported version", { ...validDefinition, version: "0.0.2" }],
+    ["a numeric version", { ...validDefinition, version: 1 }],
+    ["a missing start", { version: definitionVersion, steps: validDefinition.steps }],
     ["end as the start", { ...validDefinition, start: "end" }],
     ["an unknown root field", { ...validDefinition, name: "daily-report" }],
     ["end as a step ID", { ...validDefinition, steps: { end: validDefinition.steps.report } }],

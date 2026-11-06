@@ -4,11 +4,15 @@ on:
   pull_request:
     types: [edited, opened, reopened, synchronize]
 
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
-  commitlint:
+  title:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
-import type { Intermediate, ScriptRunner } from "@aitw/core";
+import type { EventSink, Intermediate, ScriptRunner } from "@aitw/core";
 import { Client, Connection } from "@temporalio/client";
 import { DefaultLogger, NativeConnection, Runtime, Worker } from "@temporalio/worker";
 import type { LogLevel } from "@temporalio/worker";
@@ -50,6 +50,8 @@ export interface RunWorkflowOptions {
   namespace?: string;
   intermediate: Intermediate;
   scriptRunner: ScriptRunner;
+  /** Receives progress events of the run. */
+  eventSink?: EventSink;
   /** Path of the workflow code. Defaults to {@link workflowsPath}. */
   workflowsPath?: string;
   /** Cancels the workflow, including its running script, when aborted. */
@@ -63,6 +65,7 @@ export interface RunWorkflowOptions {
  */
 export const runWorkflow = async ({
   address,
+  eventSink,
   intermediate,
   name,
   namespace = "default",
@@ -79,7 +82,7 @@ export const runWorkflow = async ({
     const clientConnection = await Connection.connect({ address });
     try {
       const worker = await Worker.create({
-        activities: createActivities({ scriptRunner }),
+        activities: createActivities({ eventSink, scriptRunner }),
         connection: workerConnection,
         namespace,
         taskQueue,

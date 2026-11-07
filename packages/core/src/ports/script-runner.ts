@@ -22,14 +22,24 @@ export interface ScriptResult {
   stderr: string;
 }
 
+/** A chunk of output that a script wrote. */
+export interface ScriptOutput {
+  stream: "stdout" | "stderr";
+  text: string;
+}
+
+/** Options of {@link ScriptRunner.run}. */
+export interface ScriptRunOptions {
+  /** The runner must stop the script when it is aborted. */
+  signal: AbortSignal;
+  /** Receives output as the script writes it. */
+  onOutput?: ((output: ScriptOutput) => void) | undefined;
+}
+
 /** Port that runs scripts for script steps. */
 export interface ScriptRunner {
-  /**
-   * Runs a script.
-   *
-   * The runner must stop the script when `signal` is aborted.
-   */
-  run: (request: ScriptRequest, signal: AbortSignal) => Promise<ScriptResult>;
+  /** Runs a script and resolves with its result after it exits. */
+  run: (request: ScriptRequest, options: ScriptRunOptions) => Promise<ScriptResult>;
 }
 
 /** Error that a script runner throws when a script exceeds its timeout. */

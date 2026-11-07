@@ -27,7 +27,7 @@ export const createLocalScriptRunner = ({
   cwd,
   killGraceMs = 5000,
 }: LocalScriptRunnerOptions): ScriptRunner => ({
-  run: (request, signal) =>
+  run: (request, { onOutput, signal }) =>
     new Promise<ScriptResult>((resolve, reject) => {
       if (signal.aborted) {
         reject(signal.reason);
@@ -46,9 +46,11 @@ export const createLocalScriptRunner = ({
       let stderr = "";
       child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
         stdout += chunk;
+        onOutput?.({ stream: "stdout", text: chunk });
       });
       child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
         stderr += chunk;
+        onOutput?.({ stream: "stderr", text: chunk });
       });
 
       let settled = false;

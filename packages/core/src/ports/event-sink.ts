@@ -10,6 +10,12 @@ export type WorkflowEvent =
       run: string;
     }
   | {
+      type: "stepOutput";
+      step: string;
+      stream: "stdout" | "stderr";
+      text: string;
+    }
+  | {
       type: "stepFinished";
       step: string;
       outcome: StepOutcome;

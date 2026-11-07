@@ -38,7 +38,7 @@ describe("createLocalScriptRunner", () => {
   const run = (script: string, signal = new AbortController().signal, timeoutMs = 10_000) =>
     createLocalScriptRunner({ cwd, killGraceMs: 200 }).run(
       { input: {}, run: script, timeoutMs },
-      signal,
+      { signal },
     );
 
   it("returns the exit code and output", async () => {
@@ -55,6 +55,19 @@ describe("createLocalScriptRunner", () => {
       exitCode: null,
       signal: "SIGTERM",
     });
+  });
+
+  it("streams output as the script writes it", async () => {
+    const chunks: string[] = [];
+    await createLocalScriptRunner({ cwd }).run(
+      { input: {}, run: "echo out; echo err >&2", timeoutMs: 10_000 },
+      {
+        onOutput: ({ stream, text }) => chunks.push(`${stream}:${text}`),
+        signal: new AbortController().signal,
+      },
+    );
+
+    expect(chunks.toSorted()).toEqual(["stderr:err\n", "stdout:out\n"]);
   });
 
   it("stops at the first failing command", async () => {

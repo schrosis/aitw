@@ -79,7 +79,7 @@ describe("executeScriptStep", () => {
       createActivities({
         eventSink: { emit: (event) => events.push(event) },
         scriptRunner: {
-          run: async (_request, signal) =>
+          run: async (_request, { signal }) =>
             new Promise((_resolve, reject) => {
               signal.addEventListener("abort", () => reject(signal.reason));
             }),
@@ -108,5 +108,23 @@ describe("executeScriptStep", () => {
     );
 
     await expect(result).resolves.toBeUndefined();
+  });
+
+  it("drops output that arrives after the script settles", async () => {
+    const events: WorkflowEvent[] = [];
+    let lateOutput: (() => void) | undefined;
+    await execute(
+      {
+        run: async (_request, { onOutput }) => {
+          onOutput?.({ stream: "stdout", text: "early\n" });
+          lateOutput = () => onOutput?.({ stream: "stdout", text: "late\n" });
+          return { exitCode: 0, signal: null, stderr: "", stdout: "" };
+        },
+      },
+      events,
+    );
+    lateOutput?.();
+
+    expect(events.map(({ type }) => type)).toEqual(["stepStarted", "stepOutput", "stepFinished"]);
   });
 });

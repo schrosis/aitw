@@ -3,6 +3,7 @@ import type {
   EventSink,
   ScriptRequest,
   ScriptRunner,
+  ScriptRunOptions,
   StepOutcome,
   WorkflowEvent,
 } from "@aitw/core";
@@ -51,10 +52,10 @@ const failureOutcome = (signal: AbortSignal): StepOutcome => {
 const runScript = async (
   scriptRunner: ScriptRunner,
   request: ScriptRequest,
-  signal: AbortSignal,
+  options: ScriptRunOptions,
 ): Promise<void> => {
   const { exitCode, signal: stopSignal } = await scriptRunner
-    .run(request, signal)
+    .run(request, options)
     .catch((error: unknown) => {
       if (error instanceof ScriptTimeoutError) {
         throw ApplicationFailure.nonRetryable(error.message, "ScriptTimedOut", {
@@ -99,11 +100,21 @@ export const createActivities = ({
       }
     };
     const startedAt = Date.now();
+    // Output that arrives after the script settles would appear after the end of the step.
+    let settled = false;
     emit({ run: request.run, step, type: "stepStarted" });
     const heartbeat = setInterval(() => context.heartbeat(), heartbeatIntervalMs);
 
     try {
-      await runScript(scriptRunner, request, context.cancellationSignal);
+      await runScript(scriptRunner, request, {
+        onOutput: (output) => {
+          if (!settled) {
+            emit({ ...output, step, type: "stepOutput" });
+          }
+        },
+        signal: context.cancellationSignal,
+      });
+      settled = true;
       emit({
         durationMs: Date.now() - startedAt,
         outcome: "succeeded",
@@ -111,6 +122,7 @@ export const createActivities = ({
         type: "stepFinished",
       });
     } catch (error) {
+      settled = true;
       emit({
         durationMs: Date.now() - startedAt,
         message: error instanceof Error ? error.message : String(error),

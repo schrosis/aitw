@@ -1,9 +1,12 @@
 import type { EventSink, WorkflowEvent } from "@aitw/core";
 
+/** A progress event that marks the start or the end of a step. */
+type StepEvent = Exclude<WorkflowEvent, { type: "stepOutput" }>;
+
 const formatDuration = (durationMs: number): string => `${(durationMs / 1000).toFixed(1)}s`;
 
-/** Formats a progress event as lines for the terminal. */
-export const formatEvent = (event: WorkflowEvent): string => {
+/** Formats the start or the end of a step as lines for the terminal. */
+export const formatStepEvent = (event: StepEvent): string => {
   if (event.type === "stepStarted") {
     const run = event.run.endsWith("\n") ? event.run : `${event.run}\n`;
     return `▶ ${event.step}\n${run}`;
@@ -19,7 +22,36 @@ export const formatEvent = (event: WorkflowEvent): string => {
   return `✗ ${event.step}: ${event.message ?? "failed"} (${duration})\n`;
 };
 
-/** Creates an event sink that writes progress to the terminal. */
-export const createProgressPrinter = (write: (text: string) => void): EventSink => ({
-  emit: (event) => write(formatEvent(event)),
-});
+/** Streams that progress is written to. */
+export interface ProgressOutput {
+  stdout: (text: string) => void;
+  stderr: (text: string) => void;
+}
+
+/**
+ * Creates an event sink that writes progress and script output to the terminal.
+ *
+ * Script output is written as it arrives, to the same stream that the script used.
+ */
+export const createProgressPrinter = (output: ProgressOutput): EventSink => {
+  // A stream whose output does not end with a newline. Its line is ended before the next step
+  // event, on the same stream, so that the output would otherwise not run into the next line.
+  let openStream: keyof ProgressOutput | undefined;
+
+  return {
+    emit: (event) => {
+      if (event.type === "stepOutput") {
+        output[event.stream](event.text);
+        if (event.text.length > 0) {
+          openStream = event.text.endsWith("\n") ? undefined : event.stream;
+        }
+        return;
+      }
+      if (openStream !== undefined) {
+        output[openStream]("\n");
+        openStream = undefined;
+      }
+      output.stdout(formatStepEvent(event));
+    },
+  };
+};

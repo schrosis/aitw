@@ -1,22 +1,41 @@
 import { ScriptTimeoutError } from "@aitw/core";
-import type { ScriptRunner, WorkflowEvent } from "@aitw/core";
+import type { ScriptRequest, ScriptResult, ScriptRunner, WorkflowEvent } from "@aitw/core";
 import { MockActivityEnvironment } from "@temporalio/testing";
 import { describe, expect, it } from "vitest";
 
+import { maxValueBytes } from "../limits.ts";
 import { createActivities } from "./index.ts";
+import type { ScriptStepRequest } from "./index.ts";
 
 const execute = async (scriptRunner: ScriptRunner, events: WorkflowEvent[] = []) =>
   new MockActivityEnvironment().run(
     createActivities({ eventSink: { emit: (event) => events.push(event) }, scriptRunner })
       .executeScriptStep,
-    { input: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
+    { input: {}, output: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
+  );
+
+const runStep = async (
+  request: Partial<ScriptStepRequest>,
+  result: Partial<ScriptResult> = {},
+  requests: ScriptRequest[] = [],
+) =>
+  new MockActivityEnvironment().run(
+    createActivities({
+      scriptRunner: {
+        run: async (scriptRequest) => {
+          requests.push(scriptRequest);
+          return { exitCode: 0, signal: null, stderr: "", stdout: "", ...result };
+        },
+      },
+    }).executeScriptStep,
+    { input: {}, output: {}, run: "./run.sh", step: "build", timeoutMs: 1000, ...request },
   );
 
 describe("executeScriptStep", () => {
   it("succeeds when the script exits with zero", async () => {
     await expect(
       execute({ run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "secret" }) }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({});
   });
 
   it("fails without retrying when the script exits with an error", async () => {
@@ -85,7 +104,7 @@ describe("executeScriptStep", () => {
             }),
         },
       }).executeScriptStep,
-      { input: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
+      { input: {}, output: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
     );
     environment.cancel();
 
@@ -104,10 +123,10 @@ describe("executeScriptStep", () => {
         },
         scriptRunner: { run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }) },
       }).executeScriptStep,
-      { input: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
+      { input: {}, output: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
     );
 
-    await expect(result).resolves.toBeUndefined();
+    await expect(result).resolves.toEqual({});
   });
 
   it("drops output that arrives after the script settles", async () => {
@@ -126,5 +145,53 @@ describe("executeScriptStep", () => {
     lateOutput?.();
 
     expect(events.map(({ type }) => type)).toEqual(["stepStarted", "stepOutput", "stepFinished"]);
+  });
+
+  it("expands input references in run", async () => {
+    const requests: ScriptRequest[] = [];
+    await runStep(
+      { input: { title: "hello" }, run: './report.sh "${{ input.title }}"' },
+      {},
+      requests,
+    );
+
+    expect(requests).toEqual([
+      { input: { title: "hello" }, run: './report.sh "hello"', timeoutMs: 1000 },
+    ]);
+  });
+
+  it("returns the declared output with one trailing newline removed", async () => {
+    await expect(
+      runStep(
+        {
+          output: {
+            code: "${{ result.exitCode }}",
+            lines: "${{ result.stdout }}",
+            title: "[${{ result.stdout }}]",
+          },
+        },
+        { stdout: "a\nb\n\n" },
+      ),
+    ).resolves.toEqual({ code: 0, lines: "a\nb\n", title: "[a\nb\n]" });
+  });
+
+  it.each([
+    [{ run: "${{ input.missing }}" }, "run: Unknown reference: ${{ input.missing }}"],
+    [
+      { output: { title: "${{ result.missing }}" } },
+      "output.title: Unknown reference: ${{ result.missing }}",
+    ],
+  ])("fails without retrying on an invalid expression", async (request, message) => {
+    await expect(runStep(request)).rejects.toMatchObject({
+      message,
+      nonRetryable: true,
+      type: "InvalidExpression",
+    });
+  });
+
+  it("fails when the output exceeds the size limit", async () => {
+    await expect(
+      runStep({ output: { data: "${{ result.stdout }}" } }, { stdout: "x".repeat(maxValueBytes) }),
+    ).rejects.toMatchObject({ nonRetryable: true, type: "OutputTooLarge" });
   });
 });

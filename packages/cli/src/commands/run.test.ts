@@ -54,6 +54,13 @@ describe("run", () => {
     );
   }, 60_000);
 
+  it("passes values between steps", async () => {
+    const result = await execute("run-values");
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(result.stdout).toContain('test "hello" = hello && echo "title=hello"\ntitle=hello\n');
+  }, 60_000);
+
   it("reports a failed script", async () => {
     const result = await execute("run-failure");
 

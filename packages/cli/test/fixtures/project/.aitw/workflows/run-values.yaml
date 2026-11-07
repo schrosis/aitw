@@ -1,0 +1,15 @@
+version: v0.1
+start: fetch
+steps:
+  fetch:
+    type: script
+    run: echo "hello"
+    output:
+      title: ${{ result.stdout }}
+    next: report
+  report:
+    type: script
+    run: test "${{ input.title }}" = hello && echo "title=${{ input.title }}"
+    input:
+      title: ${{ steps.fetch.output.title }}
+    next: end

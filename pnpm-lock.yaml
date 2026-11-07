@@ -164,6 +164,21 @@ settings:
 
 catalogs:
   default:
+    '@temporalio/activity':
+      specifier: ^1.25.0
+      version: 1.25.0
+    '@temporalio/client':
+      specifier: ^1.25.0
+      version: 1.25.0
+    '@temporalio/testing':
+      specifier: ^1.25.0
+      version: 1.25.0
+    '@temporalio/worker':
+      specifier: ^1.25.0
+      version: 1.25.0
+    '@temporalio/workflow':
+      specifier: ^1.25.0
+      version: 1.25.0
     '@types/node':
       specifier: ^26.6.6
       version: 26.6.6
@@ -237,6 +252,9 @@ importers:
         specifier: ^15.0.0
         version: 15.0.0
     devDependencies:
+      '@temporalio/testing':
+        specifier: 'catalog:'
+        version: 1.25.0(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.32)(protobufjs@8.8.1)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -265,20 +283,20 @@ importers:
         specifier: workspace:*
         version: link:../core
       '@temporalio/activity':
-        specifier: ^1.25.0
+        specifier: 'catalog:'
         version: 1.25.0(long@5.3.2)(protobufjs@8.8.1)
       '@temporalio/client':
-        specifier: ^1.25.0
+        specifier: 'catalog:'
         version: 1.25.0(long@5.3.2)(protobufjs@8.8.1)
       '@temporalio/worker':
-        specifier: ^1.25.0
+        specifier: 'catalog:'
         version: 1.25.0(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.32)(protobufjs@8.8.1)
       '@temporalio/workflow':
-        specifier: ^1.25.0
+        specifier: 'catalog:'
         version: 1.25.0(long@5.3.2)(protobufjs@8.8.1)
     devDependencies:
       '@temporalio/testing':
-        specifier: ^1.25.0
+        specifier: 'catalog:'
         version: 1.25.0(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.32)(protobufjs@8.8.1)
       vitest:
         specifier: ^5.1.0

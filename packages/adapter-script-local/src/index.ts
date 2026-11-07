@@ -3,8 +3,6 @@ import { spawn } from "node:child_process";
 import { ScriptTimeoutError } from "@aitw/core";
 import type { ScriptResult, ScriptRunner } from "@aitw/core";
 
-export const packageName = "@aitw/adapter-script-local";
-
 /** Options of {@link createLocalScriptRunner}. */
 export interface LocalScriptRunnerOptions {
   /** Working directory of the scripts. */
@@ -80,8 +78,10 @@ export const createLocalScriptRunner = ({
         try {
           process.kill(-child.pid, signalName);
         } catch (error) {
-          // The process group has already exited.
-          if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) {
+          // The process group has already exited. macOS reports EPERM instead of ESRCH when
+          // only exited processes that are not yet reaped remain in the group.
+          const code = error instanceof Error && "code" in error ? error.code : undefined;
+          if (code !== "ESRCH" && code !== "EPERM") {
             fail(error);
           }
         }

@@ -1,5 +1,3 @@
-export const packageName = "@aitw/core";
-
 export {
   intermediateSchema,
   intermediateVersion,

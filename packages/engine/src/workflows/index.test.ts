@@ -9,7 +9,7 @@ import { Worker } from "@temporalio/worker";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createActivities } from "../activities/index.ts";
-import { interpreterWorkflow } from "./index.ts";
+import { aitw } from "./index.ts";
 
 const step = (run: string, next: string | null): Intermediate["steps"][string] => ({
   input: {},
@@ -26,7 +26,7 @@ const intermediate: Intermediate = {
   version: intermediateVersion,
 };
 
-describe("interpreterWorkflow", () => {
+describe("aitw", () => {
   let environment: TestWorkflowEnvironment;
 
   beforeAll(async () => {
@@ -57,7 +57,7 @@ describe("interpreterWorkflow", () => {
 
     const result = await worker.runUntil(
       environment.client.workflow
-        .execute(interpreterWorkflow, { args: [input], taskQueue, workflowId: randomUUID() })
+        .execute(aitw, { args: [input], taskQueue, workflowId: randomUUID() })
         .then(
           (value) => ({ ok: true as const, value }),
           (error: unknown) => ({ error, ok: false as const }),
@@ -118,7 +118,7 @@ describe("interpreterWorkflow", () => {
     });
 
     await worker.runUntil(async () => {
-      const handle = await environment.client.workflow.start(interpreterWorkflow, {
+      const handle = await environment.client.workflow.start(aitw, {
         args: [intermediate],
         taskQueue,
         workflowId: randomUUID(),

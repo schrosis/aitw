@@ -1,0 +1,11 @@
+version: v0.1
+start: check
+steps:
+  check:
+    type: script
+    run: test -d .aitw
+    next: finish
+  finish:
+    type: script
+    run: "true"
+    next: end

@@ -19,3 +19,10 @@ export type {
   ScriptRunOptions,
 } from "./ports/script-runner.js";
 export type { EventSink, StepOutcome, WorkflowEvent } from "./ports/event-sink.js";
+export { evaluateExpression, evaluateTemplate, parseTemplate } from "./expression/index.js";
+export type {
+  EvaluateResult,
+  ParseTemplateResult,
+  Template,
+  TemplatePart,
+} from "./expression/index.js";

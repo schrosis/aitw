@@ -43,13 +43,12 @@ const validateTransitions = (intermediate: Intermediate): ValidationError[] => {
   }
 
   const reachable = new Set<string>();
-  for (let id: string | null = start; id !== null && Object.hasOwn(steps, id);) {
-    if (reachable.has(id)) {
-      break;
-    }
-    reachable.add(id);
-    const transition: Transition | undefined = steps[id]?.next;
-    id = transition?.type === "step" ? transition.step : null;
+  let current: string | null = start;
+  // Stop at an unknown step or a cycle. Both are reported above.
+  while (current !== null && Object.hasOwn(steps, current) && !reachable.has(current)) {
+    reachable.add(current);
+    const transition: Transition | undefined = steps[current]?.next;
+    current = transition?.type === "step" ? transition.step : null;
   }
   for (const id of Object.keys(steps)) {
     if (!reachable.has(id)) {

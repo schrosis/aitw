@@ -2,7 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    // AbortSignal is a global in both Node.js and browsers.
+    "types": ["node"]
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"],

@@ -153,7 +153,8 @@ export const createActivities = ({
         context.log.warn("Failed to emit a progress event", { error, step });
       }
     };
-    const startedAt = Date.now();
+    // A monotonic clock keeps durations correct when the system clock is adjusted.
+    const startedAt = performance.now();
     // Output that arrives after the script settles would appear after the end of the step.
     let settled = false;
     const expanded = evaluateExpression(runTemplate, { input });
@@ -180,7 +181,7 @@ export const createActivities = ({
       settled = true;
       const output = evaluateOutput(outputExpressions, result);
       emit({
-        durationMs: Date.now() - startedAt,
+        durationMs: Math.round(performance.now() - startedAt),
         outcome: "succeeded",
         step,
         type: "stepFinished",
@@ -189,7 +190,7 @@ export const createActivities = ({
     } catch (error) {
       settled = true;
       emit({
-        durationMs: Date.now() - startedAt,
+        durationMs: Math.round(performance.now() - startedAt),
         message: error instanceof Error ? error.message : String(error),
         outcome: failureOutcome(context.cancellationSignal),
         step,

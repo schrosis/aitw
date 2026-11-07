@@ -1,3 +1,4 @@
+import { validateExpressions } from "./expressions.js";
 import { intermediateSchema } from "./schema.js";
 import type { Intermediate, Transition } from "./schema.js";
 
@@ -76,6 +77,6 @@ export const validateIntermediate = (input: unknown): ValidationResult => {
     };
   }
 
-  const errors = validateTransitions(result.data);
+  const errors = [...validateTransitions(result.data), ...validateExpressions(result.data)];
   return errors.length > 0 ? { errors, ok: false } : { intermediate: result.data, ok: true };
 };

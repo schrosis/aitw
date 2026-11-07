@@ -34,6 +34,18 @@ describe("validate", () => {
     });
   });
 
+  it("reports invalid references with their locations", async () => {
+    await expect(run("expression-error")).resolves.toEqual({
+      exitCode: 1,
+      stderr: [
+        ".aitw/workflows/expression-error.yaml:6:10 steps.fetch.run: Step fetch does not declare the input title: ${{ input.title }}",
+        ".aitw/workflows/expression-error.yaml:8:14 steps.fetch.output.title: Output can reference only result.exitCode, result.stdout, or result.stderr: ${{ result.body }}",
+        "",
+      ].join("\n"),
+      stdout: "",
+    });
+  });
+
   it("reports a workflow that cannot be resolved", async () => {
     await expect(run("missing")).resolves.toEqual({
       exitCode: 1,

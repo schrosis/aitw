@@ -5,9 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
-import { ensureTemporalCli } from "./temporal-cli/download.ts";
 import { fixtureProject } from "./testing.ts";
 
 interface ExecuteOptions {
@@ -87,17 +86,16 @@ describe("aitw executable", () => {
   }, 20_000);
 
   describe("with a development server", () => {
-    let executable: string;
-
-    beforeAll(async () => {
-      // Download the pinned release before the timed runs below.
-      executable = await ensureTemporalCli();
-    }, 120_000);
+    const executable = inject("temporalCli");
 
     it("runs a workflow on a temporary server", async () => {
-      const { exitCode, output } = await execute(["run", "run-success", "--dev"], fixtureProject, {
-        timeoutMs: 30_000,
-      });
+      const { exitCode, output } = await execute(
+        ["run", "run-success", "--dev", "--temporal-bin", executable],
+        fixtureProject,
+        {
+          timeoutMs: 30_000,
+        },
+      );
 
       expect(exitCode).toBe(0);
       expect(output).toMatch(/^Temporal Web UI: http:\/\/127\.0\.0\.1:\d+\n/mu);
@@ -126,16 +124,20 @@ describe("aitw executable", () => {
 
     it("stops the server when interrupted twice", async () => {
       let address: string | undefined;
-      const { exitCode } = await execute(["run", "run-sleep", "--dev"], fixtureProject, {
-        onOutput: (child, text) => {
-          if (address === undefined && text.includes("▶ wait")) {
-            address = /Temporal Web UI: (http:\S+)/u.exec(text)?.[1];
-            child.kill("SIGINT");
-            child.kill("SIGINT");
-          }
+      const { exitCode } = await execute(
+        ["run", "run-sleep", "--dev", "--temporal-bin", executable],
+        fixtureProject,
+        {
+          onOutput: (child, text) => {
+            if (address === undefined && text.includes("▶ wait")) {
+              address = /Temporal Web UI: (http:\S+)/u.exec(text)?.[1];
+              child.kill("SIGINT");
+              child.kill("SIGINT");
+            }
+          },
+          timeoutMs: 30_000,
         },
-        timeoutMs: 30_000,
-      });
+      );
 
       expect(exitCode).toBe(130);
       expect(address).toBeDefined();
@@ -144,15 +146,19 @@ describe("aitw executable", () => {
 
     it("cancels the run and stops the server when interrupted", async () => {
       let address: string | undefined;
-      const { exitCode, output } = await execute(["run", "run-sleep", "--dev"], fixtureProject, {
-        onOutput: (child, text) => {
-          if (address === undefined && text.includes("▶ wait")) {
-            address = /Temporal Web UI: (http:\S+)/u.exec(text)?.[1];
-            child.kill("SIGINT");
-          }
+      const { exitCode, output } = await execute(
+        ["run", "run-sleep", "--dev", "--temporal-bin", executable],
+        fixtureProject,
+        {
+          onOutput: (child, text) => {
+            if (address === undefined && text.includes("▶ wait")) {
+              address = /Temporal Web UI: (http:\S+)/u.exec(text)?.[1];
+              child.kill("SIGINT");
+            }
+          },
+          timeoutMs: 30_000,
         },
-        timeoutMs: 30_000,
-      });
+      );
 
       expect(exitCode).toBe(130);
       expect(output).toContain("run-sleep: cancelled\n");

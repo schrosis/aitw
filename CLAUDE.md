@@ -30,4 +30,4 @@ aitw は、AI、人間、スクリプトのステップを Temporal Workflow で
 ## レビュー
 
 Pull Request のレビューは `.claude/review.md` に従う。
-`Claude Review` が pending の場合は、指摘に対応または返信し、PR のコメントで `@claude` と依頼して再レビューを受ける。
+`Claude Review` が pending の場合は、指摘に対応または返信する。修正を push すると自動で再レビューされる。コードを変えずに返信だけした場合と、`.github/workflows/claude-review.yml` を変更した場合は、PR のコメントで `@claude` と依頼して再レビューを受ける。

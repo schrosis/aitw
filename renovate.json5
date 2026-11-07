@@ -7,7 +7,7 @@
   customManagers: [
     {
       // The checksums are not updated by Renovate. CI fails until they are updated with
-      // node scripts/update-temporal-cli.ts <version>.
+      // node scripts/update-temporal-cli.ts <version>, and mise.lock with mise lock.
       customType: "regex",
       managerFilePatterns: ["/^packages/cli/src/temporal-cli/manifest\\.ts$/"],
       matchStrings: ['version: "(?<currentValue>[0-9.]+)"'],
@@ -26,6 +26,12 @@
       // @commander-js/extra-typings requires the same minor version of commander.
       groupName: "commander",
       matchDepNames: ["commander", "@commander-js/extra-typings"],
+    },
+    {
+      // mise.toml installs the Temporal CLI for tests, and tests require the version that the
+      // manifest pins for the development server.
+      groupName: "temporal-cli",
+      matchDepNames: ["temporalio/cli", "aqua:temporalio/cli"],
     },
     {
       // Temporal SDK packages must share the same version.

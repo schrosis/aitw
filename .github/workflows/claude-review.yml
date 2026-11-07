@@ -218,7 +218,7 @@ jobs:
                 state=pending description="Unresolved required review threads remain"
               fi
               ;;
-            COMMENT) state=pending description="Awaiting replies; mention @claude to review again" ;;
+            COMMENT) state=pending description="Awaiting fixes or replies; push fixes or mention @claude to review again" ;;
             REQUEST_CHANGES) state=failure description="Changes requested" ;;
             *) state=failure description="Review did not return a verdict" ;;
           esac

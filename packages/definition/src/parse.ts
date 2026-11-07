@@ -1,6 +1,10 @@
 import { isAlias, isMap, isNode, isScalar, isSeq, LineCounter, parseDocument, visit } from "yaml";
 import type { z } from "zod";
 
+import { validateIntermediate } from "@aitw/core";
+import type { Intermediate } from "@aitw/core";
+
+import { buildIntermediate, toDefinitionPath } from "./build.js";
 import { definitionSchema } from "./schema.js";
 import type { Definition } from "./schema.js";
 
@@ -17,7 +21,7 @@ export interface ParseError {
 
 /** Result of {@link parseDefinition}. */
 export type ParseResult =
-  | { ok: true; definition: Definition }
+  | { ok: true; definition: Definition; intermediate: Intermediate }
   | { ok: false; errors: ParseError[] };
 
 type DefinitionDocument = ReturnType<typeof parseDocument>;
@@ -137,5 +141,23 @@ export const parseDefinition = (source: string): ParseResult => {
     };
   }
 
-  return { definition: result.data, ok: true };
+  const validation = validateIntermediate(buildIntermediate(result.data));
+  if (!validation.ok) {
+    return {
+      errors: validation.errors.map(({ message, path }) => {
+        const definitionPath = toDefinitionPath(path);
+        // A whole step is reported at its ID.
+        const atKey = definitionPath.length === 2 && definitionPath[0] === "steps";
+        return createError(
+          lineCounter,
+          findOffset(document, definitionPath, atKey),
+          definitionPath,
+          message,
+        );
+      }),
+      ok: false,
+    };
+  }
+
+  return { definition: result.data, intermediate: validation.intermediate, ok: true };
 };

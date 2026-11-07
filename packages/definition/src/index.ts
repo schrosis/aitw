@@ -9,3 +9,4 @@ export {
 export type { Definition } from "./schema.js";
 export { parseDefinition } from "./parse.js";
 export type { ParseError, ParseResult } from "./parse.js";
+export { buildIntermediate } from "./build.js";

@@ -12,4 +12,5 @@ export type {
   ValidationError,
   ValidationResult,
 } from "./intermediate/index.js";
+export { ScriptTimeoutError } from "./ports/script-runner.js";
 export type { ScriptRequest, ScriptResult, ScriptRunner } from "./ports/script-runner.js";

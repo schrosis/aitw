@@ -6,8 +6,18 @@ import type { Activities } from "../activities/index.js";
 
 /**
  * Extra time that lets a script runner report its own timeout before the activity times out.
+ *
+ * Keep it longer than the time a script runner needs to stop a script, such as `killGraceMs`
+ * in `@aitw/adapter-script-local`.
  */
 const activityTimeoutGraceMs = 10_000;
+
+/**
+ * Time after which Temporal treats an activity without heartbeats as failed.
+ *
+ * Keep it longer than `heartbeatIntervalMs` of the activities.
+ */
+const activityHeartbeatTimeoutMs = 30_000;
 
 /** Result of {@link interpreterWorkflow}. */
 export interface WorkflowResult {
@@ -41,6 +51,7 @@ export const interpreterWorkflow = async (input: unknown): Promise<WorkflowResul
     }
 
     const { executeScriptStep } = proxyActivities<Activities>({
+      heartbeatTimeout: activityHeartbeatTimeoutMs,
       retry: { maximumAttempts: 1 },
       startToCloseTimeout: step.timeoutMs + activityTimeoutGraceMs,
     });

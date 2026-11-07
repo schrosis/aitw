@@ -3,13 +3,23 @@ import { fileURLToPath } from "node:url";
 
 import type { Intermediate, ScriptRunner } from "@aitw/core";
 import { Client, Connection } from "@temporalio/client";
-import { NativeConnection, Worker } from "@temporalio/worker";
+import { DefaultLogger, NativeConnection, Runtime, Worker } from "@temporalio/worker";
+import type { LogLevel } from "@temporalio/worker";
 
 import { createActivities } from "./activities/index.js";
 import type { interpreterWorkflow, WorkflowResult } from "./workflows/index.js";
 
 /** Path of the built workflow code that a Worker bundles. */
 export const workflowsPath = fileURLToPath(new URL("./workflows.js", import.meta.url));
+
+/**
+ * Sets the minimum level of the logs that Temporal Workers write.
+ *
+ * Call it once, before {@link runWorkflow}, because the Temporal runtime is configured only once.
+ */
+export const configureLogging = (level: LogLevel): void => {
+  Runtime.install({ logger: new DefaultLogger(level) });
+};
 
 /** Options of {@link runWorkflow}. */
 export interface RunWorkflowOptions {

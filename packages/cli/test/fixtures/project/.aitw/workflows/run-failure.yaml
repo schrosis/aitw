@@ -1,0 +1,7 @@
+version: v0.1
+start: fail
+steps:
+  fail:
+    type: script
+    run: exit 3
+    next: end

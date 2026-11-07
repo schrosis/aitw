@@ -10,6 +10,7 @@ const execute = async (args: string[]) => {
   let exitCode: number | undefined;
   await createProgram({
     cwd: fixtureProject,
+    signal: new AbortController().signal,
     setExitCode: (code) => {
       exitCode = code;
     },
@@ -21,7 +22,12 @@ const execute = async (args: string[]) => {
 describe("createProgram", () => {
   it("prints the package version", async () => {
     let output = "";
-    const program = createProgram({ cwd: fixtureProject, setExitCode: () => {}, ...createOutput() })
+    const program = createProgram({
+      cwd: fixtureProject,
+      setExitCode: () => {},
+      signal: new AbortController().signal,
+      ...createOutput(),
+    })
       .exitOverride()
       .configureOutput({ writeOut: (text) => (output += text) });
 

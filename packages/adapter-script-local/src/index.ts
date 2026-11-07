@@ -3,8 +3,6 @@ import { spawn } from "node:child_process";
 import { ScriptTimeoutError } from "@aitw/core";
 import type { ScriptResult, ScriptRunner } from "@aitw/core";
 
-export const packageName = "@aitw/adapter-script-local";
-
 /** Options of {@link createLocalScriptRunner}. */
 export interface LocalScriptRunnerOptions {
   /** Working directory of the scripts. */

@@ -2,6 +2,11 @@ packages:
   - "packages/*"
 
 catalog:
+  "@temporalio/activity": ^1.25.0
+  "@temporalio/client": ^1.25.0
+  "@temporalio/testing": ^1.25.0
+  "@temporalio/worker": ^1.25.0
+  "@temporalio/workflow": ^1.25.0
   "@types/node": ^26.6.6
   zod: ^4.6.7
 

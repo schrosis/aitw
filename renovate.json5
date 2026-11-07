@@ -15,5 +15,10 @@
       groupName: "commander",
       matchDepNames: ["commander", "@commander-js/extra-typings"],
     },
+    {
+      // Temporal SDK packages must share the same version.
+      groupName: "temporal",
+      matchPackageNames: ["@temporalio/*"],
+    },
   ],
 }

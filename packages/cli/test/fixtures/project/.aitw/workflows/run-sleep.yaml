@@ -1,0 +1,7 @@
+version: v0.1
+start: wait
+steps:
+  wait:
+    type: script
+    run: sleep 30
+    next: end

@@ -1,5 +1,3 @@
-export const packageName = "@aitw/definition";
-
 export {
   createDefinitionJsonSchema,
   defaultStepTimeout,

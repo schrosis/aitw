@@ -54,6 +54,13 @@ describe("aitw executable", () => {
     20_000,
   );
 
+  it("exits when the Temporal Server cannot be reached", async () => {
+    // Port 1 is reserved and nothing listens on it.
+    await expect(
+      execute(["run", "valid", "--address", "127.0.0.1:1"], fixtureProject),
+    ).resolves.toMatchObject({ exitCode: 1 });
+  }, 20_000);
+
   it("exits after validate succeeds", async () => {
     await expect(execute(["validate", "valid"], fixtureProject)).resolves.toEqual({
       exitCode: 0,

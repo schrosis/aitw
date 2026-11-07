@@ -10,6 +10,7 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { temporalCliManifest } from "../packages/cli/src/temporal-cli/manifest.ts";
+import { temporalCliPlatforms } from "../packages/cli/src/temporal-cli/types.ts";
 import type {
   TemporalCliAsset,
   TemporalCliManifest,
@@ -19,13 +20,6 @@ import type {
 const manifestPath = fileURLToPath(
   new URL("../packages/cli/src/temporal-cli/manifest.ts", import.meta.url),
 );
-
-const platformList = [
-  "darwin-arm64",
-  "darwin-x64",
-  "linux-arm64",
-  "linux-x64",
-] as const satisfies readonly TemporalCliPlatform[];
 
 /** Release names of the platforms, keyed by the platform names of Node.js. */
 const platforms: Record<TemporalCliPlatform, string> = {
@@ -59,15 +53,14 @@ const fetchManifest = async (version: string): Promise<TemporalCliManifest> => {
     }
     return { file, sha256 };
   };
-  return {
-    assets: {
-      "darwin-arm64": asset("darwin-arm64"),
-      "darwin-x64": asset("darwin-x64"),
-      "linux-arm64": asset("linux-arm64"),
-      "linux-x64": asset("linux-x64"),
-    },
-    version,
+  // Listing every platform makes the type checker report a platform that is not handled here.
+  const assets: Record<TemporalCliPlatform, TemporalCliAsset> = {
+    "darwin-arm64": asset("darwin-arm64"),
+    "darwin-x64": asset("darwin-x64"),
+    "linux-arm64": asset("linux-arm64"),
+    "linux-x64": asset("linux-x64"),
   };
+  return { assets, version };
 };
 
 const render = ({ assets, version }: TemporalCliManifest): string => {
@@ -94,7 +87,7 @@ const [argument] = process.argv.slice(2);
 if (argument === "--check") {
   const expected = await fetchManifest(temporalCliManifest.version);
   // Compare each platform, so that an archive pinned for another platform is detected.
-  const matches = platformList.every((platform) => {
+  const matches = temporalCliPlatforms.every((platform) => {
     const pinned = temporalCliManifest.assets[platform];
     const { file, sha256 } = expected.assets[platform];
     return pinned.file === file && pinned.sha256 === sha256;

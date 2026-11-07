@@ -10,5 +10,10 @@
       groupName: "toolchain",
       matchDepNames: ["node", "pnpm"],
     },
+    {
+      // @commander-js/extra-typings requires the same minor version of commander.
+      groupName: "commander",
+      matchDepNames: ["commander", "@commander-js/extra-typings"],
+    },
   ],
 }

@@ -14,8 +14,10 @@ describe("createProgram", () => {
     await expect(program.parseAsync(["--version"], { from: "user" })).rejects.toMatchObject({
       code: "commander.version",
     });
-    const manifest = readFileSync(new URL("../package.json", import.meta.url), "utf8");
-    expect(output).toMatch(/^\d+\.\d+\.\d+\n$/u);
-    expect(manifest).toContain(`"version": "${output.trim()}"`);
+    const manifest: unknown = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    );
+    expect(manifest).toMatchObject({ version: output.trimEnd() });
+    expect(output.endsWith("\n")).toBe(true);
   });
 });

@@ -56,6 +56,30 @@ describe("runWorkflow", () => {
     expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh"]);
   }, 60_000);
 
+  it("cancels the workflow and its script when aborted", async () => {
+    const controller = new AbortController();
+    let scriptAborted = false;
+    const result = runWorkflow({
+      address: environment.address,
+      intermediate,
+      scriptRunner: {
+        run: async (_request, signal) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => {
+              scriptAborted = true;
+              reject(signal.reason);
+            });
+            controller.abort();
+          }),
+      },
+      signal: controller.signal,
+      workflowsPath: fileURLToPath(new URL("./workflows/index.ts", import.meta.url)),
+    });
+
+    await expect(result).rejects.toMatchObject({ cause: { name: "CancelledFailure" } });
+    expect(scriptAborted).toBe(true);
+  }, 60_000);
+
   it("throws when the workflow fails", async () => {
     const { result } = await run(1);
 

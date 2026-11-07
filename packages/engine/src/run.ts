@@ -21,6 +21,8 @@ export interface RunWorkflowOptions {
   scriptRunner: ScriptRunner;
   /** Path of the workflow code. Defaults to {@link workflowsPath}. */
   workflowsPath?: string;
+  /** Cancels the workflow, including its running script, when aborted. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -33,6 +35,7 @@ export const runWorkflow = async ({
   intermediate,
   namespace = "default",
   scriptRunner,
+  signal,
   workflowsPath: path = workflowsPath,
 }: RunWorkflowOptions): Promise<WorkflowResult> => {
   const id = randomUUID();
@@ -40,26 +43,41 @@ export const runWorkflow = async ({
   const taskQueue = `aitw-${id}`;
 
   const workerConnection = await NativeConnection.connect({ address });
-  const clientConnection = await Connection.connect({ address });
   try {
-    const worker = await Worker.create({
-      activities: createActivities({ scriptRunner }),
-      connection: workerConnection,
-      namespace,
-      taskQueue,
-      workflowsPath: path,
-    });
-    const client = new Client({ connection: clientConnection, namespace });
-
-    return await worker.runUntil(
-      client.workflow.execute<typeof interpreterWorkflow>("interpreterWorkflow", {
-        args: [intermediate],
+    const clientConnection = await Connection.connect({ address });
+    try {
+      const worker = await Worker.create({
+        activities: createActivities({ scriptRunner }),
+        connection: workerConnection,
+        namespace,
         taskQueue,
-        workflowId: `aitw-${id}`,
-      }),
-    );
+        workflowsPath: path,
+      });
+      const client = new Client({ connection: clientConnection, namespace });
+
+      return await worker.runUntil(async () => {
+        const handle = await client.workflow.start<typeof interpreterWorkflow>(
+          "interpreterWorkflow",
+          { args: [intermediate], taskQueue, workflowId: `aitw-${id}` },
+        );
+        const cancel = (): void => {
+          // The result below reports the cancellation, so a failed request is not rethrown.
+          handle.cancel().catch(() => {});
+        };
+        if (signal?.aborted) {
+          cancel();
+        }
+        signal?.addEventListener("abort", cancel, { once: true });
+        try {
+          return await handle.result();
+        } finally {
+          signal?.removeEventListener("abort", cancel);
+        }
+      });
+    } finally {
+      await clientConnection.close();
+    }
   } finally {
-    await clientConnection.close();
     await workerConnection.close();
   }
 };

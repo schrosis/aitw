@@ -4,6 +4,11 @@ import { ApplicationFailure, proxyActivities } from "@temporalio/workflow";
 
 import type { Activities } from "../activities/index.js";
 
+/**
+ * Extra time that lets a script runner report its own timeout before the activity times out.
+ */
+const activityTimeoutGraceMs = 10_000;
+
 /** Result of {@link interpreterWorkflow}. */
 export interface WorkflowResult {
   /** IDs of the executed steps, in execution order. */
@@ -36,7 +41,7 @@ export const interpreterWorkflow = async (input: unknown): Promise<WorkflowResul
 
     const { executeScriptStep } = proxyActivities<Activities>({
       retry: { maximumAttempts: 1 },
-      startToCloseTimeout: step.timeoutMs,
+      startToCloseTimeout: step.timeoutMs + activityTimeoutGraceMs,
     });
     await executeScriptStep({ input: {}, run: step.run, timeoutMs: step.timeoutMs });
     executedSteps.push(id);

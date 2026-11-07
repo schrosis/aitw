@@ -42,7 +42,8 @@ describe("interpreterWorkflow", () => {
     const worker = await Worker.create({
       activities: createActivities({
         scriptRunner: {
-          run: async (request): Promise<ScriptResult> => {
+          run: async (request, signal): Promise<ScriptResult> => {
+            expect(signal).toBeInstanceOf(AbortSignal);
             requests.push(request);
             return { exitCode: exitCodes[request.run] ?? 0, stderr: "", stdout: "" };
           },
@@ -77,14 +78,17 @@ describe("interpreterWorkflow", () => {
   it("stops when a script fails", async () => {
     const { requests, result } = await run(intermediate, { "./fetch.sh": 1 });
 
-    expect(result.ok).toBe(false);
+    expect(result).toMatchObject({
+      error: { cause: { cause: { type: "ScriptFailed" } } },
+      ok: false,
+    });
     expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh"]);
   }, 60_000);
 
   it("rejects an invalid intermediate representation", async () => {
     const { requests, result } = await run({ ...intermediate, start: "missing" });
 
-    expect(result.ok).toBe(false);
+    expect(result).toMatchObject({ error: { cause: { type: "InvalidIntermediate" } }, ok: false });
     expect(requests).toEqual([]);
   }, 60_000);
 });

@@ -4,7 +4,11 @@ export interface ScriptRequest {
   run: string;
   /** Evaluated input values of the step. */
   input: Record<string, string>;
-  /** Maximum duration of the script in milliseconds. */
+  /**
+   * Maximum duration of the script in milliseconds.
+   *
+   * The runner must stop the script and report a failure when it is exceeded.
+   */
   timeoutMs: number;
 }
 
@@ -17,5 +21,10 @@ export interface ScriptResult {
 
 /** Port that runs scripts for script steps. */
 export interface ScriptRunner {
-  run: (request: ScriptRequest) => Promise<ScriptResult>;
+  /**
+   * Runs a script.
+   *
+   * The runner must stop the script when `signal` is aborted.
+   */
+  run: (request: ScriptRequest, signal: AbortSignal) => Promise<ScriptResult>;
 }

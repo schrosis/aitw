@@ -7,13 +7,17 @@
 #   scope        all, affected, or none
 #   build_args   pnpm arguments that select packages to build, including dependencies
 #   check_args   pnpm arguments that select packages to check
+#   temporal_cli true when the pinned Temporal CLI must be checked against its release
 set -euo pipefail
 
 base="${1:-}"
 output="${GITHUB_OUTPUT:-/dev/stdout}"
 
+temporal_cli=false
+
 write() {
-  printf 'scope=%s\nbuild_args=%s\ncheck_args=%s\n' "$1" "$2" "$3" >> "$output"
+  printf 'scope=%s\nbuild_args=%s\ncheck_args=%s\ntemporal_cli=%s\n' \
+    "$1" "$2" "$3" "$temporal_cli" >> "$output"
 }
 
 # Selective runs rely on these scripts, so a package without one would be
@@ -35,6 +39,7 @@ if [ -n "$missing" ]; then
 fi
 
 if [ -z "$base" ]; then
+  temporal_cli=true
   write all "-r" "-r"
   exit 0
 fi
@@ -44,6 +49,10 @@ docs_pattern='^(docs/|\.claude/)|\.md$|^LICENSE$'
 root_changed=false
 packages_changed=false
 while IFS= read -r file; do
+  # The check downloads from GitHub, so run it only when the pinned release can change.
+  if [[ $file == packages/cli/src/temporal-cli/manifest.ts || $file == scripts/update-temporal-cli.ts ]]; then
+    temporal_cli=true
+  fi
   if [[ $file =~ $docs_pattern ]]; then
     continue
   elif [[ $file == packages/* ]]; then

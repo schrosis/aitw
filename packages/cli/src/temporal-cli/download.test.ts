@@ -8,6 +8,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -95,6 +96,25 @@ describe("ensureTemporalCli", () => {
     ).rejects.toThrow("Checksum mismatch");
     expect(existsSync(join(cacheDirectory(), "9.9.9"))).toBe(false);
     expect(readdirSync(cacheDirectory())).toEqual([]);
+  });
+
+  it("removes work directories left by a stopped process", async () => {
+    const stale = join(cacheDirectory(), ".download-stale");
+    const recent = join(cacheDirectory(), ".download-recent");
+    mkdirSync(stale, { recursive: true });
+    mkdirSync(recent);
+    const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    utimesSync(stale, dayAgo, dayAgo);
+
+    await ensureTemporalCli({
+      cacheDirectory: cacheDirectory(),
+      fetch: fetchArchive,
+      manifest,
+      platform,
+    });
+
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(recent)).toBe(true);
   });
 
   it("reports a failed download", async () => {

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { access, chmod, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -33,6 +33,33 @@ const isPlatform = (
   manifest: TemporalCliManifest,
   platform: string,
 ): platform is TemporalCliPlatform => Object.hasOwn(manifest.assets, platform);
+
+const workPrefix = ".download-";
+
+/**
+ * Age after which a work directory is treated as left by a stopped process.
+ *
+ * A download in another process takes far less time, so its directory is never removed.
+ */
+const staleWorkMs = 24 * 60 * 60 * 1000;
+
+/** Removes work directories that a stopped process could not remove. */
+const removeStaleWork = async (cacheDirectory: string): Promise<void> => {
+  const entries = await readdir(cacheDirectory);
+  await Promise.all(
+    entries
+      .filter((name) => name.startsWith(workPrefix))
+      .map(async (name) => {
+        const path = join(cacheDirectory, name);
+        const { mtimeMs } = await stat(path);
+        if (Date.now() - mtimeMs > staleWorkMs) {
+          await rm(path, { force: true, recursive: true });
+        }
+      }),
+  ).catch(() => {
+    // Cleaning up is best effort and must not prevent the download.
+  });
+};
 
 const exists = async (path: string): Promise<boolean> =>
   access(path).then(
@@ -90,8 +117,9 @@ export const ensureTemporalCli = async ({
   }
 
   await mkdir(cacheDirectory, { mode: 0o700, recursive: true });
+  await removeStaleWork(cacheDirectory);
   // Work in a temporary directory, so that an interrupted download is never used.
-  const work = await mkdtemp(join(cacheDirectory, ".download-"));
+  const work = await mkdtemp(join(cacheDirectory, workPrefix));
   try {
     const archive = join(work, asset.file);
     const url = `https://github.com/temporalio/cli/releases/download/v${manifest.version}/${asset.file}`;

@@ -20,6 +20,13 @@ const manifestPath = fileURLToPath(
   new URL("../packages/cli/src/temporal-cli/manifest.ts", import.meta.url),
 );
 
+const platformList = [
+  "darwin-arm64",
+  "darwin-x64",
+  "linux-arm64",
+  "linux-x64",
+] as const satisfies readonly TemporalCliPlatform[];
+
 /** Release names of the platforms, keyed by the platform names of Node.js. */
 const platforms: Record<TemporalCliPlatform, string> = {
   "darwin-arm64": "darwin_arm64",
@@ -86,11 +93,12 @@ const render = ({ assets, version }: TemporalCliManifest): string => {
 const [argument] = process.argv.slice(2);
 if (argument === "--check") {
   const expected = await fetchManifest(temporalCliManifest.version);
-  const matches = Object.values(expected.assets).every(({ file, sha256 }) =>
-    Object.values(temporalCliManifest.assets).some(
-      (pinned) => pinned.file === file && pinned.sha256 === sha256,
-    ),
-  );
+  // Compare each platform, so that an archive pinned for another platform is detected.
+  const matches = platformList.every((platform) => {
+    const pinned = temporalCliManifest.assets[platform];
+    const { file, sha256 } = expected.assets[platform];
+    return pinned.file === file && pinned.sha256 === sha256;
+  });
   if (!matches) {
     console.error(
       `The pinned checksums do not match Temporal CLI ${temporalCliManifest.version}. ` +

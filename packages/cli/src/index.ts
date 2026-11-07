@@ -5,3 +5,5 @@ import { packageName as engine } from "@aitw/engine";
 
 /** Names of the workspace packages that the CLI composes. */
 export const workspacePackages = [core, definition, engine, adapterScriptLocal];
+
+export { createProgram } from "./program.js";

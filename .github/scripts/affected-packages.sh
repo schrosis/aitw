@@ -38,16 +38,15 @@ done < <(git diff --name-only "$base...HEAD")
 if $root_changed; then
   write all "-r" "-r"
 elif $packages_changed; then
-  mapfile -t dirs < <(
+  build_args=""
+  check_args=""
+  while IFS= read -r dir; do
+    build_args+="--filter={$dir}... "
+    check_args+="--filter={$dir} "
+  done < <(
     pnpm --filter "...[$base]" --changed-files-ignore-pattern '**/*.md' ls -r --depth -1 --json \
       | jq -r --arg root "$PWD" '.[] | select(.path != $root) | "./" + (.path | ltrimstr($root + "/"))'
   )
-  build_args=""
-  check_args=""
-  for dir in "${dirs[@]}"; do
-    build_args+="--filter={$dir}... "
-    check_args+="--filter={$dir} "
-  done
   write affected "${build_args% }" "${check_args% }"
 else
   write none "" ""

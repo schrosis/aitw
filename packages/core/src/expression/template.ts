@@ -1,3 +1,5 @@
+import { identifierPattern } from "../identifier.js";
+
 /** A part of a template: literal text or a reference such as `steps.fetch.output.title`. */
 export type TemplatePart =
   | { type: "text"; value: string }
@@ -8,8 +10,6 @@ export type Template = TemplatePart[];
 
 /** Result of {@link parseTemplate}. */
 export type ParseTemplateResult = { ok: true; template: Template } | { ok: false; message: string };
-
-import { identifierPattern } from "../identifier.js";
 
 const open = "${{";
 const close = "}}";

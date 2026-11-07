@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 
+import { configureRuntime } from "@aitw/engine";
 import { Command } from "@commander-js/extra-typings";
 
 import type { CommandContext } from "./commands/load.js";
@@ -29,6 +30,8 @@ export interface ProgramContext extends CommandContext {
    * behavior of an interrupt.
    */
   interruptSignal: () => AbortSignal;
+  /** Prepares the workflow engine before a command runs a workflow. */
+  prepareEngine: () => void;
 }
 
 const interruptSignal = (): AbortSignal => {
@@ -38,9 +41,27 @@ const interruptSignal = (): AbortSignal => {
   return controller.signal;
 };
 
+/**
+ * Configures the Temporal runtime once, only for commands that run workflows.
+ *
+ * An installed runtime keeps the process alive until a Worker shuts it down, so commands that
+ * finish without running a workflow must not install it.
+ */
+const prepareEngine = (() => {
+  let prepared = false;
+  return (): void => {
+    if (!prepared) {
+      // The CLI reports failures and handles SIGINT itself.
+      configureRuntime({ logLevel: "ERROR" });
+      prepared = true;
+    }
+  };
+})();
+
 const processContext = (): ProgramContext => ({
   cwd: process.cwd(),
   interruptSignal,
+  prepareEngine,
   setExitCode: (code) => {
     process.exitCode = code;
   },
@@ -70,7 +91,9 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .option("--address <address>", "address of the Temporal Server", "localhost:7233")
     .action(async (workflow, { address }) => {
       const signal = context.interruptSignal();
-      context.setExitCode(await run(workflow, { address, signal }, context));
+      context.setExitCode(
+        await run(workflow, { address, prepareEngine: context.prepareEngine, signal }, context),
+      );
     });
 
   return program;

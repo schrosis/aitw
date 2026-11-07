@@ -13,6 +13,8 @@ export interface RunOptions {
   address: string;
   /** Cancels the run when aborted. */
   signal: AbortSignal;
+  /** Called after the workflow is validated and before it starts. */
+  prepareEngine?: () => void;
 }
 
 const isCancelled = (error: unknown): boolean =>
@@ -36,7 +38,7 @@ const rootMessage = (error: unknown): string => {
  */
 export const run = async (
   name: string,
-  { address, signal }: RunOptions,
+  { address, prepareEngine, signal }: RunOptions,
   context: CommandContext,
 ): Promise<number> => {
   const workflow = await loadWorkflow(name, context);
@@ -44,6 +46,7 @@ export const run = async (
     return 1;
   }
 
+  prepareEngine?.();
   try {
     const { executedSteps } = await runWorkflow({
       address,

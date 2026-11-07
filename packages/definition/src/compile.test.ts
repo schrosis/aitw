@@ -50,4 +50,23 @@ describe("compileDefinition", () => {
   it("returns parse errors", () => {
     expect(compileDefinition("")).toMatchObject({ ok: false });
   });
+
+  it("locates an invalid reference in a definition", () => {
+    const source = validSource.replace(
+      "    next: end\n",
+      "    input:\n      title: ${{ steps.missing.output.title }}\n    next: end\n",
+    );
+
+    expect(compileDefinition(source)).toEqual({
+      errors: [
+        {
+          column: 14,
+          line: 8,
+          message: "Step missing does not run before fetch: ${{ steps.missing.output.title }}",
+          path: ["steps", "fetch", "input", "title"],
+        },
+      ],
+      ok: false,
+    });
+  });
 });

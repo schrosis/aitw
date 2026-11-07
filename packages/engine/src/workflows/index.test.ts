@@ -200,7 +200,7 @@ describe("aitw", () => {
     expect(requests.map(({ run: command }) => command)).toEqual(["./first.sh", "./second.sh"]);
   }, 60_000);
 
-  it("fails on an unknown input reference", async () => {
+  it("rejects an unknown input reference before running any step", async () => {
     const { requests, result } = await run({
       ...intermediate,
       steps: {
@@ -212,8 +212,8 @@ describe("aitw", () => {
       },
     });
 
-    expect(result).toMatchObject({ error: { cause: { type: "InvalidExpression" } }, ok: false });
-    expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh"]);
+    expect(result).toMatchObject({ error: { cause: { type: "InvalidIntermediate" } }, ok: false });
+    expect(requests).toEqual([]);
   }, 60_000);
 
   it("rejects an invalid intermediate representation", async () => {

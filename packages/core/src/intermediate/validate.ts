@@ -1,5 +1,7 @@
+import { validateExpressions } from "./expressions.js";
+import { executionOrder } from "./order.js";
 import { intermediateSchema } from "./schema.js";
-import type { Intermediate, Transition } from "./schema.js";
+import type { Intermediate } from "./schema.js";
 
 /** A problem found in an intermediate representation. */
 export interface ValidationError {
@@ -42,14 +44,8 @@ const validateTransitions = (intermediate: Intermediate): ValidationError[] => {
     }
   }
 
-  const reachable = new Set<string>();
-  let current: string | null = start;
-  // Stop at an unknown step or a cycle. Both are reported above.
-  while (current !== null && Object.hasOwn(steps, current) && !reachable.has(current)) {
-    reachable.add(current);
-    const transition: Transition | undefined = steps[current]?.next;
-    current = transition?.type === "step" ? transition.step : null;
-  }
+  // An unknown step or a cycle ends the path. Both are reported above.
+  const reachable = new Set(executionOrder(intermediate));
   for (const id of Object.keys(steps)) {
     if (!reachable.has(id)) {
       errors.push({ message: "Step is not reachable from start", path: ["steps", id] });
@@ -76,6 +72,6 @@ export const validateIntermediate = (input: unknown): ValidationResult => {
     };
   }
 
-  const errors = validateTransitions(result.data);
+  const errors = [...validateTransitions(result.data), ...validateExpressions(result.data)];
   return errors.length > 0 ? { errors, ok: false } : { intermediate: result.data, ok: true };
 };

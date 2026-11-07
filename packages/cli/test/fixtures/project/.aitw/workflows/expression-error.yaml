@@ -1,0 +1,9 @@
+version: v0.1
+start: fetch
+steps:
+  fetch:
+    type: script
+    run: echo "${{ input.title }}"
+    output:
+      title: ${{ result.body }}
+    next: end

@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -15,7 +19,58 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          # The base of a pull request is the first parent of its merge commit.
+          fetch-depth: 2
           persist-credentials: false
       - uses: jdx/mise-action@v5.2.6
+      - id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
+      - id: affected
+        name: Select packages
+        env:
+          # Pushes to main check every package.
+          BASE_REF: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
+        run: .github/scripts/affected-packages.sh "$BASE_REF"
+      - name: Format
+        run: pnpm format:check
+      - name: Build
+        if: steps.affected.outputs.scope != 'none'
+        env:
+          ARGS: ${{ steps.affected.outputs.build_args }}
+        # shellcheck disable=SC2086
+        run: pnpm $ARGS run build
+      - name: Type check
+        if: steps.affected.outputs.scope != 'none'
+        env:
+          ARGS: ${{ steps.affected.outputs.check_args }}
+          SCOPE: ${{ steps.affected.outputs.scope }}
+        run: |
+          # shellcheck disable=SC2086
+          pnpm $ARGS run typecheck
+          if [ "$SCOPE" = all ]; then
+            pnpm exec tsc -p tsconfig.check.json
+          fi
+      - name: Lint
+        if: steps.affected.outputs.scope != 'none'
+        env:
+          ARGS: ${{ steps.affected.outputs.check_args }}
+          SCOPE: ${{ steps.affected.outputs.scope }}
+        run: |
+          if [ "$SCOPE" = all ]; then
+            pnpm lint
+          else
+            # shellcheck disable=SC2086
+            pnpm $ARGS run lint
+          fi
+      - name: Test
+        if: steps.affected.outputs.scope != 'none'
+        env:
+          ARGS: ${{ steps.affected.outputs.check_args }}
+        # shellcheck disable=SC2086
+        run: pnpm $ARGS run test

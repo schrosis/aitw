@@ -4,5 +4,8 @@
     "correctness": "error",
     "suspicious": "error"
   },
-  "ignorePatterns": ["**/dist/**", "**/coverage/**"]
+  "ignorePatterns": ["**/dist/**", "**/coverage/**"],
+  "rules": {
+    "func-style": ["error", "expression"]
+  }
 }

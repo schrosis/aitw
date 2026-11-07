@@ -22,17 +22,17 @@ export type ParseResult =
 
 type DefinitionDocument = ReturnType<typeof parseDocument>;
 
-function createError(
+const createError = (
   lineCounter: LineCounter,
   offset: number,
   path: (number | string)[],
   message: string,
-): ParseError {
+): ParseError => {
   const { col: column, line } = lineCounter.linePos(offset);
   return { column, line, message, path };
-}
+};
 
-function findAliasErrors(document: DefinitionDocument, lineCounter: LineCounter): ParseError[] {
+const findAliasErrors = (document: DefinitionDocument, lineCounter: LineCounter): ParseError[] => {
   const errors: ParseError[] = [];
 
   visit(document, (_key, node) => {
@@ -48,14 +48,14 @@ function findAliasErrors(document: DefinitionDocument, lineCounter: LineCounter)
   });
 
   return errors;
-}
+};
 
 /** Finds the source offset of a path, falling back to its closest existing parent. */
-function findOffset(
+const findOffset = (
   document: DefinitionDocument,
   path: readonly (number | string)[],
   useKey: boolean,
-): number {
+): number => {
   let node: unknown = document.contents;
   let offset = isNode(node) ? (node.range?.[0] ?? 0) : 0;
 
@@ -79,17 +79,17 @@ function findOffset(
   }
 
   return offset;
-}
+};
 
-function toPath(path: readonly PropertyKey[]): (number | string)[] {
+const toPath = (path: readonly PropertyKey[]): (number | string)[] => {
   return path.filter((segment) => typeof segment !== "symbol");
-}
+};
 
-function convertIssue(
+const convertIssue = (
   issue: z.core.$ZodIssue,
   document: DefinitionDocument,
   lineCounter: LineCounter,
-): ParseError[] {
+): ParseError[] => {
   const path = toPath(issue.path);
 
   if (issue.code === "unrecognized_keys") {
@@ -106,14 +106,14 @@ function convertIssue(
 
   const offset = findOffset(document, path, issue.code === "invalid_key");
   return [createError(lineCounter, offset, path, issue.message)];
-}
+};
 
 /**
  * Parses and validates a YAML workflow definition.
  *
  * Invalid definitions are reported in the result instead of being thrown.
  */
-export function parseDefinition(source: string): ParseResult {
+export const parseDefinition = (source: string): ParseResult => {
   const lineCounter = new LineCounter();
   const document = parseDocument(source, { lineCounter, prettyErrors: false });
 
@@ -138,4 +138,4 @@ export function parseDefinition(source: string): ParseResult {
   }
 
   return { definition: result.data, ok: true };
-}
+};

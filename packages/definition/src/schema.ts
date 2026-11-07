@@ -50,6 +50,6 @@ export const definitionSchema = z.strictObject({
 export type Definition = z.infer<typeof definitionSchema>;
 
 /** Creates the JSON Schema of a workflow definition for editors and other tools. */
-export function createDefinitionJsonSchema() {
+export const createDefinitionJsonSchema = () => {
   return z.toJSONSchema(definitionSchema, { io: "input" });
-}
+};

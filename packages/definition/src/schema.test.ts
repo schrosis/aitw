@@ -27,7 +27,7 @@ const validDefinition = {
   },
 };
 
-function withFetchStep(step: Record<string, unknown>): unknown {
+const withFetchStep = (step: Record<string, unknown>): unknown => {
   return {
     ...validDefinition,
     steps: {
@@ -35,7 +35,7 @@ function withFetchStep(step: Record<string, unknown>): unknown {
       fetch: { ...validDefinition.steps.fetch, ...step },
     },
   };
-}
+};
 
 describe("definitionSchema", () => {
   it("accepts a valid definition", () => {

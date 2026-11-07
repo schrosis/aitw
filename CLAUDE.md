@@ -22,6 +22,7 @@ aitw は、AI、人間、スクリプトのステップを Temporal Workflow で
 ## 規約
 
 - Adapter のインターフェースは Port と呼ぶ
+- 関数はアロー関数で書く。`function` はジェネレーターなど、必要な場合だけ使う
 - Workflow のコードは `packages/engine/src/workflows` に置き、Node API と副作用を持ち込まない
 - 副作用は Activity で実行する
 - コミットメッセージは Conventional Commits に従う

@@ -35,10 +35,19 @@ export interface ProgramContext extends CommandContext {
   prepareEngine: () => void;
 }
 
+/** Exit code of an interrupted program, following the shell convention for SIGINT. */
+const interruptedExitCode = 130;
+
 const interruptSignal = (): AbortSignal => {
   const controller = new AbortController();
-  // A second interrupt falls back to the default behavior and exits immediately.
-  process.once("SIGINT", () => controller.abort());
+  process.on("SIGINT", () => {
+    if (controller.signal.aborted) {
+      // A second interrupt exits immediately. process.exit() still runs the "exit" handlers,
+      // which stop a development server.
+      process.exit(interruptedExitCode);
+    }
+    controller.abort();
+  });
   return controller.signal;
 };
 
@@ -96,7 +105,10 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     )
     .option("--dev", "start a temporary Temporal development server for this run")
     .option("--dev-db <path>", "keep the state of the development server in a SQLite file")
-    .option("--temporal-bin <path>", "Temporal CLI to start the development server with")
+    .option(
+      "--temporal-bin <path>",
+      "Temporal CLI to start the development server with, as a path or a name in PATH",
+    )
     .action(async (workflow, { address, dev, devDb, temporalBin }, command) => {
       if (!dev && (devDb !== undefined || temporalBin !== undefined)) {
         command.error("error: --dev-db and --temporal-bin require --dev");

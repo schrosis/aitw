@@ -19,7 +19,10 @@ export type ServerOptions =
       type: "dev";
       /** SQLite file that keeps the server state, relative to the current directory. */
       dbFilename?: string | undefined;
-      /** Temporal CLI to start the server with. The pinned release is used when it is omitted. */
+      /**
+       * Temporal CLI to start the server with, as a path or a name in PATH. The pinned release is
+       * used when it is omitted.
+       */
       temporalBin?: string | undefined;
     };
 
@@ -35,6 +38,10 @@ export interface RunOptions {
 
 const isCancelled = (error: unknown): boolean =>
   error instanceof Error && error.cause instanceof Error && error.cause.name === "CancelledFailure";
+
+/** Resolves an executable like a shell: a name without a slash is looked up in PATH. */
+const resolveExecutable = (cwd: string, executable: string): string =>
+  executable.includes("/") ? resolve(cwd, executable) : executable;
 
 /** Returns the message of the innermost cause, which describes the actual failure. */
 const rootMessage = (error: unknown): string => {
@@ -70,12 +77,14 @@ export const run = async (
         server.temporalBin === undefined
           ? await ensureTemporalCli({
               onDownload: (version) => context.stderr(`Downloading Temporal CLI ${version}\n`),
+              signal,
             })
-          : resolve(context.cwd, server.temporalBin);
+          : resolveExecutable(context.cwd, server.temporalBin);
       devServer = await startDevServer({
         dbFilename:
           server.dbFilename === undefined ? undefined : resolve(context.cwd, server.dbFilename),
         executable,
+        signal,
       });
       address = devServer.address;
       context.stderr(`Temporal Web UI: ${devServer.uiUrl}\n`);
@@ -99,7 +108,8 @@ export const run = async (
     context.stdout(`${name}: completed (${executedSteps.join(", ")})\n`);
     return 0;
   } catch (error) {
-    if (isCancelled(error)) {
+    // An interrupt while the server starts aborts the download or the wait for the server.
+    if (isCancelled(error) || signal.aborted) {
       context.stderr(`${name}: cancelled\n`);
       return cancelledExitCode;
     }

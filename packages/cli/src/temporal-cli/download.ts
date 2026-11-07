@@ -22,7 +22,9 @@ export interface EnsureTemporalCliOptions {
   /** Platform as `<platform>-<arch>` of Node.js. Defaults to the current platform. */
   platform?: string;
   /** Function that downloads a URL. Defaults to the global `fetch`. */
-  fetch?: (url: string) => Promise<Response>;
+  fetch?: (url: string, init: { signal: AbortSignal | null }) => Promise<Response>;
+  /** Stops the download when aborted. */
+  signal?: AbortSignal | undefined;
   /** Called before the release is downloaded, which happens only when it is not cached. */
   onDownload?: (version: string) => void;
 }
@@ -71,11 +73,12 @@ const exists = async (path: string): Promise<boolean> =>
 
 /** Downloads a URL to a file and returns the SHA-256 of the content, in hexadecimal. */
 const download = async (
-  fetchUrl: (url: string) => Promise<Response>,
+  fetchUrl: NonNullable<EnsureTemporalCliOptions["fetch"]>,
   url: string,
   file: string,
+  signal: AbortSignal | undefined,
 ): Promise<string> => {
-  const response = await fetchUrl(url);
+  const response = await fetchUrl(url, { signal: signal ?? null });
   if (!response.ok || response.body === null) {
     throw new Error(`Failed to download ${url}: ${response.status}`);
   }
@@ -105,6 +108,7 @@ export const ensureTemporalCli = async ({
   fetch: fetchUrl = fetch,
   manifest = temporalCliManifest,
   onDownload,
+  signal,
   platform = `${process.platform}-${process.arch}`,
 }: EnsureTemporalCliOptions = {}): Promise<string> => {
   if (!isPlatform(manifest, platform)) {
@@ -127,7 +131,7 @@ export const ensureTemporalCli = async ({
   try {
     const archive = join(work, asset.file);
     const url = `https://github.com/temporalio/cli/releases/download/v${manifest.version}/${asset.file}`;
-    const sha256 = await download(fetchUrl, url, archive);
+    const sha256 = await download(fetchUrl, url, archive, signal);
     if (sha256 !== asset.sha256) {
       throw new Error(
         `Checksum mismatch for ${asset.file}: expected ${asset.sha256}, received ${sha256}`,

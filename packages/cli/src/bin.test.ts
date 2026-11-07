@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,7 @@ import { ensureTemporalCli } from "./temporal-cli/download.ts";
 import { fixtureProject } from "./testing.ts";
 
 interface ExecuteOptions {
+  env?: NodeJS.ProcessEnv;
   onOutput?: (child: ChildProcess, output: string) => void;
   timeoutMs?: number;
 }
@@ -26,10 +27,10 @@ const bin = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
 const execute = async (
   args: string[],
   cwd: string,
-  { onOutput = () => {}, timeoutMs = 10_000 }: ExecuteOptions = {},
+  { env = process.env, onOutput = () => {}, timeoutMs = 10_000 }: ExecuteOptions = {},
 ) =>
   new Promise<{ exitCode: number | null; output: string }>((resolve, reject) => {
-    const child = spawn(process.execPath, [bin, ...args], { cwd });
+    const child = spawn(process.execPath, [bin, ...args], { cwd, env });
     let output = "";
     child.stdout.on("data", (chunk: Buffer) => {
       output += chunk.toString();
@@ -86,9 +87,11 @@ describe("aitw executable", () => {
   }, 20_000);
 
   describe("with a development server", () => {
+    let executable: string;
+
     beforeAll(async () => {
       // Download the pinned release before the timed runs below.
-      await ensureTemporalCli();
+      executable = await ensureTemporalCli();
     }, 120_000);
 
     it("runs a workflow on a temporary server", async () => {
@@ -99,6 +102,44 @@ describe("aitw executable", () => {
       expect(exitCode).toBe(0);
       expect(output).toMatch(/^Temporal Web UI: http:\/\/127\.0\.0\.1:\d+\n/mu);
       expect(output).toContain("run-success: completed (check, finish)\n");
+    }, 40_000);
+
+    it("finds a Temporal CLI name in PATH", async () => {
+      const directory = mkdtempSync(join(tmpdir(), "aitw-path-"));
+      try {
+        symlinkSync(executable, join(directory, "temporal"));
+        const { exitCode, output } = await execute(
+          ["run", "run-success", "--dev", "--temporal-bin", "temporal"],
+          fixtureProject,
+          {
+            env: { ...process.env, PATH: `${directory}:${process.env.PATH ?? ""}` },
+            timeoutMs: 30_000,
+          },
+        );
+
+        expect(exitCode).toBe(0);
+        expect(output).toContain("run-success: completed (check, finish)\n");
+      } finally {
+        rmSync(directory, { force: true, recursive: true });
+      }
+    }, 40_000);
+
+    it("stops the server when interrupted twice", async () => {
+      let address: string | undefined;
+      const { exitCode } = await execute(["run", "run-sleep", "--dev"], fixtureProject, {
+        onOutput: (child, text) => {
+          if (address === undefined && text.includes("▶ wait")) {
+            address = /Temporal Web UI: (http:\S+)/u.exec(text)?.[1];
+            child.kill("SIGINT");
+            child.kill("SIGINT");
+          }
+        },
+        timeoutMs: 30_000,
+      });
+
+      expect(exitCode).toBe(130);
+      expect(address).toBeDefined();
+      await expect(fetch(address ?? "")).rejects.toThrow();
     }, 40_000);
 
     it("cancels the run and stops the server when interrupted", async () => {

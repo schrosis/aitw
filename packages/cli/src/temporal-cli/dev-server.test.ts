@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -55,13 +55,39 @@ describe("startDevServer", () => {
     expect(existsSync(dbFilename)).toBe(true);
   }, 60_000);
 
-  it("reports a server that exits before it starts", async () => {
+  it("retries once and reports a server that exits before it starts", async () => {
+    const attempts = join(root, "attempts");
     const failing = join(root, "failing-temporal");
-    writeFileSync(failing, "#!/bin/sh\necho 'unknown flag' >&2\nexit 3\n", { mode: 0o755 });
+    writeFileSync(
+      failing,
+      `#!/bin/sh\necho attempt >> "${attempts}"\necho 'unknown flag' >&2\nexit 3\n`,
+      { mode: 0o755 },
+    );
 
     await expect(startDevServer({ executable: failing })).rejects.toThrow(
       "Temporal dev server exited with code 3:\nunknown flag",
     );
+    expect(readFileSync(attempts, "utf8")).toBe("attempt\nattempt\n");
+  });
+
+  it("stops waiting and stops the server when aborted", async () => {
+    const pidFile = join(root, "pid");
+    const hanging = join(root, "hanging-temporal");
+    writeFileSync(hanging, `#!/bin/sh\necho $$ > "${pidFile}"\nexec sleep 30\n`, { mode: 0o755 });
+    const controller = new AbortController();
+    // Abort once the process has started, because starting it can take a while under load.
+    const poll = setInterval(() => {
+      if (existsSync(pidFile) && readFileSync(pidFile, "utf8").endsWith("\n")) {
+        clearInterval(poll);
+        controller.abort();
+      }
+    }, 50);
+
+    await expect(
+      startDevServer({ executable: hanging, signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    const pid = Number(readFileSync(pidFile, "utf8"));
+    expect(() => process.kill(pid, 0)).toThrow();
   });
 
   it("reports a missing executable", async () => {

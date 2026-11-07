@@ -13,6 +13,8 @@ export interface DevServerOptions {
   startTimeoutMs?: number;
   /** Time to wait for the server to stop after SIGTERM before it is killed, in milliseconds. */
   stopGraceMs?: number;
+  /** Stops waiting for the server to start, and stops the server, when aborted. */
+  signal?: AbortSignal | undefined;
 }
 
 /** A running Temporal development server. */
@@ -57,15 +59,13 @@ const canConnect = async (port: number): Promise<boolean> =>
     });
   });
 
-/**
- * Starts `temporal server start-dev` on free local ports and waits until it accepts connections.
- *
- * The server runs in its own process group, so that an interrupt in the terminal reaches only
- * aitw. aitw then cancels the workflow and stops the server itself.
- */
-export const startDevServer = async ({
+/** A server process that exited before it accepted connections, such as for a taken port. */
+class ExitedBeforeStartError extends Error {}
+
+const startOnce = async ({
   dbFilename,
   executable,
+  signal,
   startTimeoutMs = 30_000,
   stopGraceMs = 5000,
 }: DevServerOptions): Promise<DevServer> => {
@@ -97,11 +97,32 @@ export const startDevServer = async ({
     log = (log + text).slice(-maxLogLength);
   });
 
+  const kill = (signalName: NodeJS.Signals): void => {
+    if (exited || child.pid === undefined) {
+      return;
+    }
+    try {
+      process.kill(-child.pid, signalName);
+    } catch (error) {
+      // macOS reports EPERM instead of ESRCH for a process group that has exited.
+      const code = error instanceof Error && "code" in error ? error.code : undefined;
+      if (code !== "ESRCH" && code !== "EPERM") {
+        throw error;
+      }
+    }
+  };
+
+  // The server is in another process group, so it would outlive aitw if aitw exited without
+  // stopping it, such as by process.exit() on a second interrupt.
+  const killOnExit = (): void => kill("SIGKILL");
+  process.once("exit", killOnExit);
+
   let exited = false;
   // A process that fails to spawn emits "error" and may not emit "exit".
   const exit = new Promise<void>((resolve) => {
     const settle = (): void => {
       exited = true;
+      process.off("exit", killOnExit);
       resolve();
     };
     child.once("exit", settle);
@@ -115,21 +136,6 @@ export const startDevServer = async ({
   // The error is reported by the start below, so it must not become an unhandled rejection.
   spawnError.catch(() => {});
 
-  const kill = (signal: NodeJS.Signals): void => {
-    if (exited || child.pid === undefined) {
-      return;
-    }
-    try {
-      process.kill(-child.pid, signal);
-    } catch (error) {
-      // macOS reports EPERM instead of ESRCH for a process group that has exited.
-      const code = error instanceof Error && "code" in error ? error.code : undefined;
-      if (code !== "ESRCH" && code !== "EPERM") {
-        throw error;
-      }
-    }
-  };
-
   const stop = async (): Promise<void> => {
     kill("SIGTERM");
     const timer = setTimeout(() => kill("SIGKILL"), stopGraceMs);
@@ -137,19 +143,22 @@ export const startDevServer = async ({
     clearTimeout(timer);
   };
 
-  const failure = (message: string): Error => {
+  const withLog = (message: string): string => {
     const details = log.trim();
-    return new Error(details === "" ? message : `${message}:\n${details}`);
+    return details === "" ? message : `${message}:\n${details}`;
   };
 
   const ready = async (): Promise<void> => {
     const deadline = performance.now() + startTimeoutMs;
     while (!(await canConnect(port))) {
+      signal?.throwIfAborted();
       if (exited) {
-        throw failure(`Temporal dev server exited with code ${child.exitCode ?? "unknown"}`);
+        throw new ExitedBeforeStartError(
+          withLog(`Temporal dev server exited with code ${child.exitCode ?? "unknown"}`),
+        );
       }
       if (performance.now() > deadline) {
-        throw failure(`Temporal dev server did not start within ${startTimeoutMs} ms`);
+        throw new Error(withLog(`Temporal dev server did not start within ${startTimeoutMs} ms`));
       }
       await sleep(100);
     }
@@ -162,4 +171,22 @@ export const startDevServer = async ({
     throw error;
   }
   return { address: `${host}:${port}`, stop, uiUrl: `http://${host}:${uiPort}` };
+};
+
+/**
+ * Starts `temporal server start-dev` on free local ports and waits until it accepts connections.
+ *
+ * The server runs in its own process group, so that an interrupt in the terminal reaches only
+ * aitw. aitw then cancels the workflow and stops the server itself.
+ */
+export const startDevServer = async (options: DevServerOptions): Promise<DevServer> => {
+  try {
+    return await startOnce(options);
+  } catch (error) {
+    // Another process can take a free port before the server binds it, so retry once.
+    if (error instanceof ExitedBeforeStartError && options.signal?.aborted !== true) {
+      return startOnce(options);
+    }
+    throw error;
+  }
 };

@@ -125,6 +125,25 @@ describe("ensureTemporalCli", () => {
     expect(existsSync(recent)).toBe(true);
   });
 
+  it("stops the download when aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      ensureTemporalCli({
+        cacheDirectory: cacheDirectory(),
+        fetch: async (_url, { signal }) => {
+          signal?.throwIfAborted();
+          return new Response(archive);
+        },
+        manifest,
+        platform,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(existsSync(join(cacheDirectory(), "9.9.9"))).toBe(false);
+  });
+
   it("reports a failed download", async () => {
     await expect(
       ensureTemporalCli({

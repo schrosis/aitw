@@ -40,12 +40,12 @@ if $root_changed; then
 elif $packages_changed; then
   build_args=""
   check_args=""
-  while IFS= read -r dir; do
-    build_args+="--filter={$dir}... "
-    check_args+="--filter={$dir} "
+  while IFS= read -r name; do
+    build_args+="--filter=$name... "
+    check_args+="--filter=$name "
   done < <(
     pnpm --filter "...[$base]" --changed-files-ignore-pattern '**/*.md' ls -r --depth -1 --json \
-      | jq -r --arg root "$PWD" '.[] | select(.path != $root) | "./" + (.path | ltrimstr($root + "/"))'
+      | jq -r '.[] | select(.path | test("/packages/[^/]+$")) | .name'
   )
   write affected "${build_args% }" "${check_args% }"
 else

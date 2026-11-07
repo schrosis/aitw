@@ -36,7 +36,11 @@ export const buildIntermediate = (definition: Definition): Intermediate => ({
 const definitionFields: Record<string, string> = { timeoutMs: "timeout" };
 
 /** Converts a path in the intermediate representation to the matching definition path. */
-export const toDefinitionPath = (path: readonly (number | string)[]): (number | string)[] =>
-  path.map((segment) =>
-    typeof segment === "string" ? (definitionFields[segment] ?? segment) : segment,
-  );
+export const toDefinitionPath = (path: readonly (number | string)[]): (number | string)[] => {
+  const [root, id, field, ...rest] = path;
+  // Only step fields are renamed. Step IDs keep their names.
+  if (root !== "steps" || typeof field !== "string") {
+    return [...path];
+  }
+  return [root, id ?? "", definitionFields[field] ?? field, ...rest];
+};

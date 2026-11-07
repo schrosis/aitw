@@ -37,4 +37,13 @@ describe("toDefinitionPath", () => {
     expect(toDefinitionPath(["steps", "a", "timeoutMs"])).toEqual(["steps", "a", "timeout"]);
     expect(toDefinitionPath(["steps", "a", "next"])).toEqual(["steps", "a", "next"]);
   });
+
+  it("keeps step IDs that match field names", () => {
+    expect(toDefinitionPath(["steps", "timeoutMs"])).toEqual(["steps", "timeoutMs"]);
+    expect(toDefinitionPath(["steps", "timeoutMs", "next"])).toEqual([
+      "steps",
+      "timeoutMs",
+      "next",
+    ]);
+  });
 });

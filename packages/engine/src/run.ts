@@ -12,13 +12,28 @@ import type { interpreterWorkflow, WorkflowResult } from "./workflows/index.js";
 /** Path of the built workflow code that a Worker bundles. */
 export const workflowsPath = fileURLToPath(new URL("./workflows.js", import.meta.url));
 
+/** Options of {@link configureRuntime}. */
+export interface RuntimeOptions {
+  /** Minimum level of the logs that Temporal Workers write. */
+  logLevel: LogLevel;
+}
+
 /**
- * Sets the minimum level of the logs that Temporal Workers write.
+ * Configures the Temporal runtime for an application that handles process signals itself.
+ *
+ * By default, the Temporal runtime shuts down Workers on SIGINT and SIGTERM, which would stop
+ * a run before its cancellation completes. This disables that behavior, so pass an
+ * `AbortSignal` to {@link runWorkflow} to cancel runs instead.
  *
  * Call it once, before {@link runWorkflow}, because the Temporal runtime is configured only once.
  */
-export const configureLogging = (level: LogLevel): void => {
-  Runtime.install({ logger: new DefaultLogger(level) });
+export const configureRuntime = ({ logLevel }: RuntimeOptions): void => {
+  Runtime.install({
+    logger: new DefaultLogger(logLevel),
+    shutdownSignals: [],
+    // Native logs are forwarded to the logger so that the same level applies to them.
+    telemetryOptions: { logging: { filter: { core: logLevel, other: logLevel }, forward: {} } },
+  });
 };
 
 /** Options of {@link runWorkflow}. */

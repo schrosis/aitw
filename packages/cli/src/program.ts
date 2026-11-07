@@ -22,8 +22,13 @@ const readVersion = (): string => {
 /** Environment of the program, injectable for tests. */
 export interface ProgramContext extends CommandContext {
   setExitCode: (code: number) => void;
-  /** Aborted when the user interrupts the program. */
-  signal: AbortSignal;
+  /**
+   * Returns a signal that is aborted when the user interrupts the program.
+   *
+   * Commands call it only when they can be cancelled, so that other commands keep the default
+   * behavior of an interrupt.
+   */
+  interruptSignal: () => AbortSignal;
 }
 
 const interruptSignal = (): AbortSignal => {
@@ -35,7 +40,7 @@ const interruptSignal = (): AbortSignal => {
 
 const processContext = (): ProgramContext => ({
   cwd: process.cwd(),
-  signal: interruptSignal(),
+  interruptSignal,
   setExitCode: (code) => {
     process.exitCode = code;
   },
@@ -64,7 +69,8 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .argument("<workflow>", "workflow name, such as deploy or release/notes")
     .option("--address <address>", "address of the Temporal Server", "localhost:7233")
     .action(async (workflow, { address }) => {
-      context.setExitCode(await run(workflow, { address, signal: context.signal }, context));
+      const signal = context.interruptSignal();
+      context.setExitCode(await run(workflow, { address, signal }, context));
     });
 
   return program;

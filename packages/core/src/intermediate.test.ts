@@ -5,7 +5,7 @@ import type { Intermediate, IntermediateStep } from "./intermediate.ts";
 
 const step = (next: string | null): IntermediateStep => ({
   input: {},
-  next,
+  next: next === null ? { type: "end" } : { step: next, type: "step" },
   output: {},
   run: "./run.sh",
   timeoutMs: 1000,
@@ -30,6 +30,13 @@ describe("validateIntermediate", () => {
     });
   });
 
+  it("rejects an unknown transition type", () => {
+    const input = intermediate("a", { a: null });
+    expect(
+      errorsOf({ ...input, steps: { a: { ...input.steps.a, next: { type: "fail" } } } }),
+    ).toMatchObject([{ path: ["steps", "a", "next", "type"] }]);
+  });
+
   it("rejects an invalid shape", () => {
     expect(errorsOf({ ...intermediate("a", { a: null }), version: 2 })).toMatchObject([
       { path: ["version"] },
@@ -45,19 +52,19 @@ describe("validateIntermediate", () => {
 
   it("rejects an unknown next step", () => {
     expect(errorsOf(intermediate("a", { a: "x" }))).toEqual([
-      { message: "Unknown step: x", path: ["steps", "a", "next"] },
+      { message: "Unknown step: x", path: ["steps", "a", "next", "step"] },
     ]);
   });
 
   it("rejects a transition to the start step", () => {
     expect(errorsOf(intermediate("a", { a: "b", b: "a" }))).toEqual([
-      { message: "Cannot transition to the start step: a", path: ["steps", "b", "next"] },
+      { message: "Cannot transition to the start step: a", path: ["steps", "b", "next", "step"] },
     ]);
   });
 
   it("rejects a step with two incoming transitions", () => {
     expect(errorsOf(intermediate("a", { a: "c", b: "c", c: null }))).toEqual([
-      { message: "Step c is already the next step of a", path: ["steps", "b", "next"] },
+      { message: "Step c is already the next step of a", path: ["steps", "b", "next", "step"] },
       { message: "Step is not reachable from start", path: ["steps", "b"] },
     ]);
   });

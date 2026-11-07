@@ -22,7 +22,7 @@ export const buildIntermediate = (definition: Definition): Intermediate => ({
       id,
       {
         input: step.input ?? {},
-        next: step.next === "end" ? null : step.next,
+        next: step.next === "end" ? { type: "end" } : { step: step.next, type: "step" },
         output: step.output ?? {},
         run: step.run,
         timeoutMs: toMilliseconds(step.timeout),
@@ -41,6 +41,10 @@ export const toDefinitionPath = (path: readonly (number | string)[]): (number | 
   // Only step fields are renamed. Step IDs keep their names.
   if (root !== "steps" || typeof field !== "string") {
     return [...path];
+  }
+  // A transition is written as a single value in a definition.
+  if (field === "next") {
+    return [root, id ?? "", field];
   }
   return [root, id ?? "", definitionFields[field] ?? field, ...rest];
 };

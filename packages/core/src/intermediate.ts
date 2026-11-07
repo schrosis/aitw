@@ -6,11 +6,15 @@ export const intermediateVersion = 1;
 const stepIdSchema = z.string().min(1);
 const expressionMapSchema = z.record(z.string().min(1), z.string().min(1));
 
+const transitionSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("step"), step: stepIdSchema }),
+  z.strictObject({ type: z.literal("end") }),
+]);
+
 const scriptStepSchema = z.strictObject({
   type: z.literal("script"),
   run: z.string().min(1),
-  /** Next step ID, or `null` to complete the workflow. */
-  next: stepIdSchema.nullable(),
+  next: transitionSchema,
   timeoutMs: z.int().positive(),
   input: expressionMapSchema,
   output: expressionMapSchema,
@@ -25,6 +29,9 @@ export const intermediateSchema = z.strictObject({
 
 /** A workflow in the intermediate representation. */
 export type Intermediate = z.infer<typeof intermediateSchema>;
+
+/** Where a workflow goes after a step. */
+export type Transition = z.infer<typeof transitionSchema>;
 
 /** A step in the intermediate representation. */
 export type IntermediateStep = Intermediate["steps"][string];
@@ -50,11 +57,12 @@ const validateTransitions = (intermediate: Intermediate): ValidationError[] => {
   }
 
   const sources = new Map<string, string>();
-  for (const [id, { next }] of Object.entries(steps)) {
-    if (next === null) {
+  for (const [id, { next: transition }] of Object.entries(steps)) {
+    if (transition.type !== "step") {
       continue;
     }
-    const path = ["steps", id, "next"];
+    const next = transition.step;
+    const path = ["steps", id, "next", "step"];
     if (!Object.hasOwn(steps, next)) {
       errors.push({ message: `Unknown step: ${next}`, path });
     } else if (next === start) {
@@ -75,7 +83,8 @@ const validateTransitions = (intermediate: Intermediate): ValidationError[] => {
       break;
     }
     reachable.add(id);
-    id = steps[id]?.next ?? null;
+    const transition: Transition | undefined = steps[id]?.next;
+    id = transition?.type === "step" ? transition.step : null;
   }
   for (const id of Object.keys(steps)) {
     if (!reachable.has(id)) {

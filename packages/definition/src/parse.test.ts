@@ -134,7 +134,10 @@ steps:
 
   it("returns the intermediate representation", () => {
     expect(parseDefinition(validSource)).toMatchObject({
-      intermediate: { start: "fetch", steps: { fetch: { next: null, timeoutMs: 1_800_000 } } },
+      intermediate: {
+        start: "fetch",
+        steps: { fetch: { next: { type: "end" }, timeoutMs: 1_800_000 } },
+      },
       ok: true,
     });
   });

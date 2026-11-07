@@ -17,10 +17,17 @@ describe("buildIntermediate", () => {
     expect(buildIntermediate(definition)).toEqual({
       start: "a",
       steps: {
-        a: { input: {}, next: "b", output: {}, run: "./a.sh", timeoutMs: 90_000, type: "script" },
+        a: {
+          input: {},
+          next: { step: "b", type: "step" },
+          output: {},
+          run: "./a.sh",
+          timeoutMs: 90_000,
+          type: "script",
+        },
         b: {
           input: {},
-          next: null,
+          next: { type: "end" },
           output: {},
           run: "./b.sh",
           timeoutMs: 1_800_000,
@@ -35,12 +42,12 @@ describe("buildIntermediate", () => {
 describe("toDefinitionPath", () => {
   it("maps renamed fields", () => {
     expect(toDefinitionPath(["steps", "a", "timeoutMs"])).toEqual(["steps", "a", "timeout"]);
-    expect(toDefinitionPath(["steps", "a", "next"])).toEqual(["steps", "a", "next"]);
+    expect(toDefinitionPath(["steps", "a", "next", "step"])).toEqual(["steps", "a", "next"]);
   });
 
   it("keeps step IDs that match field names", () => {
     expect(toDefinitionPath(["steps", "timeoutMs"])).toEqual(["steps", "timeoutMs"]);
-    expect(toDefinitionPath(["steps", "timeoutMs", "next"])).toEqual([
+    expect(toDefinitionPath(["steps", "timeoutMs", "next", "step"])).toEqual([
       "steps",
       "timeoutMs",
       "next",

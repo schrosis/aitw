@@ -4,6 +4,7 @@ export { intermediateSchema, intermediateVersion, validateIntermediate } from ".
 export type {
   Intermediate,
   IntermediateStep,
+  Transition,
   ValidationError,
   ValidationResult,
 } from "./intermediate.js";

@@ -19,7 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          # The base of a pull request is the first parent of its merge commit.
+          fetch-depth: 2
           persist-credentials: false
       - uses: jdx/mise-action@v5.2.6
       - id: pnpm-store
@@ -34,8 +35,8 @@ jobs:
         name: Select packages
         env:
           # Pushes to main check every package.
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: .github/scripts/affected-packages.sh "$BASE_SHA"
+          BASE_REF: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
+        run: .github/scripts/affected-packages.sh "$BASE_REF"
       - name: Format
         run: pnpm format:check
       - name: Build

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Selects the workspace packages that CI must check.
 #
-# Usage: affected-packages.sh [BASE_SHA]
+# Usage: affected-packages.sh [BASE_REF]
 #
 # Writes these outputs to $GITHUB_OUTPUT, or to standard output when it is unset:
 #   scope        all, affected, or none
@@ -15,6 +15,24 @@ output="${GITHUB_OUTPUT:-/dev/stdout}"
 write() {
   printf 'scope=%s\nbuild_args=%s\ncheck_args=%s\n' "$1" "$2" "$3" >> "$output"
 }
+
+# Selective runs rely on these scripts, so a package without one would be
+# skipped silently.
+missing="$(
+  pnpm -r ls --depth -1 --json \
+    | jq -r '.[] | select(.path | test("/packages/[^/]+$")) | .name' \
+    | while IFS= read -r name; do
+        pnpm --filter "$name" exec node -e '
+          const { scripts = {} } = require("./package.json");
+          const missing = ["build", "lint", "test", "typecheck"].filter((name) => !scripts[name]);
+          if (missing.length > 0) console.log(`${process.argv[1]}: ${missing.join(", ")}`);
+        ' "$name"
+      done
+)"
+if [ -n "$missing" ]; then
+  printf 'Packages without required scripts:\n%s\n' "$missing" >&2
+  exit 1
+fi
 
 if [ -z "$base" ]; then
   write all "-r" "-r"

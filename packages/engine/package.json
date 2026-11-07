@@ -14,7 +14,7 @@
     }
   },
   "scripts": {
-    "build": "vite build",
+    "build": "tsc -b && vite build",
     "lint": "oxlint --type-aware -c ../../.oxlintrc.json .",
     "test": "vitest run --root ../.. --passWithNoTests packages/engine/",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json"

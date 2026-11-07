@@ -1,17 +1,35 @@
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
 import { runWorkflow } from "@aitw/engine";
 
+import { resolve } from "node:path";
+
 import { createProgressPrinter } from "../progress.js";
+import { ensureTemporalCli, startDevServer } from "../temporal-cli/index.js";
+import type { DevServer } from "../temporal-cli/index.js";
 import { loadWorkflow } from "./load.js";
 import type { CommandContext } from "./load.js";
 
 /** Exit code of a run that was cancelled, following the shell convention for SIGINT. */
 const cancelledExitCode = 130;
 
+/** Temporal Server that a run uses. */
+export type ServerOptions =
+  | { type: "address"; address: string }
+  | {
+      type: "dev";
+      /** SQLite file that keeps the server state, relative to the current directory. */
+      dbFilename?: string | undefined;
+      /**
+       * Temporal CLI to start the server with, as a path or a name in PATH. The pinned release is
+       * used when it is omitted.
+       */
+      temporalBin?: string | undefined;
+    };
+
 /** Options of {@link run}. */
 export interface RunOptions {
-  /** Address of the Temporal Server. */
-  address: string;
+  /** Temporal Server that runs the workflow. */
+  server: ServerOptions;
   /** Cancels the run when aborted. */
   signal: AbortSignal;
   /** Called after the workflow is validated and before it starts. */
@@ -20,6 +38,10 @@ export interface RunOptions {
 
 const isCancelled = (error: unknown): boolean =>
   error instanceof Error && error.cause instanceof Error && error.cause.name === "CancelledFailure";
+
+/** Resolves an executable like a shell: a name without a slash is looked up in PATH. */
+const resolveExecutable = (cwd: string, executable: string): string =>
+  executable.includes("/") ? resolve(cwd, executable) : executable;
 
 /** Returns the message of the innermost cause, which describes the actual failure. */
 const rootMessage = (error: unknown): string => {
@@ -39,7 +61,7 @@ const rootMessage = (error: unknown): string => {
  */
 export const run = async (
   name: string,
-  { address, prepareEngine, signal }: RunOptions,
+  { prepareEngine, server, signal }: RunOptions,
   context: CommandContext,
 ): Promise<number> => {
   const workflow = await loadWorkflow(name, context);
@@ -47,8 +69,34 @@ export const run = async (
     return 1;
   }
 
-  prepareEngine?.();
+  let devServer: DevServer | undefined;
   try {
+    let address: string;
+    if (server.type === "dev") {
+      const executable =
+        server.temporalBin === undefined
+          ? await ensureTemporalCli({
+              onDownload: (version) => context.stderr(`Downloading Temporal CLI ${version}\n`),
+              signal,
+            })
+          : resolveExecutable(context.cwd, server.temporalBin);
+      devServer = await startDevServer({
+        dbFilename:
+          server.dbFilename === undefined ? undefined : resolve(context.cwd, server.dbFilename),
+        executable,
+        signal,
+      });
+      address = devServer.address;
+      context.stderr(`Temporal Web UI: ${devServer.uiUrl}\n`);
+    } else {
+      address = server.address;
+    }
+    if (signal.aborted) {
+      context.stderr(`${name}: cancelled\n`);
+      return cancelledExitCode;
+    }
+
+    prepareEngine?.();
     const { executedSteps } = await runWorkflow({
       address,
       eventSink: createProgressPrinter(context),
@@ -60,11 +108,14 @@ export const run = async (
     context.stdout(`${name}: completed (${executedSteps.join(", ")})\n`);
     return 0;
   } catch (error) {
-    if (isCancelled(error)) {
+    // An interrupt while the server starts aborts the download or the wait for the server.
+    if (isCancelled(error) || signal.aborted) {
       context.stderr(`${name}: cancelled\n`);
       return cancelledExitCode;
     }
     context.stderr(`${name}: failed: ${rootMessage(error)}\n`);
     return 1;
+  } finally {
+    await devServer?.stop();
   }
 };

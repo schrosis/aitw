@@ -1,10 +1,11 @@
 import { createRequire } from "node:module";
 
 import { configureRuntime } from "@aitw/engine";
-import { Command } from "@commander-js/extra-typings";
+import { Command, Option } from "@commander-js/extra-typings";
 
 import type { CommandContext } from "./commands/load.js";
 import { run } from "./commands/run.js";
+import type { ServerOptions } from "./commands/run.js";
 import { validate } from "./commands/validate.js";
 
 const readVersion = (): string => {
@@ -34,10 +35,19 @@ export interface ProgramContext extends CommandContext {
   prepareEngine: () => void;
 }
 
+/** Exit code of an interrupted program, following the shell convention for SIGINT. */
+const interruptedExitCode = 130;
+
 const interruptSignal = (): AbortSignal => {
   const controller = new AbortController();
-  // A second interrupt falls back to the default behavior and exits immediately.
-  process.once("SIGINT", () => controller.abort());
+  process.on("SIGINT", () => {
+    if (controller.signal.aborted) {
+      // A second interrupt exits immediately. process.exit() still runs the "exit" handlers,
+      // which stop a development server.
+      process.exit(interruptedExitCode);
+    }
+    controller.abort();
+  });
   return controller.signal;
 };
 
@@ -88,11 +98,27 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .command("run")
     .description("Run a workflow in .aitw/workflows and wait for it to finish")
     .argument("<workflow>", "workflow name, such as deploy or release/notes")
-    .option("--address <address>", "address of the Temporal Server", "localhost:7233")
-    .action(async (workflow, { address }) => {
+    .addOption(
+      new Option("--address <address>", "address of the Temporal Server")
+        .default("localhost:7233")
+        .conflicts("dev"),
+    )
+    .option("--dev", "start a temporary Temporal development server for this run")
+    .option("--dev-db <path>", "keep the state of the development server in a SQLite file")
+    .option(
+      "--temporal-bin <path>",
+      "Temporal CLI to start the development server with, as a path or a name in PATH",
+    )
+    .action(async (workflow, { address, dev, devDb, temporalBin }, command) => {
+      if (!dev && (devDb !== undefined || temporalBin !== undefined)) {
+        command.error("error: --dev-db and --temporal-bin require --dev");
+      }
       const signal = context.interruptSignal();
+      const server: ServerOptions = dev
+        ? { dbFilename: devDb, temporalBin, type: "dev" }
+        : { address, type: "address" };
       context.setExitCode(
-        await run(workflow, { address, prepareEngine: context.prepareEngine, signal }, context),
+        await run(workflow, { prepareEngine: context.prepareEngine, server, signal }, context),
       );
     });
 

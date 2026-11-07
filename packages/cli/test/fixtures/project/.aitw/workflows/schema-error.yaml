@@ -1,0 +1,7 @@
+version: v9
+start: fetch
+steps:
+  fetch:
+    type: script
+    run: ./fetch.sh
+    next: report

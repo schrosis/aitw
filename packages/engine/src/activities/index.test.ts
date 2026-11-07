@@ -92,4 +92,21 @@ describe("executeScriptStep", () => {
     await expect(result).rejects.toBeDefined();
     expect(events.at(-1)).toMatchObject({ outcome: "cancelled", step: "build" });
   });
+
+  it("keeps the result of a step when the event sink fails", async () => {
+    const environment = new MockActivityEnvironment();
+    const result = environment.run(
+      createActivities({
+        eventSink: {
+          emit: () => {
+            throw new Error("sink failed");
+          },
+        },
+        scriptRunner: { run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }) },
+      }).executeScriptStep,
+      { input: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
+    );
+
+    await expect(result).resolves.toBeUndefined();
+  });
 });

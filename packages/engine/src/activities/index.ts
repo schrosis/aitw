@@ -1,5 +1,11 @@
 import { ScriptTimeoutError } from "@aitw/core";
-import type { EventSink, ScriptRequest, ScriptRunner } from "@aitw/core";
+import type {
+  EventSink,
+  ScriptRequest,
+  ScriptRunner,
+  StepOutcome,
+  WorkflowEvent,
+} from "@aitw/core";
 import { ApplicationFailure, Context } from "@temporalio/activity";
 
 /** Adapters and settings that the activities use. */
@@ -23,6 +29,24 @@ export interface ScriptStepRequest extends ScriptRequest {
 }
 
 const discardEvents: EventSink = { emit: () => {} };
+
+/** Reasons of an aborted activity that mean the step itself failed. */
+const failedAbortReasons = new Set(["TIMED_OUT", "HEARTBEAT_DETAILS_CONVERSION_FAILED"]);
+
+/**
+ * Returns how a step that threw ended.
+ *
+ * Temporal aborts the cancellation signal for several reasons. A timeout means the step failed.
+ * The other reasons, such as a cancelled workflow or a Worker that stops after the cancellation,
+ * mean the step was stopped from outside.
+ */
+const failureOutcome = (signal: AbortSignal): StepOutcome => {
+  if (!signal.aborted) {
+    return "failed";
+  }
+  const reason: unknown = signal.reason;
+  return reason instanceof Error && failedAbortReasons.has(reason.message) ? "failed" : "cancelled";
+};
 
 const runScript = async (
   scriptRunner: ScriptRunner,
@@ -66,23 +90,31 @@ export const createActivities = ({
    */
   executeScriptStep: async ({ step, ...request }: ScriptStepRequest): Promise<void> => {
     const context = Context.current();
-    const heartbeat = setInterval(() => context.heartbeat(), heartbeatIntervalMs);
+    // Progress is only observed, so a failing sink must not change the result of the step.
+    const emit = (event: WorkflowEvent): void => {
+      try {
+        eventSink.emit(event);
+      } catch (error) {
+        context.log.warn("Failed to emit a progress event", { error, step });
+      }
+    };
     const startedAt = Date.now();
-    eventSink.emit({ run: request.run, step, type: "stepStarted" });
+    emit({ run: request.run, step, type: "stepStarted" });
+    const heartbeat = setInterval(() => context.heartbeat(), heartbeatIntervalMs);
 
     try {
       await runScript(scriptRunner, request, context.cancellationSignal);
-      eventSink.emit({
+      emit({
         durationMs: Date.now() - startedAt,
         outcome: "succeeded",
         step,
         type: "stepFinished",
       });
     } catch (error) {
-      eventSink.emit({
+      emit({
         durationMs: Date.now() - startedAt,
         message: error instanceof Error ? error.message : String(error),
-        outcome: context.cancellationSignal.aborted ? "cancelled" : "failed",
+        outcome: failureOutcome(context.cancellationSignal),
         step,
         type: "stepFinished",
       });

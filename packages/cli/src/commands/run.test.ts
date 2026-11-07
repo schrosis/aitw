@@ -15,12 +15,23 @@ describe("run", () => {
     await environment?.teardown();
   });
 
-  const execute = async (name: string, signal = new AbortController().signal) => {
+  const execute = async (
+    name: string,
+    signal = new AbortController().signal,
+    onStdout: (text: string) => void = () => {},
+  ) => {
     const output = createOutput();
     const exitCode = await run(
       name,
       { address: environment.address, signal },
-      { cwd: fixtureProject, ...output },
+      {
+        cwd: fixtureProject,
+        stderr: output.stderr,
+        stdout: (text) => {
+          output.stdout(text);
+          onStdout(text);
+        },
+      },
     );
     return { exitCode, ...output.written };
   };
@@ -57,9 +68,12 @@ describe("run", () => {
 
   it("cancels the run when interrupted", async () => {
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 1000);
-
-    const result = await execute("run-sleep", controller.signal);
+    // Interrupt once the script has started, because starting a Worker can take a while in CI.
+    const result = await execute("run-sleep", controller.signal, (text) => {
+      if (text.startsWith("▶ wait")) {
+        controller.abort();
+      }
+    });
 
     expect(result).toMatchObject({ exitCode: 130, stderr: "run-sleep: cancelled\n" });
     // The cancelled step may finish after the workflow reports the cancellation.

@@ -6,6 +6,8 @@
   },
   "ignorePatterns": ["**/dist/**", "**/coverage/**"],
   "rules": {
-    "func-style": ["error", "expression"]
-  }
+    "func-style": ["error", "expression"],
+    "import/first": "error"
+  },
+  "plugins": ["typescript", "unicorn", "oxc", "import"]
 }

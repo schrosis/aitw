@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { intermediateVersion } from "@aitw/core";
@@ -45,7 +46,7 @@ describe("interpreterWorkflow", () => {
           run: async (request, signal): Promise<ScriptResult> => {
             expect(signal).toBeInstanceOf(AbortSignal);
             requests.push(request);
-            return { exitCode: exitCodes[request.run] ?? 0, stderr: "", stdout: "" };
+            return { exitCode: exitCodes[request.run] ?? 0, signal: null, stderr: "", stdout: "" };
           },
         },
       }),
@@ -83,6 +84,55 @@ describe("interpreterWorkflow", () => {
       ok: false,
     });
     expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh"]);
+  }, 60_000);
+
+  it("stops a running script when the workflow is cancelled", async () => {
+    const taskQueue = randomUUID();
+    let started!: () => void;
+    const startedScript = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let aborted!: () => void;
+    const abortedScript = new Promise<void>((resolve) => {
+      aborted = resolve;
+    });
+    const worker = await Worker.create({
+      activities: createActivities({
+        heartbeatIntervalMs: 100,
+        scriptRunner: {
+          run: async (_request, signal): Promise<ScriptResult> =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener("abort", () => {
+                aborted();
+                reject(signal.reason);
+              });
+              started();
+            }),
+        },
+      }),
+      connection: environment.nativeConnection,
+      defaultHeartbeatThrottleInterval: "100 milliseconds",
+      maxHeartbeatThrottleInterval: "100 milliseconds",
+      taskQueue,
+      workflowsPath: fileURLToPath(new URL("./index.ts", import.meta.url)),
+    });
+
+    await worker.runUntil(async () => {
+      const handle = await environment.client.workflow.start(interpreterWorkflow, {
+        args: [intermediate],
+        taskQueue,
+        workflowId: randomUUID(),
+      });
+      await startedScript;
+      await handle.cancel();
+      // Without heartbeats, the script would be stopped only by the 30 second heartbeat timeout.
+      await Promise.race([
+        abortedScript,
+        sleep(10_000).then(() => {
+          throw new Error("The script was not stopped by the cancellation");
+        }),
+      ]);
+    });
   }, 60_000);
 
   it("rejects an invalid intermediate representation", async () => {

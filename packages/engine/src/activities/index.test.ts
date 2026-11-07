@@ -15,13 +15,13 @@ const execute = async (scriptRunner: ScriptRunner) =>
 describe("executeScriptStep", () => {
   it("succeeds when the script exits with zero", async () => {
     await expect(
-      execute({ run: async () => ({ exitCode: 0, stderr: "", stdout: "secret" }) }),
+      execute({ run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "secret" }) }),
     ).resolves.toBeUndefined();
   });
 
   it("fails without retrying when the script exits with an error", async () => {
     await expect(
-      execute({ run: async () => ({ exitCode: 2, stderr: "", stdout: "" }) }),
+      execute({ run: async () => ({ exitCode: 2, signal: null, stderr: "", stdout: "" }) }),
     ).rejects.toMatchObject({
       details: [{ exitCode: 2 }],
       nonRetryable: true,

@@ -44,8 +44,16 @@ describe("createLocalScriptRunner", () => {
   it("returns the exit code and output", async () => {
     await expect(run("echo out; echo err >&2; exit 3")).resolves.toEqual({
       exitCode: 3,
+      signal: null,
       stderr: "err\n",
       stdout: "out\n",
+    });
+  });
+
+  it("reports a signal that stopped the script", async () => {
+    await expect(run("kill -TERM $$")).resolves.toMatchObject({
+      exitCode: null,
+      signal: "SIGTERM",
     });
   });
 

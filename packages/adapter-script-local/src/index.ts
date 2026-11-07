@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { constants } from "node:os";
 
 import { ScriptTimeoutError } from "@aitw/core";
 import type { ScriptResult, ScriptRunner } from "@aitw/core";
@@ -117,10 +116,12 @@ export const createLocalScriptRunner = ({
         } else if (signal.aborted) {
           reject(signal.reason);
         } else {
-          const { code = null, signalName = null } = exit ?? {};
-          // A shell reports a process killed by a signal as 128 plus the signal number.
-          const exitCode = code ?? 128 + (signalName === null ? 0 : constants.signals[signalName]);
-          resolve({ exitCode, stderr, stdout });
+          resolve({
+            exitCode: exit?.code ?? null,
+            signal: exit?.signalName ?? null,
+            stderr,
+            stdout,
+          });
         }
       });
     }),

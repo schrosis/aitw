@@ -14,7 +14,10 @@ export interface ScriptRequest {
 
 /** The result of a finished script. */
 export interface ScriptResult {
-  exitCode: number;
+  /** Exit code, or `null` when a signal stopped the script. */
+  exitCode: number | null;
+  /** Signal that stopped the script, or `null` when it exited. */
+  signal: string | null;
   stdout: string;
   stderr: string;
 }

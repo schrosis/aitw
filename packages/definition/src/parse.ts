@@ -1,4 +1,4 @@
-import { isAlias, isMap, isNode, isSeq, LineCounter, parseDocument, visit } from "yaml";
+import { isAlias, isMap, isNode, isScalar, isSeq, LineCounter, parseDocument, visit } from "yaml";
 import type { z } from "zod";
 
 import { definitionSchema } from "./schema.js";
@@ -62,7 +62,7 @@ function findOffset(
   for (const [index, segment] of path.entries()) {
     if (isMap(node)) {
       const pair = node.items.find(
-        ({ key }) => isNode(key) && "value" in key && key.value === segment,
+        ({ key }) => isScalar(key) && String(key.value) === String(segment),
       );
       if (pair === undefined) {
         break;

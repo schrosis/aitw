@@ -66,6 +66,18 @@ describe("parseDefinition", () => {
     });
   });
 
+  it("locates a non-string step ID", () => {
+    const source = validSource.replace(
+      "    next: end\n",
+      "    next: end\n  1:\n    type: script\n    run: ./x.sh\n    next: end\n",
+    );
+
+    expect(parseDefinition(source)).toMatchObject({
+      errors: [{ column: 3, line: 8 }],
+      ok: false,
+    });
+  });
+
   it("returns every schema error", () => {
     const source = validSource
       .replace("version: v0.1", "version: v9")

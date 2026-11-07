@@ -1,3 +1,4 @@
+import { ScriptTimeoutError } from "@aitw/core";
 import type { ScriptRequest, ScriptRunner } from "@aitw/core";
 import { ApplicationFailure, Context } from "@temporalio/activity";
 
@@ -15,7 +16,16 @@ export const createActivities = ({ scriptRunner }: ActivityDependencies) => ({
    * Declared output values are evaluated here in a later change.
    */
   executeScriptStep: async (request: ScriptRequest): Promise<void> => {
-    const { exitCode } = await scriptRunner.run(request, Context.current().cancellationSignal);
+    const { exitCode } = await scriptRunner
+      .run(request, Context.current().cancellationSignal)
+      .catch((error: unknown) => {
+        if (error instanceof ScriptTimeoutError) {
+          throw ApplicationFailure.nonRetryable(error.message, "ScriptTimedOut", {
+            timeoutMs: error.timeoutMs,
+          });
+        }
+        throw error;
+      });
     if (exitCode !== 0) {
       throw ApplicationFailure.nonRetryable(`Script exited with code ${exitCode}`, "ScriptFailed", {
         exitCode,

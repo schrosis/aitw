@@ -208,6 +208,10 @@ importers:
       '@aitw/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
 
   packages/cli:
     dependencies:

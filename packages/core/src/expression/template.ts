@@ -9,9 +9,10 @@ export type Template = TemplatePart[];
 /** Result of {@link parseTemplate}. */
 export type ParseTemplateResult = { ok: true; template: Template } | { ok: false; message: string };
 
+import { identifierPattern } from "../identifier.js";
+
 const open = "${{";
 const close = "}}";
-const segmentPattern = /^[A-Za-z_][A-Za-z0-9_-]*$/u;
 
 /**
  * Parses the `${{ }}` references in a string.
@@ -42,7 +43,7 @@ export const parseTemplate = (text: string): ParseTemplateResult => {
       .slice(start + open.length, end)
       .trim()
       .split(".");
-    if (!path.every((segment) => segmentPattern.test(segment))) {
+    if (!path.every((segment) => identifierPattern.test(segment))) {
       return {
         message: `Invalid expression: ${source}. Use a reference such as steps.fetch.output.title`,
         ok: false,

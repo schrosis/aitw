@@ -26,3 +26,4 @@ export type {
   Template,
   TemplatePart,
 } from "./expression/index.js";
+export { identifierPattern, identifierSource } from "./identifier.js";

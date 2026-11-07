@@ -39,6 +39,15 @@ describe("parseTemplate", () => {
   });
 });
 
+describe("parseTemplate names", () => {
+  it.each(["${{ steps.my-step.output.x }}", "${{ input._private }}", "${{ input.1st }}"])(
+    "rejects a name that workflows cannot define: %j",
+    (text) => {
+      expect(parseTemplate(text)).toMatchObject({ ok: false });
+    },
+  );
+});
+
 describe("evaluateExpression", () => {
   it("keeps the type of a single reference", () => {
     expect(evaluateExpression("${{ result.exitCode }}", context)).toEqual({ ok: true, value: 0 });
@@ -81,5 +90,11 @@ describe("evaluateExpression", () => {
   it("does not read prototype members", () => {
     expect(evaluateExpression("${{ input.constructor }}", context)).toMatchObject({ ok: false });
     expect(evaluateExpression("${{ input.__proto__ }}", context)).toMatchObject({ ok: false });
+  });
+
+  it("reports a value that cannot be embedded", () => {
+    expect(evaluateExpression("value: ${{ input.big }}", { input: { big: 1n } })).toMatchObject({
+      ok: false,
+    });
   });
 });

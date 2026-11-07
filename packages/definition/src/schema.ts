@@ -1,7 +1,6 @@
+import { identifierPattern, identifierSource } from "@aitw/core";
 import { z } from "zod";
 
-const identifierSource = "[A-Za-z][A-Za-z0-9_]*";
-const identifierPattern = new RegExp(`^${identifierSource}$`, "u");
 const stepIdPattern = new RegExp(`^(?!end$)${identifierSource}$`, "u");
 const durationPattern = /^[1-9][0-9]*(?:s|m|h)$/u;
 

@@ -30,6 +30,7 @@ const stringify = (value: unknown): string => {
   if (typeof value === "number" || typeof value === "boolean" || value === null) {
     return String(value);
   }
+  // JSON.stringify throws on values such as BigInt and circular references.
   return JSON.stringify(value) ?? "";
 };
 
@@ -60,5 +61,12 @@ export const evaluateTemplate = (
   if (template.length === 1 && only?.type === "reference") {
     return { ok: true, value: values[0] };
   }
-  return { ok: true, value: values.map(stringify).join("") };
+  try {
+    return { ok: true, value: values.map(stringify).join("") };
+  } catch (error) {
+    return {
+      message: `Cannot embed a value: ${error instanceof Error ? error.message : String(error)}`,
+      ok: false,
+    };
+  }
 };

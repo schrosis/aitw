@@ -62,7 +62,7 @@ export const createLocalScriptRunner = ({
       const cleanUp = (): void => {
         settled = true;
         clearTimeout(timeoutTimer);
-        clearTimeout(killTimer);
+        // The kill timer is kept, because processes that ignore SIGTERM can outlive the script.
         signal.removeEventListener("abort", stop);
       };
 
@@ -91,7 +91,8 @@ export const createLocalScriptRunner = ({
       /** Stops the process group, escalating to SIGKILL after the grace period. */
       const stop = (): void => {
         killGroup("SIGTERM");
-        killTimer ??= setTimeout(() => killGroup("SIGKILL"), killGraceMs);
+        // The timer must not keep the Worker process alive.
+        killTimer ??= setTimeout(() => killGroup("SIGKILL"), killGraceMs).unref();
       };
 
       const timeoutTimer = setTimeout(() => {

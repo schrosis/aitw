@@ -23,7 +23,14 @@ const resolve = (context: Readonly<Record<string, unknown>>, path: readonly stri
   return { ok: true, value };
 };
 
-const stringify = (value: unknown): string => {
+/**
+ * Converts a value to the string that a template embeds.
+ *
+ * Strings are kept as they are, and objects and arrays are converted to JSON.
+ *
+ * @throws When the value cannot be converted to JSON, such as a BigInt.
+ */
+export const embedValue = (value: unknown): string => {
   if (typeof value === "string") {
     return value;
   }
@@ -62,7 +69,7 @@ export const evaluateTemplate = (
     return { ok: true, value: values[0] };
   }
   try {
-    return { ok: true, value: values.map(stringify).join("") };
+    return { ok: true, value: values.map(embedValue).join("") };
   } catch (error) {
     return {
       message: `Cannot embed a value: ${error instanceof Error ? error.message : String(error)}`,

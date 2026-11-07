@@ -37,7 +37,11 @@ describe("aitw", () => {
     await environment?.teardown();
   });
 
-  const run = async (input: unknown, exitCodes: Record<string, number> = {}) => {
+  const run = async (
+    input: unknown,
+    exitCodes: Record<string, number> = {},
+    stdouts: Record<string, string> = {},
+  ) => {
     const requests: ScriptRequest[] = [];
     const taskQueue = randomUUID();
     const worker = await Worker.create({
@@ -46,7 +50,12 @@ describe("aitw", () => {
           run: async (request, { signal }): Promise<ScriptResult> => {
             expect(signal).toBeInstanceOf(AbortSignal);
             requests.push(request);
-            return { exitCode: exitCodes[request.run] ?? 0, signal: null, stderr: "", stdout: "" };
+            return {
+              exitCode: exitCodes[request.run] ?? 0,
+              signal: null,
+              stderr: "",
+              stdout: stdouts[request.run] ?? "",
+            };
           },
         },
       }),
@@ -69,7 +78,10 @@ describe("aitw", () => {
   it("runs the steps in order", async () => {
     const { requests, result } = await run(intermediate);
 
-    expect(result).toEqual({ ok: true, value: { executedSteps: ["fetch", "report"] } });
+    expect(result).toEqual({
+      ok: true,
+      value: { executedSteps: ["fetch", "report"], outputs: { fetch: {}, report: {} } },
+    });
     expect(requests).toEqual([
       { input: {}, run: "./fetch.sh", timeoutMs: 5000 },
       { input: {}, run: "./report.sh", timeoutMs: 5000 },
@@ -133,6 +145,52 @@ describe("aitw", () => {
         }),
       ]);
     });
+  }, 60_000);
+
+  it("passes output values to later steps", async () => {
+    const { requests, result } = await run(
+      {
+        ...intermediate,
+        steps: {
+          fetch: { ...step("./fetch.sh", "report"), output: { title: "${{ result.stdout }}" } },
+          report: {
+            ...step('./report.sh "${{ input.title }}"', null),
+            input: { title: "${{ steps.fetch.output.title }}" },
+          },
+        },
+      },
+      {},
+      { "./fetch.sh": "hello\n" },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        executedSteps: ["fetch", "report"],
+        outputs: { fetch: { title: "hello" }, report: {} },
+      },
+    });
+    expect(requests.at(-1)).toEqual({
+      input: { title: "hello" },
+      run: './report.sh "hello"',
+      timeoutMs: 5000,
+    });
+  }, 60_000);
+
+  it("fails on an unknown input reference", async () => {
+    const { requests, result } = await run({
+      ...intermediate,
+      steps: {
+        fetch: step("./fetch.sh", "report"),
+        report: {
+          ...step("./report.sh", null),
+          input: { title: "${{ steps.fetch.output.title }}" },
+        },
+      },
+    });
+
+    expect(result).toMatchObject({ error: { cause: { type: "InvalidExpression" } }, ok: false });
+    expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh"]);
   }, 60_000);
 
   it("rejects an invalid intermediate representation", async () => {

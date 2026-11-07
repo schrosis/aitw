@@ -53,7 +53,7 @@ describe("runWorkflow", () => {
   it("runs a workflow until it completes", async () => {
     const { requests, result } = await run(0);
 
-    await expect(result).resolves.toEqual({ executedSteps: ["fetch"] });
+    await expect(result).resolves.toEqual({ executedSteps: ["fetch"], outputs: { fetch: {} } });
     expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh"]);
   }, 60_000);
 

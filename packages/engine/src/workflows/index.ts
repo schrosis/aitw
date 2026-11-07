@@ -1,8 +1,8 @@
-import { validateIntermediate } from "@aitw/core";
+import { evaluateExpression, validateIntermediate } from "@aitw/core";
 import type { IntermediateStep } from "@aitw/core";
 import { ApplicationFailure, proxyActivities } from "@temporalio/workflow";
 
-import type { Activities } from "../activities/index.js";
+import type { Activities, StepOutput } from "../activities/index.js";
 
 /**
  * Extra time that lets a script runner report its own timeout before the activity times out.
@@ -23,7 +23,32 @@ const activityHeartbeatTimeoutMs = 30_000;
 export interface WorkflowResult {
   /** IDs of the executed steps, in execution order. */
   executedSteps: string[];
+  /** Values that each step published in its latest visit, keyed by step ID. */
+  outputs: Record<string, StepOutput>;
 }
+
+/** Evaluates the input values of a step from the outputs of the steps that ran before it. */
+const evaluateInput = (
+  id: string,
+  expressions: Readonly<Record<string, string>>,
+  outputs: Readonly<Record<string, StepOutput>>,
+): Record<string, unknown> => {
+  const steps = Object.fromEntries(
+    Object.entries(outputs).map(([stepId, output]) => [stepId, { output }]),
+  );
+  const input: Record<string, unknown> = {};
+  for (const [name, expression] of Object.entries(expressions)) {
+    const evaluated = evaluateExpression(expression, { steps });
+    if (!evaluated.ok) {
+      throw ApplicationFailure.nonRetryable(
+        `steps.${id}.input.${name}: ${evaluated.message}`,
+        "InvalidExpression",
+      );
+    }
+    input[name] = evaluated.value;
+  }
+  return input;
+};
 
 /**
  * Executes a workflow in the intermediate representation.
@@ -45,6 +70,8 @@ export const aitw = async (input: unknown): Promise<WorkflowResult> => {
 
   const { start, steps } = validation.intermediate;
   const executedSteps: string[] = [];
+  // The latest output of each step. Loops will keep every visit (B10b).
+  const outputs: Record<string, StepOutput> = {};
 
   let id: string | null = start;
   while (id !== null) {
@@ -58,11 +85,17 @@ export const aitw = async (input: unknown): Promise<WorkflowResult> => {
       retry: { maximumAttempts: 1 },
       startToCloseTimeout: step.timeoutMs + activityTimeoutGraceMs,
     });
-    await executeScriptStep({ input: {}, run: step.run, step: id, timeoutMs: step.timeoutMs });
+    outputs[id] = await executeScriptStep({
+      input: evaluateInput(id, step.input, outputs),
+      output: step.output,
+      run: step.run,
+      step: id,
+      timeoutMs: step.timeoutMs,
+    });
     executedSteps.push(id);
 
     id = step.next.type === "step" ? step.next.step : null;
   }
 
-  return { executedSteps };
+  return { executedSteps, outputs };
 };

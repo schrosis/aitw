@@ -1,7 +1,8 @@
-import { ScriptTimeoutError } from "@aitw/core";
+import { embedValue, evaluateExpression, ScriptTimeoutError } from "@aitw/core";
 import type {
   EventSink,
   ScriptRequest,
+  ScriptResult,
   ScriptRunner,
   ScriptRunOptions,
   StepOutcome,
@@ -27,7 +28,60 @@ export interface ActivityDependencies {
 export interface ScriptStepRequest extends ScriptRequest {
   /** ID of the step in the workflow definition. */
   step: string;
+  /** Expressions of the values that the step publishes, keyed by name. */
+  output: Readonly<Record<string, string>>;
 }
+
+/** Values that a step publishes to later steps, keyed by name. */
+export type StepOutput = Record<string, unknown>;
+
+/**
+ * Maximum size of the values that a step publishes, in bytes of JSON.
+ *
+ * Published values are stored in the workflow history, and again in the input of later steps,
+ * so it matches the size at which Temporal warns about large payloads.
+ */
+export const maxOutputBytes = 512 * 1024;
+
+/** Removes one trailing newline, as shell command substitution does. */
+const trimTrailingNewline = (text: string): string => {
+  if (text.endsWith("\r\n")) {
+    return text.slice(0, -2);
+  }
+  return text.endsWith("\n") ? text.slice(0, -1) : text;
+};
+
+const invalidExpression = (location: string, message: string): ApplicationFailure =>
+  ApplicationFailure.nonRetryable(`${location}: ${message}`, "InvalidExpression");
+
+/** Evaluates the declared output values from the result of a script. */
+const evaluateOutput = (
+  expressions: Readonly<Record<string, string>>,
+  { exitCode, stderr, stdout }: ScriptResult,
+): StepOutput => {
+  const result = {
+    exitCode,
+    stderr: trimTrailingNewline(stderr),
+    stdout: trimTrailingNewline(stdout),
+  };
+  const output: StepOutput = {};
+  for (const [name, expression] of Object.entries(expressions)) {
+    const evaluated = evaluateExpression(expression, { result });
+    if (!evaluated.ok) {
+      throw invalidExpression(`output.${name}`, evaluated.message);
+    }
+    output[name] = evaluated.value;
+  }
+
+  const bytes = new TextEncoder().encode(JSON.stringify(output)).length;
+  if (bytes > maxOutputBytes) {
+    throw ApplicationFailure.nonRetryable(
+      `Output is ${bytes} bytes, which exceeds the limit of ${maxOutputBytes} bytes`,
+      "OutputTooLarge",
+    );
+  }
+  return output;
+};
 
 const discardEvents: EventSink = { emit: () => {} };
 
@@ -53,18 +107,17 @@ const runScript = async (
   scriptRunner: ScriptRunner,
   request: ScriptRequest,
   options: ScriptRunOptions,
-): Promise<void> => {
-  const { exitCode, signal: stopSignal } = await scriptRunner
-    .run(request, options)
-    .catch((error: unknown) => {
-      if (error instanceof ScriptTimeoutError) {
-        throw ApplicationFailure.nonRetryable(error.message, "ScriptTimedOut", {
-          timeoutMs: error.timeoutMs,
-        });
-      }
-      throw error;
-    });
+): Promise<ScriptResult> => {
+  const result = await scriptRunner.run(request, options).catch((error: unknown) => {
+    if (error instanceof ScriptTimeoutError) {
+      throw ApplicationFailure.nonRetryable(error.message, "ScriptTimedOut", {
+        timeoutMs: error.timeoutMs,
+      });
+    }
+    throw error;
+  });
 
+  const { exitCode, signal: stopSignal } = result;
   if (exitCode !== 0) {
     const message =
       exitCode === null
@@ -75,6 +128,7 @@ const runScript = async (
       signal: stopSignal,
     });
   }
+  return result;
 };
 
 /** Creates the activities that a Worker registers. */
@@ -86,10 +140,16 @@ export const createActivities = ({
   /**
    * Runs a script step and fails without retrying when the script does not exit with zero.
    *
-   * The script output is not returned because the workflow history stores activity results.
-   * Declared output values are evaluated here in a later change.
+   * The `${{ }}` references in `run` are expanded with the input values as plain text. Only
+   * the declared output values are returned, because the workflow history stores the result.
    */
-  executeScriptStep: async ({ step, ...request }: ScriptStepRequest): Promise<void> => {
+  executeScriptStep: async ({
+    input,
+    output: outputExpressions,
+    run: runTemplate,
+    step,
+    timeoutMs,
+  }: ScriptStepRequest): Promise<StepOutput> => {
     const context = Context.current();
     // Progress is only observed, so a failing sink must not change the result of the step.
     const emit = (event: WorkflowEvent): void => {
@@ -102,25 +162,36 @@ export const createActivities = ({
     const startedAt = Date.now();
     // Output that arrives after the script settles would appear after the end of the step.
     let settled = false;
-    emit({ run: request.run, step, type: "stepStarted" });
+    const expanded = evaluateExpression(runTemplate, { input });
+    const run = expanded.ok ? embedValue(expanded.value) : runTemplate;
+    emit({ run, step, type: "stepStarted" });
     const heartbeat = setInterval(() => context.heartbeat(), heartbeatIntervalMs);
 
     try {
-      await runScript(scriptRunner, request, {
-        onOutput: (output) => {
-          if (!settled) {
-            emit({ ...output, step, type: "stepOutput" });
-          }
+      if (!expanded.ok) {
+        throw invalidExpression("run", expanded.message);
+      }
+      const result = await runScript(
+        scriptRunner,
+        { input, run, timeoutMs },
+        {
+          onOutput: (output) => {
+            if (!settled) {
+              emit({ ...output, step, type: "stepOutput" });
+            }
+          },
+          signal: context.cancellationSignal,
         },
-        signal: context.cancellationSignal,
-      });
+      );
       settled = true;
+      const output = evaluateOutput(outputExpressions, result);
       emit({
         durationMs: Date.now() - startedAt,
         outcome: "succeeded",
         step,
         type: "stepFinished",
       });
+      return output;
     } catch (error) {
       settled = true;
       emit({

@@ -1,10 +1,11 @@
 import { createRequire } from "node:module";
 
 import { configureRuntime } from "@aitw/engine";
-import { Command } from "@commander-js/extra-typings";
+import { Command, Option } from "@commander-js/extra-typings";
 
 import type { CommandContext } from "./commands/load.js";
 import { run } from "./commands/run.js";
+import type { ServerOptions } from "./commands/run.js";
 import { validate } from "./commands/validate.js";
 
 const readVersion = (): string => {
@@ -88,11 +89,24 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .command("run")
     .description("Run a workflow in .aitw/workflows and wait for it to finish")
     .argument("<workflow>", "workflow name, such as deploy or release/notes")
-    .option("--address <address>", "address of the Temporal Server", "localhost:7233")
-    .action(async (workflow, { address }) => {
+    .addOption(
+      new Option("--address <address>", "address of the Temporal Server")
+        .default("localhost:7233")
+        .conflicts("dev"),
+    )
+    .option("--dev", "start a temporary Temporal development server for this run")
+    .option("--dev-db <path>", "keep the state of the development server in a SQLite file")
+    .option("--temporal-bin <path>", "Temporal CLI to start the development server with")
+    .action(async (workflow, { address, dev, devDb, temporalBin }, command) => {
+      if (!dev && (devDb !== undefined || temporalBin !== undefined)) {
+        command.error("error: --dev-db and --temporal-bin require --dev");
+      }
       const signal = context.interruptSignal();
+      const server: ServerOptions = dev
+        ? { dbFilename: devDb, temporalBin, type: "dev" }
+        : { address, type: "address" };
       context.setExitCode(
-        await run(workflow, { address, prepareEngine: context.prepareEngine, signal }, context),
+        await run(workflow, { prepareEngine: context.prepareEngine, server, signal }, context),
       );
     });
 

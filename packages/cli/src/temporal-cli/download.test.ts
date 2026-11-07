@@ -62,7 +62,14 @@ describe("ensureTemporalCli", () => {
   const cacheDirectory = () => join(root, "cache");
 
   it("downloads, verifies, and caches the pinned release", async () => {
-    const options = { cacheDirectory: cacheDirectory(), fetch: fetchArchive, manifest, platform };
+    const downloads: string[] = [];
+    const options = {
+      cacheDirectory: cacheDirectory(),
+      fetch: fetchArchive,
+      manifest,
+      onDownload: (version: string) => downloads.push(version),
+      platform,
+    };
 
     const executable = await ensureTemporalCli(options);
 
@@ -75,6 +82,7 @@ describe("ensureTemporalCli", () => {
 
     await expect(ensureTemporalCli(options)).resolves.toBe(executable);
     expect(requests).toHaveLength(1);
+    expect(downloads).toEqual(["9.9.9"]);
   });
 
   it("rejects an archive with a different checksum and keeps nothing", async () => {

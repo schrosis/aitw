@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,26 +7,42 @@ import { fileURLToPath } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { ensureTemporalCli } from "./temporal-cli/download.ts";
 import { fixtureProject } from "./testing.ts";
+
+interface ExecuteOptions {
+  onOutput?: (child: ChildProcess, output: string) => void;
+  timeoutMs?: number;
+}
 
 // These tests run the built executable, so they depend on `pnpm build`.
 const bin = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
 
-/** Runs the executable and reports whether it exits by itself. */
-const execute = async (args: string[], cwd: string) =>
+/**
+ * Runs the executable and reports whether it exits by itself.
+ *
+ * @param onOutput Receives the child process and the output so far, such as to interrupt it.
+ */
+const execute = async (
+  args: string[],
+  cwd: string,
+  { onOutput = () => {}, timeoutMs = 10_000 }: ExecuteOptions = {},
+) =>
   new Promise<{ exitCode: number | null; output: string }>((resolve, reject) => {
     const child = spawn(process.execPath, [bin, ...args], { cwd });
     let output = "";
     child.stdout.on("data", (chunk: Buffer) => {
       output += chunk.toString();
+      onOutput(child, output);
     });
     child.stderr.on("data", (chunk: Buffer) => {
       output += chunk.toString();
+      onOutput(child, output);
     });
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new Error(`aitw ${args.join(" ")} did not exit: ${output}`));
-    }, 10_000);
+    }, timeoutMs);
     child.on("exit", (exitCode) => {
       clearTimeout(timer);
       resolve({ exitCode, output });
@@ -67,4 +84,54 @@ describe("aitw executable", () => {
       output: "valid: valid\n",
     });
   }, 20_000);
+
+  describe("with a development server", () => {
+    beforeAll(async () => {
+      // Download the pinned release before the timed runs below.
+      await ensureTemporalCli();
+    }, 120_000);
+
+    it("runs a workflow on a temporary server", async () => {
+      const { exitCode, output } = await execute(["run", "run-success", "--dev"], fixtureProject, {
+        timeoutMs: 30_000,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(output).toMatch(/^Temporal Web UI: http:\/\/127\.0\.0\.1:\d+\n/mu);
+      expect(output).toContain("run-success: completed (check, finish)\n");
+    }, 40_000);
+
+    it("cancels the run and stops the server when interrupted", async () => {
+      let address: string | undefined;
+      const { exitCode, output } = await execute(["run", "run-sleep", "--dev"], fixtureProject, {
+        onOutput: (child, text) => {
+          if (address === undefined && text.includes("▶ wait")) {
+            address = /Temporal Web UI: (http:\S+)/u.exec(text)?.[1];
+            child.kill("SIGINT");
+          }
+        },
+        timeoutMs: 30_000,
+      });
+
+      expect(exitCode).toBe(130);
+      expect(output).toContain("run-sleep: cancelled\n");
+      expect(address).toBeDefined();
+      await expect(fetch(address ?? "")).rejects.toThrow();
+    }, 40_000);
+  });
+
+  it.each([
+    [["--dev", "--address", "localhost:7233"], "cannot be used with"],
+    [["--dev-db", "state.db"], "require --dev"],
+    [["--temporal-bin", "temporal"], "require --dev"],
+  ])(
+    "rejects the server options %j",
+    async (options, message) => {
+      const { exitCode, output } = await execute(["run", "valid", ...options], fixtureProject);
+
+      expect(exitCode).toBe(1);
+      expect(output).toContain(message);
+    },
+    20_000,
+  );
 });

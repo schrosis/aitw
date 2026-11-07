@@ -23,6 +23,8 @@ export interface EnsureTemporalCliOptions {
   platform?: string;
   /** Function that downloads a URL. Defaults to the global `fetch`. */
   fetch?: (url: string) => Promise<Response>;
+  /** Called before the release is downloaded, which happens only when it is not cached. */
+  onDownload?: (version: string) => void;
 }
 
 /** Returns the directory that keeps downloaded Temporal CLI releases. */
@@ -102,6 +104,7 @@ export const ensureTemporalCli = async ({
   cacheDirectory = defaultCacheDirectory(),
   fetch: fetchUrl = fetch,
   manifest = temporalCliManifest,
+  onDownload,
   platform = `${process.platform}-${process.arch}`,
 }: EnsureTemporalCliOptions = {}): Promise<string> => {
   if (!isPlatform(manifest, platform)) {
@@ -116,6 +119,7 @@ export const ensureTemporalCli = async ({
     return executable;
   }
 
+  onDownload?.(manifest.version);
   await mkdir(cacheDirectory, { mode: 0o700, recursive: true });
   await removeStaleWork(cacheDirectory);
   // Work in a temporary directory, so that an interrupted download is never used.

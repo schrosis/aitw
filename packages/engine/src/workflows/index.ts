@@ -58,7 +58,7 @@ export const aitw = async (input: unknown): Promise<WorkflowResult> => {
       retry: { maximumAttempts: 1 },
       startToCloseTimeout: step.timeoutMs + activityTimeoutGraceMs,
     });
-    await executeScriptStep({ input: {}, run: step.run, timeoutMs: step.timeoutMs });
+    await executeScriptStep({ input: {}, run: step.run, step: id, timeoutMs: step.timeoutMs });
     executedSteps.push(id);
 
     id = step.next.type === "step" ? step.next.step : null;

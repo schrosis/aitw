@@ -26,30 +26,35 @@ describe("run", () => {
   };
 
   it("runs the steps in the project root", async () => {
-    await expect(execute("run-success")).resolves.toEqual({
-      exitCode: 0,
-      stderr: "",
-      stdout: "run-success: completed (check, finish)\n",
-    });
+    const result = await execute("run-success");
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(result.stdout).toMatch(
+      /^▶ check\ntest -d \.aitw\n✓ check \(\d+\.\ds\)\n▶ finish\ntrue\n✓ finish \(\d+\.\ds\)\nrun-success: completed \(check, finish\)\n$/u,
+    );
   }, 60_000);
 
   it("reports a failed script", async () => {
-    await expect(execute("run-failure")).resolves.toEqual({
+    const result = await execute("run-failure");
+
+    expect(result).toMatchObject({
       exitCode: 1,
       stderr: "run-failure: failed: Script exited with code 3\n",
-      stdout: "",
     });
+    expect(result.stdout).toMatch(
+      /^▶ fail\nexit 3\n✗ fail: Script exited with code 3 \(\d+\.\ds\)\n$/u,
+    );
   }, 60_000);
 
   it("cancels the run when interrupted", async () => {
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 1000);
 
-    await expect(execute("run-sleep", controller.signal)).resolves.toEqual({
-      exitCode: 130,
-      stderr: "run-sleep: cancelled\n",
-      stdout: "",
-    });
+    const result = await execute("run-sleep", controller.signal);
+
+    expect(result).toMatchObject({ exitCode: 130, stderr: "run-sleep: cancelled\n" });
+    // The cancelled step may finish after the workflow reports the cancellation.
+    expect(result.stdout).toMatch(/^▶ wait\nsleep 30\n(■ wait: cancelled \(\d+\.\ds\)\n)?$/u);
   }, 60_000);
 
   it("does not start an invalid workflow", async () => {

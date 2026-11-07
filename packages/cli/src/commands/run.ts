@@ -1,6 +1,7 @@
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
 import { runWorkflow } from "@aitw/engine";
 
+import { createProgressPrinter } from "../progress.js";
 import { loadWorkflow } from "./load.js";
 import type { CommandContext } from "./load.js";
 
@@ -50,6 +51,7 @@ export const run = async (
   try {
     const { executedSteps } = await runWorkflow({
       address,
+      eventSink: createProgressPrinter(context.stdout),
       intermediate: workflow.intermediate,
       name,
       scriptRunner: createLocalScriptRunner({ cwd: workflow.root }),

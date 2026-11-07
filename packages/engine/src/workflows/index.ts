@@ -33,7 +33,8 @@ export const interpreterWorkflow = async (input: unknown): Promise<WorkflowResul
   const { start, steps } = validation.intermediate;
   const executedSteps: string[] = [];
 
-  for (let id: string | null = start; id !== null;) {
+  let id: string | null = start;
+  while (id !== null) {
     const step: IntermediateStep | undefined = steps[id];
     if (step === undefined) {
       throw ApplicationFailure.nonRetryable(`Unknown step: ${id}`, "InvalidIntermediate");

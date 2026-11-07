@@ -63,4 +63,14 @@ describe("createProgressPrinter", () => {
       ]),
     ).toBe("▶ firstStep\nprintf hoge\nhoge\n✓ firstStep (0.0s)\n");
   });
+
+  it("ends a partial line on the stream that wrote it", () => {
+    expect(
+      print([
+        { run: "printf warn >&2", step: "firstStep", type: "stepStarted" },
+        { step: "firstStep", stream: "stderr", text: "warn", type: "stepOutput" },
+        { durationMs: 0, outcome: "succeeded", step: "firstStep", type: "stepFinished" },
+      ]),
+    ).toBe("▶ firstStep\nprintf warn >&2\n[err]warn[err]\n✓ firstStep (0.0s)\n");
+  });
 });

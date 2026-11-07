@@ -34,21 +34,22 @@ export interface ProgressOutput {
  * Script output is written as it arrives, to the same stream that the script used.
  */
 export const createProgressPrinter = (output: ProgressOutput): EventSink => {
-  // Output that does not end with a newline would otherwise run into the next line.
-  let atLineStart = true;
+  // A stream whose output does not end with a newline. Its line is ended before the next step
+  // event, on the same stream, so that the output would otherwise not run into the next line.
+  let openStream: keyof ProgressOutput | undefined;
 
   return {
     emit: (event) => {
       if (event.type === "stepOutput") {
         output[event.stream](event.text);
         if (event.text.length > 0) {
-          atLineStart = event.text.endsWith("\n");
+          openStream = event.text.endsWith("\n") ? undefined : event.stream;
         }
         return;
       }
-      if (!atLineStart) {
-        output.stdout("\n");
-        atLineStart = true;
+      if (openStream !== undefined) {
+        output[openStream]("\n");
+        openStream = undefined;
       }
       output.stdout(formatStepEvent(event));
     },

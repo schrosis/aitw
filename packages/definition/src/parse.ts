@@ -4,8 +4,8 @@ import type { z } from "zod";
 import { definitionSchema } from "./schema.js";
 import type { Definition } from "./schema.js";
 
-/** A problem found while parsing a workflow definition. */
-export interface ParseError {
+/** A problem found in a workflow definition. */
+export interface DefinitionError {
   /** Path of the invalid value in the definition. */
   path: (number | string)[];
   /** One-based line number in the source. */
@@ -15,10 +15,16 @@ export interface ParseError {
   message: string;
 }
 
+/** Finds the source position of a definition path. */
+export type DefinitionLocator = (
+  path: readonly (number | string)[],
+  options?: { key?: boolean },
+) => { line: number; column: number };
+
 /** Result of {@link parseDefinition}. */
 export type ParseResult =
-  | { ok: true; definition: Definition }
-  | { ok: false; errors: ParseError[] };
+  | { ok: true; definition: Definition; locate: DefinitionLocator }
+  | { ok: false; errors: DefinitionError[] };
 
 type DefinitionDocument = ReturnType<typeof parseDocument>;
 
@@ -27,13 +33,16 @@ const createError = (
   offset: number,
   path: (number | string)[],
   message: string,
-): ParseError => {
+): DefinitionError => {
   const { col: column, line } = lineCounter.linePos(offset);
   return { column, line, message, path };
 };
 
-const findAliasErrors = (document: DefinitionDocument, lineCounter: LineCounter): ParseError[] => {
-  const errors: ParseError[] = [];
+const findAliasErrors = (
+  document: DefinitionDocument,
+  lineCounter: LineCounter,
+): DefinitionError[] => {
+  const errors: DefinitionError[] = [];
 
   visit(document, (_key, node) => {
     if (!isNode(node)) {
@@ -89,7 +98,7 @@ const convertIssue = (
   issue: z.core.$ZodIssue,
   document: DefinitionDocument,
   lineCounter: LineCounter,
-): ParseError[] => {
+): DefinitionError[] => {
   const path = toPath(issue.path);
 
   if (issue.code === "unrecognized_keys") {
@@ -109,7 +118,7 @@ const convertIssue = (
 };
 
 /**
- * Parses and validates a YAML workflow definition.
+ * Parses a YAML workflow definition and validates its structure.
  *
  * Invalid definitions are reported in the result instead of being thrown.
  */
@@ -137,5 +146,12 @@ export const parseDefinition = (source: string): ParseResult => {
     };
   }
 
-  return { definition: result.data, ok: true };
+  const locate: DefinitionLocator = (path, options = {}) => {
+    const { col: column, line } = lineCounter.linePos(
+      findOffset(document, path, options.key ?? false),
+    );
+    return { column, line };
+  };
+
+  return { definition: result.data, locate, ok: true };
 };

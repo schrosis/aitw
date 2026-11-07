@@ -1,6 +1,9 @@
 packages:
   - "packages/*"
 
+catalog:
+  zod: ^4.6.7
+
 # 3 days, in minutes. Keep this value in sync with minimumReleaseAge in renovate.json5.
 minimumReleaseAge: 4320
 

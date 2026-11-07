@@ -132,6 +132,25 @@ steps:
     ]);
   });
 
+  it("does not validate transitions", () => {
+    expect(parseDefinition(validSource.replace("next: end", "next: report"))).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it("locates a definition path", () => {
+    const result = parseDefinition(validSource);
+
+    expect(result.ok ? result.locate(["steps", "fetch", "next"]) : undefined).toEqual({
+      column: 11,
+      line: 7,
+    });
+    expect(result.ok ? result.locate(["steps", "fetch"], { key: true }) : undefined).toEqual({
+      column: 3,
+      line: 4,
+    });
+  });
+
   it("rejects an empty source", () => {
     expect(parseDefinition("")).toMatchObject({
       errors: [{ column: 1, line: 1, path: [] }],

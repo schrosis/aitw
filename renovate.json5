@@ -4,6 +4,18 @@
   internalChecksFilter: "strict",
   // Keep this value in sync with minimumReleaseAge in pnpm-workspace.yaml.
   minimumReleaseAge: "3 days",
+  customManagers: [
+    {
+      // The checksums are not updated by Renovate. CI fails until they are updated with
+      // node scripts/update-temporal-cli.ts <version>.
+      customType: "regex",
+      managerFilePatterns: ["/^packages/cli/src/temporal-cli/manifest\\.ts$/"],
+      matchStrings: ['version: "(?<currentValue>[0-9.]+)"'],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "temporalio/cli",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+  ],
   packageRules: [
     {
       // mise.toml and package.json must move to the same toolchain versions.

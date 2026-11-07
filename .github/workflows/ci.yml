@@ -39,6 +39,8 @@ jobs:
         run: .github/scripts/affected-packages.sh "$BASE_REF"
       - name: Format
         run: pnpm format:check
+      - name: Check the pinned Temporal CLI
+        run: node scripts/update-temporal-cli.ts --check
       - name: Build
         if: steps.affected.outputs.scope != 'none'
         env:

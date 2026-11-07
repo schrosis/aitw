@@ -1,0 +1,121 @@
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { access, chmod, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { promisify } from "node:util";
+
+import { temporalCliManifest } from "./manifest.js";
+import type { TemporalCliManifest, TemporalCliPlatform } from "./types.js";
+
+const execFileAsync = promisify(execFile);
+
+/** Options of {@link ensureTemporalCli}. */
+export interface EnsureTemporalCliOptions {
+  /** Directory that keeps downloaded releases. Defaults to {@link defaultCacheDirectory}. */
+  cacheDirectory?: string;
+  /** Release to download. Defaults to the pinned release. */
+  manifest?: TemporalCliManifest;
+  /** Platform as `<platform>-<arch>` of Node.js. Defaults to the current platform. */
+  platform?: string;
+  /** Function that downloads a URL. Defaults to the global `fetch`. */
+  fetch?: (url: string) => Promise<Response>;
+}
+
+/** Returns the directory that keeps downloaded Temporal CLI releases. */
+export const defaultCacheDirectory = (): string =>
+  join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "aitw", "temporal-cli");
+
+const isPlatform = (
+  manifest: TemporalCliManifest,
+  platform: string,
+): platform is TemporalCliPlatform => Object.hasOwn(manifest.assets, platform);
+
+const exists = async (path: string): Promise<boolean> =>
+  access(path).then(
+    () => true,
+    () => false,
+  );
+
+/** Downloads a URL to a file and returns the SHA-256 of the content, in hexadecimal. */
+const download = async (
+  fetchUrl: (url: string) => Promise<Response>,
+  url: string,
+  file: string,
+): Promise<string> => {
+  const response = await fetchUrl(url);
+  if (!response.ok || response.body === null) {
+    throw new Error(`Failed to download ${url}: ${response.status}`);
+  }
+  const hash = createHash("sha256");
+  await pipeline(
+    Readable.fromWeb(response.body),
+    // A generator function is the form that stream pipelines accept for transforms.
+    async function* (source: AsyncIterable<Buffer>) {
+      for await (const chunk of source) {
+        hash.update(chunk);
+        yield chunk;
+      }
+    },
+    createWriteStream(file, { mode: 0o600 }),
+  );
+  return hash.digest("hex");
+};
+
+/**
+ * Returns the path of the pinned Temporal CLI, downloading it on first use.
+ *
+ * The archive is verified against the pinned SHA-256 before it is extracted, so that a
+ * tampered or unexpected release is never run.
+ */
+export const ensureTemporalCli = async ({
+  cacheDirectory = defaultCacheDirectory(),
+  fetch: fetchUrl = fetch,
+  manifest = temporalCliManifest,
+  platform = `${process.platform}-${process.arch}`,
+}: EnsureTemporalCliOptions = {}): Promise<string> => {
+  if (!isPlatform(manifest, platform)) {
+    throw new Error(
+      `Temporal CLI is not available for ${platform}. Pass the path of a Temporal CLI with --temporal-bin`,
+    );
+  }
+  const asset = manifest.assets[platform];
+  const directory = join(cacheDirectory, manifest.version, platform);
+  const executable = join(directory, "temporal");
+  if (await exists(executable)) {
+    return executable;
+  }
+
+  await mkdir(cacheDirectory, { mode: 0o700, recursive: true });
+  // Work in a temporary directory, so that an interrupted download is never used.
+  const work = await mkdtemp(join(cacheDirectory, ".download-"));
+  try {
+    const archive = join(work, asset.file);
+    const url = `https://github.com/temporalio/cli/releases/download/v${manifest.version}/${asset.file}`;
+    const sha256 = await download(fetchUrl, url, archive);
+    if (sha256 !== asset.sha256) {
+      throw new Error(
+        `Checksum mismatch for ${asset.file}: expected ${asset.sha256}, received ${sha256}`,
+      );
+    }
+
+    const extracted = join(work, "extracted");
+    await mkdir(extracted);
+    await execFileAsync("tar", ["-xzf", archive, "-C", extracted, "temporal"]);
+    await chmod(join(extracted, "temporal"), 0o755);
+
+    await mkdir(join(cacheDirectory, manifest.version), { recursive: true });
+    // Another process may have installed the same release in the meantime.
+    await rename(extracted, directory).catch(async (error: unknown) => {
+      if (!(await exists(executable))) {
+        throw error;
+      }
+    });
+    return executable;
+  } finally {
+    await rm(work, { force: true, recursive: true });
+  }
+};

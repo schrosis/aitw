@@ -43,7 +43,7 @@ describe("aitw", () => {
     const worker = await Worker.create({
       activities: createActivities({
         scriptRunner: {
-          run: async (request, signal): Promise<ScriptResult> => {
+          run: async (request, { signal }): Promise<ScriptResult> => {
             expect(signal).toBeInstanceOf(AbortSignal);
             requests.push(request);
             return { exitCode: exitCodes[request.run] ?? 0, signal: null, stderr: "", stdout: "" };
@@ -100,7 +100,7 @@ describe("aitw", () => {
       activities: createActivities({
         heartbeatIntervalMs: 100,
         scriptRunner: {
-          run: async (_request, signal): Promise<ScriptResult> =>
+          run: async (_request, { signal }): Promise<ScriptResult> =>
             new Promise((_resolve, reject) => {
               signal.addEventListener("abort", () => {
                 aborted();

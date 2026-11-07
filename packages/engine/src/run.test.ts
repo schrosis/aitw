@@ -65,7 +65,7 @@ describe("runWorkflow", () => {
       intermediate,
       name: "release/notes",
       scriptRunner: {
-        run: async (_request, signal) =>
+        run: async (_request, { signal }) =>
           new Promise((_resolve, reject) => {
             signal.addEventListener("abort", () => {
               scriptAborted = true;

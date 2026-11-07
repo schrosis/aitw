@@ -1,0 +1,11 @@
+version: v0.1
+start: firstStep
+steps:
+  firstStep:
+    type: script
+    run: echo "hoge"
+    next: secondStep
+  secondStep:
+    type: script
+    run: echo "fuga" >&2
+    next: end

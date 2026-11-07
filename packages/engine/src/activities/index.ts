@@ -3,6 +3,7 @@ import type {
   EventSink,
   ScriptRequest,
   ScriptRunner,
+  ScriptRunOptions,
   StepOutcome,
   WorkflowEvent,
 } from "@aitw/core";
@@ -51,10 +52,10 @@ const failureOutcome = (signal: AbortSignal): StepOutcome => {
 const runScript = async (
   scriptRunner: ScriptRunner,
   request: ScriptRequest,
-  signal: AbortSignal,
+  options: ScriptRunOptions,
 ): Promise<void> => {
   const { exitCode, signal: stopSignal } = await scriptRunner
-    .run(request, signal)
+    .run(request, options)
     .catch((error: unknown) => {
       if (error instanceof ScriptTimeoutError) {
         throw ApplicationFailure.nonRetryable(error.message, "ScriptTimedOut", {
@@ -103,7 +104,10 @@ export const createActivities = ({
     const heartbeat = setInterval(() => context.heartbeat(), heartbeatIntervalMs);
 
     try {
-      await runScript(scriptRunner, request, context.cancellationSignal);
+      await runScript(scriptRunner, request, {
+        onOutput: (output) => emit({ ...output, step, type: "stepOutput" }),
+        signal: context.cancellationSignal,
+      });
       emit({
         durationMs: Date.now() - startedAt,
         outcome: "succeeded",

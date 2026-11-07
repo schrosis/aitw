@@ -79,7 +79,7 @@ describe("executeScriptStep", () => {
       createActivities({
         eventSink: { emit: (event) => events.push(event) },
         scriptRunner: {
-          run: async (_request, signal) =>
+          run: async (_request, { signal }) =>
             new Promise((_resolve, reject) => {
               signal.addEventListener("abort", () => reject(signal.reason));
             }),

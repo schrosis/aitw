@@ -11,5 +11,11 @@ export type {
   ValidationResult,
 } from "./intermediate/index.js";
 export { ScriptTimeoutError } from "./ports/script-runner.js";
-export type { ScriptRequest, ScriptResult, ScriptRunner } from "./ports/script-runner.js";
+export type {
+  ScriptOutput,
+  ScriptRequest,
+  ScriptResult,
+  ScriptRunner,
+  ScriptRunOptions,
+} from "./ports/script-runner.js";
 export type { EventSink, StepOutcome, WorkflowEvent } from "./ports/event-sink.js";

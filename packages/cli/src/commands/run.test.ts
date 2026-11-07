@@ -34,6 +34,15 @@ describe("run", () => {
     );
   }, 60_000);
 
+  it("shows script output as it runs", async () => {
+    const result = await execute("run-output");
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "fuga\n" });
+    expect(result.stdout).toMatch(
+      /^▶ firstStep\necho "hoge"\nhoge\n✓ firstStep \(\d+\.\ds\)\n▶ secondStep\necho "fuga" >&2\n✓ secondStep \(\d+\.\ds\)\nrun-output: completed \(firstStep, secondStep\)\n$/u,
+    );
+  }, 60_000);
+
   it("reports a failed script", async () => {
     const result = await execute("run-failure");
 

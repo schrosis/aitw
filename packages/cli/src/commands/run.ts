@@ -51,7 +51,7 @@ export const run = async (
   try {
     const { executedSteps } = await runWorkflow({
       address,
-      eventSink: createProgressPrinter(context.stdout),
+      eventSink: createProgressPrinter(context),
       intermediate: workflow.intermediate,
       name,
       scriptRunner: createLocalScriptRunner({ cwd: workflow.root }),

@@ -23,7 +23,7 @@
     "@aitw/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.6.6"
+    "@types/node": "catalog:"
   },
   "engines": {
     "node": ">=26.13.0"

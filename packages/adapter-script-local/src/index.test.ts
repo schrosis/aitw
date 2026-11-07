@@ -91,6 +91,22 @@ describe("createLocalScriptRunner", () => {
     await expect(waitUntilStopped(pid)).resolves.toBe(true);
   });
 
+  it("stops processes left behind when the script exits", async () => {
+    await expect(run("sleep 30 & echo $! > pid; exit 0", undefined, 5000)).resolves.toMatchObject({
+      exitCode: 0,
+    });
+    const pid = Number(readFileSync(join(cwd, "pid"), "utf8"));
+    await expect(waitUntilStopped(pid)).resolves.toBe(true);
+  });
+
+  it("stops detached processes left behind when the script exits", async () => {
+    await expect(
+      run("sleep 30 >/dev/null 2>&1 & echo $! > pid; exit 0", undefined, 5000),
+    ).resolves.toMatchObject({ exitCode: 0 });
+    const pid = Number(readFileSync(join(cwd, "pid"), "utf8"));
+    await expect(waitUntilStopped(pid)).resolves.toBe(true);
+  });
+
   it("rejects an aborted signal without running the script", async () => {
     const controller = new AbortController();
     controller.abort(new Error("Cancelled"));

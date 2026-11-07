@@ -10,7 +10,12 @@ export const packageName = "@aitw/adapter-script-local";
 export interface LocalScriptRunnerOptions {
   /** Working directory of the scripts. */
   cwd: string;
-  /** Time to wait after SIGTERM before sending SIGKILL, in milliseconds. */
+  /**
+   * Time to wait after SIGTERM before sending SIGKILL, in milliseconds.
+   *
+   * Keep it shorter than the activity timeout grace in `@aitw/engine` so that a timeout is
+   * reported by the runner.
+   */
   killGraceMs?: number;
 }
 
@@ -18,7 +23,8 @@ export interface LocalScriptRunnerOptions {
  * Creates a script runner that runs scripts with `sh -e -c` on the local machine.
  *
  * Scripts run with the permissions and environment variables of the current process.
- * Stopping a script stops its whole process group.
+ * Stopping a script stops its whole process group. Processes that a script leaves running
+ * are stopped when the script exits.
  */
 export const createLocalScriptRunner = ({
   cwd,
@@ -48,6 +54,26 @@ export const createLocalScriptRunner = ({
         stderr += chunk;
       });
 
+      let settled = false;
+      let killTimer: ReturnType<typeof setTimeout> | undefined;
+      let timedOut = false;
+      let exit: { code: number | null; signalName: NodeJS.Signals | null } | undefined;
+
+      const cleanUp = (): void => {
+        settled = true;
+        clearTimeout(timeoutTimer);
+        clearTimeout(killTimer);
+        signal.removeEventListener("abort", stop);
+      };
+
+      const fail = (error: unknown): void => {
+        if (!settled) {
+          cleanUp();
+          reject(error);
+        }
+      };
+
+      /** Sends a signal to the process group and reports unexpected errors as a failure. */
       const killGroup = (signalName: NodeJS.Signals): void => {
         if (child.pid === undefined) {
           return;
@@ -57,41 +83,40 @@ export const createLocalScriptRunner = ({
         } catch (error) {
           // The process group has already exited.
           if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) {
-            throw error;
+            fail(error);
           }
         }
       };
 
-      let killTimer: NodeJS.Timeout | undefined;
+      /** Stops the process group, escalating to SIGKILL after the grace period. */
       const stop = (): void => {
         killGroup("SIGTERM");
         killTimer ??= setTimeout(() => killGroup("SIGKILL"), killGraceMs);
       };
 
-      let timedOut = false;
       const timeoutTimer = setTimeout(() => {
         timedOut = true;
         stop();
       }, request.timeoutMs);
       signal.addEventListener("abort", stop, { once: true });
 
-      const cleanUp = (): void => {
-        clearTimeout(timeoutTimer);
-        clearTimeout(killTimer);
-        signal.removeEventListener("abort", stop);
-      };
-
-      child.on("error", (error) => {
-        cleanUp();
-        reject(error);
+      child.on("error", fail);
+      child.on("exit", (code, signalName) => {
+        exit = { code, signalName };
+        // Processes that the script left behind would keep running and hold its output open.
+        stop();
       });
-      child.on("close", (code, signalName) => {
+      child.on("close", () => {
+        if (settled) {
+          return;
+        }
         cleanUp();
         if (timedOut) {
           reject(new ScriptTimeoutError(request.timeoutMs));
         } else if (signal.aborted) {
           reject(signal.reason);
         } else {
+          const { code = null, signalName = null } = exit ?? {};
           // A shell reports a process killed by a signal as 128 plus the signal number.
           const exitCode = code ?? 128 + (signalName === null ? 0 : constants.signals[signalName]);
           resolve({ exitCode, stderr, stdout });

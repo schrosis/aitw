@@ -6,6 +6,9 @@ import type { Activities } from "../activities/index.js";
 
 /**
  * Extra time that lets a script runner report its own timeout before the activity times out.
+ *
+ * Keep it longer than the time a script runner needs to stop a script, such as `killGraceMs`
+ * in `@aitw/adapter-script-local`.
  */
 const activityTimeoutGraceMs = 10_000;
 

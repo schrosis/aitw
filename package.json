@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "aitw": "node packages/cli/dist/bin.js",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck && tsc -p tsconfig.check.json",
     "lint": "oxlint --type-aware",

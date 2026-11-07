@@ -1,9 +1,7 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createTestProject } from "../testing.ts";
+import type { TestProject } from "../testing.ts";
 import { validate } from "./validate.ts";
 
 const validSource = `version: v0.1
@@ -16,63 +14,62 @@ steps:
 `;
 
 describe("validate", () => {
-  let directory: string;
+  let project: TestProject;
   let stdout: string;
   let stderr: string;
-  const output = {
-    stderr: (text: string) => {
-      stderr += text;
-    },
-    stdout: (text: string) => {
-      stdout += text;
-    },
-  };
 
   beforeEach(() => {
-    directory = mkdtempSync(join(tmpdir(), "aitw-validate-"));
+    project = createTestProject();
     stdout = "";
     stderr = "";
   });
 
   afterEach(() => {
-    rmSync(directory, { force: true, recursive: true });
+    project.remove();
   });
 
-  const write = (source: string): string => {
-    const file = join(directory, "workflow.yaml");
-    writeFileSync(file, source);
-    return file;
-  };
+  const run = async (name: string) =>
+    validate(name, {
+      cwd: project.root,
+      stderr: (text) => {
+        stderr += text;
+      },
+      stdout: (text) => {
+        stdout += text;
+      },
+    });
 
   it("reports a valid definition", async () => {
-    const file = write(validSource);
+    project.write(".aitw/workflows/deploy.yaml", validSource);
 
-    await expect(validate(file, output)).resolves.toBe(0);
-    expect(stdout).toBe(`${file}: valid\n`);
+    await expect(run("deploy")).resolves.toBe(0);
+    expect(stdout).toBe("deploy: valid\n");
     expect(stderr).toBe("");
   });
 
-  it("reports schema errors before transition errors", async () => {
-    const file = write(validSource.replace("next: end", "next: report").replace("v0.1", "v9"));
+  it("skips transition checks when the schema is invalid", async () => {
+    project.write(
+      ".aitw/workflows/deploy.yaml",
+      validSource.replace("next: end", "next: report").replace("v0.1", "v9"),
+    );
 
-    await expect(validate(file, output)).resolves.toBe(1);
-    expect(stderr.split("\n").filter(Boolean)).toEqual([
-      `${file}:1:10 version: Invalid input: expected "v0.1"`,
-    ]);
-    expect(stdout).toBe("");
+    await expect(run("deploy")).resolves.toBe(1);
+    expect(stderr).toBe(
+      `.aitw/workflows/deploy.yaml:1:10 version: Invalid input: expected "v0.1"\n`,
+    );
   });
 
-  it("reports a transition error", async () => {
-    const file = write(validSource.replace("next: end", "next: report"));
+  it("reports a transition error with its location", async () => {
+    project.write(".aitw/workflows/deploy.yaml", validSource.replace("next: end", "next: report"));
 
-    await expect(validate(file, output)).resolves.toBe(1);
-    expect(stderr).toBe(`${file}:7:11 steps.fetch.next: Unknown step: report\n`);
+    await expect(run("deploy")).resolves.toBe(1);
+    expect(stderr).toBe(
+      ".aitw/workflows/deploy.yaml:7:11 steps.fetch.next: Unknown step: report\n",
+    );
   });
 
-  it("reports a missing file", async () => {
-    const file = join(directory, "missing.yaml");
-
-    await expect(validate(file, output)).resolves.toBe(1);
-    expect(stderr).toMatch(new RegExp(`^${file}: ENOENT`, "u"));
+  it("reports a workflow that cannot be resolved", async () => {
+    await expect(run("missing")).resolves.toBe(1);
+    expect(stderr).toBe("Workflow not found: missing\n");
   });
 });

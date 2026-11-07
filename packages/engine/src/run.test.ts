@@ -38,6 +38,7 @@ describe("runWorkflow", () => {
     const result = runWorkflow({
       address: environment.address,
       intermediate,
+      name: "release/notes",
       scriptRunner: {
         run: async (request) => {
           requests.push(request);
@@ -62,6 +63,7 @@ describe("runWorkflow", () => {
     const result = runWorkflow({
       address: environment.address,
       intermediate,
+      name: "release/notes",
       scriptRunner: {
         run: async (_request, signal) =>
           new Promise((_resolve, reject) => {

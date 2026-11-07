@@ -7,7 +7,7 @@ import { DefaultLogger, NativeConnection, Runtime, Worker } from "@temporalio/wo
 import type { LogLevel } from "@temporalio/worker";
 
 import { createActivities } from "./activities/index.js";
-import type { interpreterWorkflow, WorkflowResult } from "./workflows/index.js";
+import type { aitw, WorkflowResult } from "./workflows/index.js";
 
 /** Path of the built workflow code that a Worker bundles. */
 export const workflowsPath = fileURLToPath(new URL("./workflows.js", import.meta.url));
@@ -40,6 +40,12 @@ export const configureRuntime = ({ logLevel }: RuntimeOptions): void => {
 export interface RunWorkflowOptions {
   /** Address of the Temporal Server, such as `localhost:7233`. */
   address: string;
+  /**
+   * Name of the workflow, such as `deploy` or `release/notes`.
+   *
+   * It prefixes the workflow ID so that runs are easy to find in the Temporal Web UI.
+   */
+  name: string;
   /** Temporal namespace. Defaults to `default`. */
   namespace?: string;
   intermediate: Intermediate;
@@ -58,6 +64,7 @@ export interface RunWorkflowOptions {
 export const runWorkflow = async ({
   address,
   intermediate,
+  name,
   namespace = "default",
   scriptRunner,
   signal,
@@ -81,10 +88,11 @@ export const runWorkflow = async ({
       const client = new Client({ connection: clientConnection, namespace });
 
       return await worker.runUntil(async () => {
-        const handle = await client.workflow.start<typeof interpreterWorkflow>(
-          "interpreterWorkflow",
-          { args: [intermediate], taskQueue, workflowId: `aitw-${id}` },
-        );
+        const handle = await client.workflow.start<typeof aitw>("aitw", {
+          args: [intermediate],
+          taskQueue,
+          workflowId: `${name}-${id}`,
+        });
         const cancel = (): void => {
           // The result below reports the cancellation, so a failed request is not rethrown.
           handle.cancel().catch(() => {});

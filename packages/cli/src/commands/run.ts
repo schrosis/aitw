@@ -51,6 +51,7 @@ export const run = async (
     const { executedSteps } = await runWorkflow({
       address,
       intermediate: workflow.intermediate,
+      name,
       scriptRunner: createLocalScriptRunner({ cwd: workflow.root }),
       signal,
     });

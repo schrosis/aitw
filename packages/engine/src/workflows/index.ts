@@ -19,7 +19,7 @@ const activityTimeoutGraceMs = 10_000;
  */
 const activityHeartbeatTimeoutMs = 30_000;
 
-/** Result of {@link interpreterWorkflow}. */
+/** Result of {@link aitw}. */
 export interface WorkflowResult {
   /** IDs of the executed steps, in execution order. */
   executedSteps: string[];
@@ -28,9 +28,12 @@ export interface WorkflowResult {
 /**
  * Executes a workflow in the intermediate representation.
  *
+ * The export name is the workflow type that Temporal shows. Renaming it prevents Workers from
+ * continuing runs that started with the previous name.
+ *
  * The input is validated again because it can be supplied without the definition package.
  */
-export const interpreterWorkflow = async (input: unknown): Promise<WorkflowResult> => {
+export const aitw = async (input: unknown): Promise<WorkflowResult> => {
   const validation = validateIntermediate(input);
   if (!validation.ok) {
     throw ApplicationFailure.nonRetryable(

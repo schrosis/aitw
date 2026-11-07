@@ -1,5 +1,5 @@
 import { TestWorkflowEnvironment } from "@temporalio/testing";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
 import { createOutput, fixtureProject } from "../testing.ts";
 import { run } from "./run.ts";
@@ -8,7 +8,9 @@ describe("run", () => {
   let environment: TestWorkflowEnvironment;
 
   beforeAll(async () => {
-    environment = await TestWorkflowEnvironment.createLocal();
+    environment = await TestWorkflowEnvironment.createLocal({
+      server: { executable: { path: inject("temporalCli"), type: "existing-path" } },
+    });
   }, 120_000);
 
   afterAll(async () => {

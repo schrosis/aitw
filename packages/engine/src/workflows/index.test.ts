@@ -6,7 +6,7 @@ import { intermediateVersion } from "@aitw/core";
 import type { Intermediate, ScriptRequest, ScriptResult } from "@aitw/core";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
 import { createActivities } from "../activities/index.ts";
 import { aitw } from "./index.ts";
@@ -30,7 +30,9 @@ describe("aitw", () => {
   let environment: TestWorkflowEnvironment;
 
   beforeAll(async () => {
-    environment = await TestWorkflowEnvironment.createLocal();
+    environment = await TestWorkflowEnvironment.createLocal({
+      server: { executable: { path: inject("temporalCli"), type: "existing-path" } },
+    });
   }, 120_000);
 
   afterAll(async () => {

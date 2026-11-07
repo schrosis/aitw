@@ -3,10 +3,9 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
 import { startDevServer } from "./dev-server.ts";
-import { ensureTemporalCli } from "./download.ts";
 
 const canConnect = async (address: string): Promise<boolean> => {
   const [host = "", port = ""] = address.split(":");
@@ -21,14 +20,12 @@ const canConnect = async (address: string): Promise<boolean> => {
 };
 
 describe("startDevServer", () => {
-  let executable: string;
+  const executable = inject("temporalCli");
   let root: string;
 
-  beforeAll(async () => {
-    // The pinned release is verified against its checksum and cached after the first run.
-    executable = await ensureTemporalCli();
+  beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), "aitw-dev-server-"));
-  }, 120_000);
+  });
 
   afterAll(() => {
     rmSync(root, { force: true, recursive: true });

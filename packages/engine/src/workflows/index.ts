@@ -3,6 +3,7 @@ import type { IntermediateStep } from "@aitw/core";
 import { ApplicationFailure, proxyActivities } from "@temporalio/workflow";
 
 import type { Activities, StepOutput } from "../activities/index.js";
+import { jsonBytes, maxValueBytes } from "../limits.js";
 
 /**
  * Extra time that lets a script runner report its own timeout before the activity times out.
@@ -23,8 +24,6 @@ const activityHeartbeatTimeoutMs = 30_000;
 export interface WorkflowResult {
   /** IDs of the executed steps, in execution order. */
   executedSteps: string[];
-  /** Values that each step published in its latest visit, keyed by step ID. */
-  outputs: Record<string, StepOutput>;
 }
 
 /** Evaluates the input values of a step from the outputs of the steps that ran before it. */
@@ -46,6 +45,15 @@ const evaluateInput = (
       );
     }
     input[name] = evaluated.value;
+  }
+
+  // Input can combine the output of several steps, so it is limited separately.
+  const bytes = jsonBytes(input);
+  if (bytes > maxValueBytes) {
+    throw ApplicationFailure.nonRetryable(
+      `steps.${id}.input is ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
+      "InputTooLarge",
+    );
   }
   return input;
 };
@@ -97,5 +105,7 @@ export const aitw = async (input: unknown): Promise<WorkflowResult> => {
     id = step.next.type === "step" ? step.next.step : null;
   }
 
-  return { executedSteps, outputs };
+  // Outputs are not returned, because the result of every step together could exceed the
+  // payload limit of Temporal.
+  return { executedSteps };
 };

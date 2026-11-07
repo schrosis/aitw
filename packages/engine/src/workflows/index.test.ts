@@ -80,7 +80,7 @@ describe("aitw", () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { executedSteps: ["fetch", "report"], outputs: { fetch: {}, report: {} } },
+      value: { executedSteps: ["fetch", "report"] },
     });
     expect(requests).toEqual([
       { input: {}, run: "./fetch.sh", timeoutMs: 5000 },
@@ -165,16 +165,39 @@ describe("aitw", () => {
 
     expect(result).toEqual({
       ok: true,
-      value: {
-        executedSteps: ["fetch", "report"],
-        outputs: { fetch: { title: "hello" }, report: {} },
-      },
+      value: { executedSteps: ["fetch", "report"] },
     });
     expect(requests.at(-1)).toEqual({
       input: { title: "hello" },
       run: './report.sh "hello"',
       timeoutMs: 5000,
     });
+  }, 60_000);
+
+  it("fails when the combined input exceeds the size limit", async () => {
+    const half = "x".repeat(300 * 1024);
+    const { requests, result } = await run(
+      {
+        ...intermediate,
+        start: "first",
+        steps: {
+          first: { ...step("./first.sh", "second"), output: { data: "${{ result.stdout }}" } },
+          second: { ...step("./second.sh", "report"), output: { data: "${{ result.stdout }}" } },
+          report: {
+            ...step("./report.sh", null),
+            input: {
+              first: "${{ steps.first.output.data }}",
+              second: "${{ steps.second.output.data }}",
+            },
+          },
+        },
+      },
+      {},
+      { "./first.sh": half, "./second.sh": half },
+    );
+
+    expect(result).toMatchObject({ error: { cause: { type: "InputTooLarge" } }, ok: false });
+    expect(requests.map(({ run: command }) => command)).toEqual(["./first.sh", "./second.sh"]);
   }, 60_000);
 
   it("fails on an unknown input reference", async () => {

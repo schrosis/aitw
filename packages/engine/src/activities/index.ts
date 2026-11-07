@@ -10,6 +10,8 @@ import type {
 } from "@aitw/core";
 import { ApplicationFailure, Context } from "@temporalio/activity";
 
+import { jsonBytes, maxValueBytes } from "../limits.js";
+
 /** Adapters and settings that the activities use. */
 export interface ActivityDependencies {
   scriptRunner: ScriptRunner;
@@ -35,15 +37,7 @@ export interface ScriptStepRequest extends ScriptRequest {
 /** Values that a step publishes to later steps, keyed by name. */
 export type StepOutput = Record<string, unknown>;
 
-/**
- * Maximum size of the values that a step publishes, in bytes of JSON.
- *
- * Published values are stored in the workflow history, and again in the input of later steps,
- * so it matches the size at which Temporal warns about large payloads.
- */
-export const maxOutputBytes = 512 * 1024;
-
-/** Removes one trailing newline, as shell command substitution does. */
+/** Removes one trailing newline, so that a single line of output becomes a plain value. */
 const trimTrailingNewline = (text: string): string => {
   if (text.endsWith("\r\n")) {
     return text.slice(0, -2);
@@ -73,10 +67,10 @@ const evaluateOutput = (
     output[name] = evaluated.value;
   }
 
-  const bytes = new TextEncoder().encode(JSON.stringify(output)).length;
-  if (bytes > maxOutputBytes) {
+  const bytes = jsonBytes(output);
+  if (bytes > maxValueBytes) {
     throw ApplicationFailure.nonRetryable(
-      `Output is ${bytes} bytes, which exceeds the limit of ${maxOutputBytes} bytes`,
+      `Output is ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
       "OutputTooLarge",
     );
   }

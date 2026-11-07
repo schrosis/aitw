@@ -3,7 +3,8 @@ import type { ScriptRequest, ScriptResult, ScriptRunner, WorkflowEvent } from "@
 import { MockActivityEnvironment } from "@temporalio/testing";
 import { describe, expect, it } from "vitest";
 
-import { createActivities, maxOutputBytes } from "./index.ts";
+import { maxValueBytes } from "../limits.ts";
+import { createActivities } from "./index.ts";
 import type { ScriptStepRequest } from "./index.ts";
 
 const execute = async (scriptRunner: ScriptRunner, events: WorkflowEvent[] = []) =>
@@ -190,7 +191,7 @@ describe("executeScriptStep", () => {
 
   it("fails when the output exceeds the size limit", async () => {
     await expect(
-      runStep({ output: { data: "${{ result.stdout }}" } }, { stdout: "x".repeat(maxOutputBytes) }),
+      runStep({ output: { data: "${{ result.stdout }}" } }, { stdout: "x".repeat(maxValueBytes) }),
     ).rejects.toMatchObject({ nonRetryable: true, type: "OutputTooLarge" });
   });
 });

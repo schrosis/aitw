@@ -132,38 +132,22 @@ steps:
     ]);
   });
 
-  it("returns the intermediate representation", () => {
-    expect(parseDefinition(validSource)).toMatchObject({
-      intermediate: {
-        start: "fetch",
-        steps: { fetch: { next: { type: "end" }, timeoutMs: 1_800_000 } },
-      },
+  it("does not validate transitions", () => {
+    expect(parseDefinition(validSource.replace("next: end", "next: report"))).toMatchObject({
       ok: true,
     });
   });
 
-  it("locates an unknown transition target", () => {
-    expect(parseDefinition(validSource.replace("next: end", "next: report"))).toEqual({
-      errors: [
-        { column: 11, line: 7, message: "Unknown step: report", path: ["steps", "fetch", "next"] },
-      ],
-      ok: false,
+  it("locates a definition path", () => {
+    const result = parseDefinition(validSource);
+
+    expect(result.ok ? result.locate(["steps", "fetch", "next"]) : undefined).toEqual({
+      column: 11,
+      line: 7,
     });
-  });
-
-  it("locates an unreachable step at its ID", () => {
-    const source = `${validSource}  orphan:\n    type: script\n    run: ./orphan.sh\n    next: end\n`;
-
-    expect(parseDefinition(source)).toEqual({
-      errors: [
-        {
-          column: 3,
-          line: 8,
-          message: "Step is not reachable from start",
-          path: ["steps", "orphan"],
-        },
-      ],
-      ok: false,
+    expect(result.ok ? result.locate(["steps", "fetch"], { key: true }) : undefined).toEqual({
+      column: 3,
+      line: 4,
     });
   });
 

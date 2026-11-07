@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { intermediateVersion, validateIntermediate } from "./intermediate.ts";
-import type { Intermediate, IntermediateStep } from "./intermediate.ts";
+import { intermediateVersion } from "./schema.ts";
+import type { Intermediate, IntermediateStep } from "./schema.ts";
+import { validateIntermediate } from "./validate.ts";
 
 const step = (next: string | null): IntermediateStep => ({
   input: {},

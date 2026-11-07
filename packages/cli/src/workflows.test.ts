@@ -1,52 +1,50 @@
-import { mkdirSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { createTestProject } from "./testing.ts";
-import type { TestProject } from "./testing.ts";
+import { fixtureProject } from "./testing.ts";
 import { findProjectRoot, resolveWorkflow } from "./workflows.ts";
 
-describe("resolveWorkflow", () => {
-  let project: TestProject;
+const workflows = join(fixtureProject, ".aitw", "workflows");
 
-  beforeEach(() => {
-    project = createTestProject();
-  });
-
-  afterEach(() => {
-    project.remove();
-  });
-
+describe("findProjectRoot", () => {
   it("finds the project root from a subdirectory", async () => {
-    const subdirectory = join(project.root, "src", "nested");
-    mkdirSync(subdirectory, { recursive: true });
-
-    await expect(findProjectRoot(subdirectory)).resolves.toBe(project.root);
+    await expect(findProjectRoot(join(fixtureProject, "src", "nested"))).resolves.toBe(
+      fixtureProject,
+    );
   });
 
-  it("resolves .yaml and .yml files", async () => {
-    const yaml = project.write(".aitw/workflows/deploy.yaml", "");
-    const yml = project.write(".aitw/workflows/build.yml", "");
+  it("returns undefined outside a project", async () => {
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), "aitw-no-project-")));
+    try {
+      await expect(findProjectRoot(directory)).resolves.toBeUndefined();
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
+  });
+});
 
-    await expect(resolveWorkflow(project.root, "deploy")).resolves.toEqual({
-      file: yaml,
+describe("resolveWorkflow", () => {
+  it("resolves a .yaml file", async () => {
+    await expect(resolveWorkflow(fixtureProject, "valid")).resolves.toEqual({
+      file: join(workflows, "valid.yaml"),
       ok: true,
-      root: project.root,
+      root: fixtureProject,
     });
-    await expect(resolveWorkflow(project.root, "build")).resolves.toMatchObject({ file: yml });
   });
 
-  it("resolves a workflow in a subdirectory", async () => {
-    const file = project.write(".aitw/workflows/release/notes.yaml", "");
-
-    await expect(resolveWorkflow(project.root, "release/notes")).resolves.toMatchObject({ file });
+  it("resolves a .yml file in a subdirectory", async () => {
+    await expect(resolveWorkflow(fixtureProject, "release/notes")).resolves.toMatchObject({
+      file: join(workflows, "release", "notes.yml"),
+    });
   });
 
-  it.each(["../secret", "release/../secret", "/etc/passwd", "release/", "1st", "foo.yaml", ""])(
+  it.each(["../secret", "release/../secret", "/etc/passwd", "release/", "1st", "valid.yaml", ""])(
     "rejects the invalid name %j",
     async (name) => {
-      await expect(resolveWorkflow(project.root, name)).resolves.toMatchObject({
+      await expect(resolveWorkflow(fixtureProject, name)).resolves.toMatchObject({
         message: expect.stringContaining("Invalid workflow name") as unknown,
         ok: false,
       });
@@ -54,17 +52,14 @@ describe("resolveWorkflow", () => {
   );
 
   it("rejects a workflow with both extensions", async () => {
-    project.write(".aitw/workflows/deploy.yaml", "");
-    project.write(".aitw/workflows/deploy.yml", "");
-
-    await expect(resolveWorkflow(project.root, "deploy")).resolves.toEqual({
-      message: "Workflow deploy has both .yaml and .yml files",
+    await expect(resolveWorkflow(fixtureProject, "both")).resolves.toEqual({
+      message: "Workflow both has both .yaml and .yml files",
       ok: false,
     });
   });
 
   it("reports a missing workflow", async () => {
-    await expect(resolveWorkflow(project.root, "missing")).resolves.toEqual({
+    await expect(resolveWorkflow(fixtureProject, "missing")).resolves.toEqual({
       message: "Workflow not found: missing",
       ok: false,
     });

@@ -1,41 +1,27 @@
 import { readFileSync } from "node:fs";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createProgram } from "./program.ts";
-import type { ProgramContext } from "./program.ts";
-import { createTestProject } from "./testing.ts";
-import type { TestProject } from "./testing.ts";
+import { createOutput, fixtureProject } from "./testing.ts";
 
-describe("createProgram", () => {
-  let project: TestProject;
-  let stdout: string;
+const execute = async (args: string[]) => {
+  const output = createOutput();
   let exitCode: number | undefined;
-
-  beforeEach(() => {
-    project = createTestProject();
-    stdout = "";
-    exitCode = undefined;
-  });
-
-  afterEach(() => {
-    project.remove();
-  });
-
-  const context = (): ProgramContext => ({
-    cwd: project.root,
+  await createProgram({
+    cwd: fixtureProject,
     setExitCode: (code) => {
       exitCode = code;
     },
-    stderr: () => {},
-    stdout: (text) => {
-      stdout += text;
-    },
-  });
+    ...output,
+  }).parseAsync(args, { from: "user" });
+  return { exitCode, ...output.written };
+};
 
+describe("createProgram", () => {
   it("prints the package version", async () => {
     let output = "";
-    const program = createProgram(context())
+    const program = createProgram({ cwd: fixtureProject, setExitCode: () => {}, ...createOutput() })
       .exitOverride()
       .configureOutput({ writeOut: (text) => (output += text) });
 
@@ -49,12 +35,17 @@ describe("createProgram", () => {
     expect(output.endsWith("\n")).toBe(true);
   });
 
-  it("sets the exit code of validate", async () => {
-    project.write(".aitw/workflows/broken.yaml", "version: v9\n");
+  it("exits with zero when validate succeeds", async () => {
+    await expect(execute(["validate", "valid"])).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: "valid: valid\n",
+    });
+  });
 
-    await createProgram(context()).parseAsync(["validate", "broken"], { from: "user" });
-
-    expect(exitCode).toBe(1);
-    expect(stdout).toBe("");
+  it("exits with one when validate fails", async () => {
+    await expect(execute(["validate", "transition-error"])).resolves.toMatchObject({
+      exitCode: 1,
+      stdout: "",
+    });
   });
 });

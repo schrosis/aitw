@@ -1,26 +1,18 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-/** A temporary project directory for CLI tests. */
-export interface TestProject {
-  root: string;
-  write: (path: string, content: string) => string;
-  remove: () => void;
-}
+/** A project in the test fixtures that contains `.aitw/workflows`. */
+export const fixtureProject = fileURLToPath(new URL("../test/fixtures/project", import.meta.url));
 
-/** Creates a temporary project directory that contains `.aitw/workflows`. */
-export const createTestProject = (): TestProject => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "aitw-project-")));
-  mkdirSync(join(root, ".aitw", "workflows"), { recursive: true });
+/** Collects text written by a command. */
+export const createOutput = () => {
+  const written = { stderr: "", stdout: "" };
   return {
-    remove: () => rmSync(root, { force: true, recursive: true }),
-    root,
-    write: (path, content) => {
-      const file = join(root, path);
-      mkdirSync(dirname(file), { recursive: true });
-      writeFileSync(file, content);
-      return file;
+    stderr: (text: string) => {
+      written.stderr += text;
     },
+    stdout: (text: string) => {
+      written.stdout += text;
+    },
+    written,
   };
 };

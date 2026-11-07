@@ -73,6 +73,7 @@ describe("validateIntermediate expressions", () => {
   it.each([
     ['./report.sh "${{ input.missing }}"', "Step report does not declare the input missing"],
     ['./report.sh "${{ steps.fetch.output.title }}"', "Run can reference only input.<name>"],
+    ['./report.sh "${{ input.title.length }}"', "Run cannot reference a field of an input value"],
     ['./report.sh "${{ input.title', "Unterminated expression"],
   ])("rejects an invalid run reference", (run, message) => {
     expect(

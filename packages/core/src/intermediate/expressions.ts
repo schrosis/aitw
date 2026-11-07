@@ -1,21 +1,10 @@
 import { parseTemplate } from "../expression/template.js";
-import type { Intermediate, Transition } from "./schema.js";
+import { executionOrder } from "./order.js";
+import type { Intermediate } from "./schema.js";
 import type { ValidationError } from "./validate.js";
 
 /** Fields of the script result that `output` can read. */
 const resultFields = new Set(["exitCode", "stdout", "stderr"]);
-
-/** Returns the IDs of the steps on the path from `start`, in execution order. */
-const executionOrder = ({ start, steps }: Intermediate): string[] => {
-  const order: string[] = [];
-  let current: string | null = start;
-  while (current !== null && Object.hasOwn(steps, current) && !order.includes(current)) {
-    order.push(current);
-    const next: Transition | undefined = steps[current]?.next;
-    current = next?.type === "step" ? next.step : null;
-  }
-  return order;
-};
 
 /**
  * Checks a field that may contain `${{ }}` references.
@@ -51,12 +40,13 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
   const order = executionOrder(intermediate);
   const errors: ValidationError[] = [];
 
-  for (const [index, id] of order.entries()) {
+  // Steps that run before the current step. It grows as the loop moves forward.
+  const earlier = new Set<string>();
+  for (const id of order) {
     const step = intermediate.steps[id];
     if (step === undefined) {
       continue;
     }
-    const earlier = new Set(order.slice(0, index));
 
     for (const [name, expression] of Object.entries(step.input)) {
       errors.push(
@@ -106,6 +96,7 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
         ),
       );
     }
+    earlier.add(id);
   }
 
   return errors;

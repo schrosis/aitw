@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -b && pnpm -r build",
-    "typecheck": "tsc -b && tsc -p tsconfig.check.json",
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.check.json",
     "lint": "oxlint --type-aware",
     "format": "oxfmt",
     "format:check": "oxfmt --check",

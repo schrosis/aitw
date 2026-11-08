@@ -1,0 +1,20 @@
+version: v0.1
+input:
+  name:
+    type: string
+    required: true
+  prefix:
+    type: string
+    default: report
+start: greet
+steps:
+  greet:
+    type: script
+    run: echo 'Hello ${{ workflow.input.name }}!!'
+    output:
+      file: ${{ workflow.input.prefix }}-${{ result.stdout }}
+    next: report
+  report:
+    type: script
+    run: echo '${{ steps.greet.output.file }}'
+    next: end

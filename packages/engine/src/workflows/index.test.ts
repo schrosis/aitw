@@ -256,6 +256,32 @@ describe("aitw", () => {
     ]);
   }, 60_000);
 
+  it("expands earlier outputs and the workflow input in run directly", async () => {
+    const { requests, result } = await run(
+      {
+        ...intermediate,
+        input: { prefix: { default: "pre", required: false, type: "string" } },
+        steps: {
+          fetch: { ...step("./fetch.sh", "report"), output: { title: "${{ result.stdout }}" } },
+          report: step(
+            './report.sh "${{ workflow.input.prefix }}" "${{ steps.fetch.output.title }}"',
+            null,
+          ),
+        },
+      },
+      {},
+      { "./fetch.sh": "hello\n" },
+      {},
+    );
+
+    expect(result).toEqual({ ok: true, value: { executedSteps: ["fetch", "report"] } });
+    expect(requests.at(-1)).toEqual({
+      input: {},
+      run: './report.sh "pre" "hello"',
+      timeoutMs: 5000,
+    });
+  }, 60_000);
+
   it("rejects invalid workflow input before running any step", async () => {
     const { requests, result } = await run(withWorkflowInput, {}, {}, { level: "mid" });
 

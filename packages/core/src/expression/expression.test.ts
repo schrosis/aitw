@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluateExpression, parseTemplate } from "./index.ts";
+import { evaluateExpression, parseTemplate, pickReferences } from "./index.ts";
 
 const context = {
   input: { absent: null, count: 3, title: "hello" },
@@ -104,5 +104,39 @@ describe("evaluateExpression", () => {
     expect(evaluateExpression("value: ${{ input.big }}", { input: { big: 1n } })).toMatchObject({
       ok: false,
     });
+  });
+});
+
+describe("pickReferences", () => {
+  const roots = new Set(["steps", "workflow"]);
+  const values = {
+    steps: {
+      fetch: { output: { title: "hello", unused: "x" } },
+      other: { output: { constructor: "c" } },
+    },
+    workflow: { input: { level: "high", unused: 1 } },
+  };
+
+  it("keeps only the referenced values under the given roots", () => {
+    expect(
+      pickReferences(
+        [
+          "${{ steps.fetch.output.title }}-${{ workflow.input.level }}",
+          "${{ input.title }} ${{ result.stdout }}",
+          "${{ steps.other.output.constructor }}",
+        ],
+        values,
+        roots,
+      ),
+    ).toEqual({
+      steps: { fetch: { output: { title: "hello" } }, other: { output: { constructor: "c" } } },
+      workflow: { input: { level: "high" } },
+    });
+  });
+
+  it("skips unknown references and invalid templates", () => {
+    expect(
+      pickReferences(["${{ steps.missing.output.x }}", "${{ steps.fetch"], values, roots),
+    ).toEqual({});
   });
 });

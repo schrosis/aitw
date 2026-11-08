@@ -11,7 +11,7 @@ const execute = async (scriptRunner: ScriptRunner, events: WorkflowEvent[] = [])
   new MockActivityEnvironment().run(
     createActivities({ eventSink: { emit: (event) => events.push(event) }, scriptRunner })
       .executeScriptStep,
-    { input: {}, output: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
+    { input: {}, output: {}, references: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
   );
 
 const runStep = async (
@@ -28,7 +28,15 @@ const runStep = async (
         },
       },
     }).executeScriptStep,
-    { input: {}, output: {}, run: "./run.sh", step: "build", timeoutMs: 1000, ...request },
+    {
+      input: {},
+      output: {},
+      references: {},
+      run: "./run.sh",
+      step: "build",
+      timeoutMs: 1000,
+      ...request,
+    },
   );
 
 describe("executeScriptStep", () => {
@@ -104,7 +112,7 @@ describe("executeScriptStep", () => {
             }),
         },
       }).executeScriptStep,
-      { input: {}, output: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
+      { input: {}, output: {}, references: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
     );
     environment.cancel();
 
@@ -123,7 +131,7 @@ describe("executeScriptStep", () => {
         },
         scriptRunner: { run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }) },
       }).executeScriptStep,
-      { input: {}, output: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
+      { input: {}, output: {}, references: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
     );
 
     await expect(result).resolves.toEqual({});
@@ -158,6 +166,41 @@ describe("executeScriptStep", () => {
     expect(requests).toEqual([
       { input: { title: "hello" }, run: './report.sh "hello"', timeoutMs: 1000 },
     ]);
+  });
+
+  it("expands references to earlier steps and the workflow input in run and output", async () => {
+    const requests: ScriptRequest[] = [];
+    const output = await runStep(
+      {
+        input: { suffix: "!" },
+        output: { name: "${{ workflow.input.prefix }}-${{ result.stdout }}${{ input.suffix }}" },
+        references: {
+          steps: { fetch: { output: { title: "hello" } } },
+          workflow: { input: { prefix: "pre" } },
+        },
+        run: 'echo "${{ steps.fetch.output.title }}"',
+      },
+      { stdout: "result\n" },
+      requests,
+    );
+
+    expect(requests.map(({ run }) => run)).toEqual(['echo "hello"']);
+    expect(output).toEqual({ name: "pre-result!" });
+  });
+
+  it("keeps the step input when references contain an input entry", async () => {
+    const requests: ScriptRequest[] = [];
+    await runStep(
+      {
+        input: { title: "own" },
+        references: { input: { title: "other" } },
+        run: "${{ input.title }}",
+      },
+      {},
+      requests,
+    );
+
+    expect(requests.map(({ run }) => run)).toEqual(["own"]);
   });
 
   it("returns the declared output with one trailing newline removed", async () => {

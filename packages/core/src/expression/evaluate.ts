@@ -1,3 +1,4 @@
+import { parseTemplate } from "./template.js";
 import type { Template } from "./template.js";
 
 /** Result of {@link evaluateTemplate}. */
@@ -21,6 +22,59 @@ const resolve = (context: Readonly<Record<string, unknown>>, path: readonly stri
     value = next;
   }
   return { ok: true, value };
+};
+
+type Tree = Record<string, unknown>;
+
+const isTree = (value: unknown): value is Tree => typeof value === "object" && value !== null;
+
+/** Sets a value at a path, creating own objects on the way. */
+const setPath = (tree: Tree, path: readonly string[], value: unknown): void => {
+  let current = tree;
+  for (const segment of path.slice(0, -1)) {
+    // Only own properties are followed, because a name such as constructor is inherited.
+    const existing = Object.hasOwn(current, segment) ? current[segment] : undefined;
+    const next: Tree = isTree(existing) ? existing : {};
+    current[segment] = next;
+    current = next;
+  }
+  const last = path.at(-1);
+  if (last !== undefined) {
+    current[last] = value;
+  }
+};
+
+/**
+ * Returns the part of a context that the `${{ }}` references in some strings read.
+ *
+ * It keeps only the referenced values, so that a step receives what its definition uses and
+ * not every value that the workflow holds.
+ *
+ * @param roots Names of the top-level context entries to pick from. Other references are left
+ *   out, such as references to values that are not known yet.
+ */
+export const pickReferences = (
+  texts: readonly string[],
+  context: Readonly<Record<string, unknown>>,
+  roots: ReadonlySet<string>,
+): Tree => {
+  const picked: Tree = {};
+  for (const text of texts) {
+    const parsed = parseTemplate(text);
+    if (!parsed.ok) {
+      continue;
+    }
+    for (const part of parsed.template) {
+      if (part.type !== "reference" || !roots.has(part.path[0] ?? "")) {
+        continue;
+      }
+      const resolved = resolve(context, part.path);
+      if (resolved.ok) {
+        setPath(picked, part.path, resolved.value);
+      }
+    }
+  }
+  return picked;
 };
 
 /**

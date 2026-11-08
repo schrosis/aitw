@@ -94,6 +94,13 @@ describe("compileDefinition wait steps", () => {
             with: z.strictObject({ message: z.string(), name: z.string() }),
           }),
           defineWaitMethod({ name: "watch", with: z.strictObject({}) }),
+          defineWaitMethod({
+            answers: () => {
+              throw new Error("broken plugin");
+            },
+            name: "broken",
+            with: z.strictObject({}),
+          }),
         ],
       }),
     ],
@@ -135,7 +142,7 @@ describe("compileDefinition wait steps", () => {
         {
           column: 13,
           line: 6,
-          message: "Unknown wait method: slack. Available methods: ask, watch",
+          message: "Unknown wait method: slack. Available methods: ask, watch, broken",
           path: ["steps", "ask", "method"],
         },
       ],
@@ -143,6 +150,18 @@ describe("compileDefinition wait steps", () => {
     });
     expect(compileDefinition(waitSource("    method: ask"))).toMatchObject({
       errors: [{ message: "Unknown wait method: ask. No methods are available" }],
+      ok: false,
+    });
+  });
+
+  it("reports a method that fails to describe its answers", () => {
+    expect(compileDefinition(waitSource("    method: broken"), { plugins })).toMatchObject({
+      errors: [
+        {
+          message: "Wait method broken failed to describe its answers: broken plugin",
+          path: ["steps", "ask", "with"],
+        },
+      ],
       ok: false,
     });
   });

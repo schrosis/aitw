@@ -55,7 +55,16 @@ const resolveWaitSteps = (
       );
       continue;
     }
-    answers[id] = method.answers?.(options.value);
+    // A bug in a plugin is reported at the step instead of stopping the command.
+    try {
+      answers[id] = method.answers?.(options.value);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      errors.push({
+        message: `Wait method ${step.method} failed to describe its answers: ${reason}`,
+        path: ["steps", id, "with"],
+      });
+    }
   }
   return { answers, errors };
 };

@@ -8,20 +8,10 @@
   "include": ["src"],
   "exclude": ["src/**/*.test.ts", "src/testing.ts"],
   "references": [
-    {
-      "path": "../core"
-    },
-    {
-      "path": "../definition"
-    },
-    {
-      "path": "../engine"
-    },
-    {
-      "path": "../adapter-script-local"
-    },
-    {
-      "path": "../adapter-wait-terminal"
-    }
+    { "path": "../core" },
+    { "path": "../definition" },
+    { "path": "../engine" },
+    { "path": "../adapter-script-local" },
+    { "path": "../adapter-wait-terminal" }
   ]
 }

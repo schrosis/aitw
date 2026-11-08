@@ -1,23 +1,11 @@
 {
   "files": [],
   "references": [
-    {
-      "path": "packages/core"
-    },
-    {
-      "path": "packages/definition"
-    },
-    {
-      "path": "packages/engine"
-    },
-    {
-      "path": "packages/adapter-script-local"
-    },
-    {
-      "path": "packages/adapter-wait-terminal"
-    },
-    {
-      "path": "packages/cli"
-    }
+    { "path": "packages/core" },
+    { "path": "packages/definition" },
+    { "path": "packages/engine" },
+    { "path": "packages/adapter-script-local" },
+    { "path": "packages/adapter-wait-terminal" },
+    { "path": "packages/cli" }
   ]
 }

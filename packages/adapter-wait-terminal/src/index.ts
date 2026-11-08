@@ -31,23 +31,28 @@ export interface TerminalIO {
   readLine: (signal: AbortSignal) => Promise<string | null>;
 }
 
-type Parsed =
-  | { ok: true; value: boolean | number | string | null }
-  | { ok: false; message: string };
+/**
+ * Result of {@link parseAnswer}. A missing value means that the answer is not given, and the
+ * workflow uses `null` for it.
+ */
+type Parsed = { ok: true; value?: boolean | number | string } | { ok: false; message: string };
 
 const trueWords = new Set(["y", "yes", "true"]);
 const falseWords = new Set(["n", "no", "false"]);
 
-/** Parses a line that answers a declaration. An empty line uses the default. */
+/**
+ * Parses a line that answers a declaration.
+ *
+ * An empty line uses the default. Without a default, it leaves an optional answer not given,
+ * because the workflow accepts only values of the declared type.
+ */
 export const parseAnswer = (declaration: InputDeclaration, line: string): Parsed => {
   const text = declaration.type === "string" ? line : line.trim();
   if (text === "") {
     if (declaration.default !== undefined) {
       return { ok: true, value: declaration.default };
     }
-    return declaration.required
-      ? { message: "A value is required", ok: false }
-      : { ok: true, value: null };
+    return declaration.required ? { message: "A value is required", ok: false } : { ok: true };
   }
   if (declaration.type === "string") {
     return { ok: true, value: text };
@@ -117,7 +122,9 @@ const respond =
         }
         const parsed = parseAnswer(declaration, line);
         if (parsed.ok) {
-          values[name] = parsed.value;
+          if (parsed.value !== undefined) {
+            values[name] = parsed.value;
+          }
           break;
         }
         write(`${parsed.message}\n`);

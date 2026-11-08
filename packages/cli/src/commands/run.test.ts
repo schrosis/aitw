@@ -129,6 +129,13 @@ describe("run", () => {
     );
   }, 60_000);
 
+  it("accepts an empty optional answer without asking again", async () => {
+    const result = await execute("wait-valid", undefined, undefined, undefined, "schrosis\n\n");
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(result.stdout).toContain("name (string, required): schrosis\napprove (y/n): \n✓ ask");
+  }, 60_000);
+
   it("fails when the input ends before the answers", async () => {
     await expect(execute("wait-valid")).resolves.toMatchObject({
       exitCode: 1,

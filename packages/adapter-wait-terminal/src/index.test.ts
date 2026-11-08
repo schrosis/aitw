@@ -61,7 +61,7 @@ describe("terminalWaitMethod", () => {
 describe("parseAnswer", () => {
   it.each<[InputDeclaration, string, unknown]>([
     [{ required: false, type: "string" }, "  hello ", "  hello "],
-    [{ required: false, type: "string" }, "", null],
+    [{ default: false, required: false, type: "boolean" }, "", false],
     [{ default: "x", required: false, type: "string" }, "", "x"],
     [{ required: true, type: "number" }, " -1.5 ", -1.5],
     [{ required: true, type: "boolean" }, "Yes", true],
@@ -69,6 +69,10 @@ describe("parseAnswer", () => {
     [{ options: ["low", "high"], required: true, type: "choice" }, "high", "high"],
   ])("parses %j from %j", (declaration, line, value) => {
     expect(parseAnswer(declaration, line)).toEqual({ ok: true, value });
+  });
+
+  it("leaves an empty optional answer without a default not given", () => {
+    expect(parseAnswer({ required: false, type: "boolean" }, " ")).toEqual({ ok: true });
   });
 
   it.each<[InputDeclaration, string, string]>([
@@ -137,6 +141,15 @@ describe("createTerminalPlugin", () => {
         "Enter your name\nname (string, required): A value is required\nname (string, required): approve (y/n): Enter y or n\napprove (y/n): ",
       values: { approve: true, name: "schrosis" },
     });
+  });
+
+  it("does not send an empty optional answer", async () => {
+    await expect(
+      respondWith(["schrosis", ""], {
+        message: "Enter your name",
+        schema: { name: { type: "string" }, approve: { type: "boolean" } },
+      }),
+    ).resolves.toMatchObject({ values: { name: "schrosis" } });
   });
 
   it("waits for Enter when no answers are declared", async () => {

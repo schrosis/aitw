@@ -1,0 +1,19 @@
+version: v0.1
+input:
+  threshold:
+    type: number
+    default: 1.5
+  level:
+    type: choice
+    options: [low, low]
+    required: true
+    default: mid
+start: report
+steps:
+  report:
+    type: script
+    input:
+      missing: ${{ workflow.input.missing }}
+      nested: ${{ workflow.input.threshold.value }}
+    run: "true"
+    next: end

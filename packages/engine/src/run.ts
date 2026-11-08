@@ -49,6 +49,8 @@ export interface RunWorkflowOptions {
   /** Temporal namespace. Defaults to `default`. */
   namespace?: string;
   intermediate: Intermediate;
+  /** Values of the workflow input, keyed by name. The workflow validates them. */
+  input?: Readonly<Record<string, unknown>>;
   scriptRunner: ScriptRunner;
   /** Receives progress events of the run. */
   eventSink?: EventSink;
@@ -66,6 +68,7 @@ export interface RunWorkflowOptions {
 export const runWorkflow = async ({
   address,
   eventSink,
+  input = {},
   intermediate,
   name,
   namespace = "default",
@@ -92,7 +95,7 @@ export const runWorkflow = async ({
 
       return await worker.runUntil(async () => {
         const handle = await client.workflow.start<typeof aitw>("aitw", {
-          args: [intermediate],
+          args: [intermediate, input],
           taskQueue,
           workflowId: `${name}-${id}`,
         });

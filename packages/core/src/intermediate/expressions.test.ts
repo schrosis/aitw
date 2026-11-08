@@ -18,12 +18,18 @@ const workflow = (
   report: Partial<IntermediateStep>,
   fetch: Partial<IntermediateStep> = {},
 ): Intermediate => ({
+  input: {},
   start: "fetch",
   steps: {
     fetch: step({ output: { title: "${{ result.stdout }}" }, ...fetch }, "report"),
     report: step(report, null),
   },
   version: intermediateVersion,
+});
+
+const withInput = (expression: string): Intermediate => ({
+  ...workflow({ input: { value: expression } }),
+  input: { level: { options: ["low"], required: false, type: "choice" } },
 });
 
 const errorsOf = (intermediate: Intermediate) => {
@@ -94,4 +100,31 @@ describe("validateIntermediate expressions", () => {
       ]);
     },
   );
+
+  it("accepts and rejects references to the workflow input", () => {
+    expect(errorsOf(withInput("${{ workflow.input.level }}"))).toEqual([]);
+    expect(errorsOf(withInput("${{ workflow.input.missing }}"))).toEqual([
+      {
+        message: expect.stringContaining(
+          "The workflow does not declare the input missing",
+        ) as unknown,
+        path: ["steps", "report", "input", "value"],
+      },
+    ]);
+    expect(errorsOf(withInput("${{ workflow.input.level.length }}"))).toEqual([
+      {
+        message: expect.stringContaining("cannot reference a field of a workflow input") as unknown,
+        path: ["steps", "report", "input", "value"],
+      },
+    ]);
+  });
+
+  it("does not let run reference the workflow input", () => {
+    expect(
+      errorsOf({
+        ...workflow({ run: "echo ${{ workflow.input.level }}" }),
+        input: { level: { options: ["low"], required: false, type: "choice" } },
+      }),
+    ).toMatchObject([{ path: ["steps", "report", "run"] }]);
+  });
 });

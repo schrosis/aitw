@@ -1,9 +1,11 @@
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
+import { resolveWorkflowInput } from "@aitw/core";
 import { runWorkflow } from "@aitw/engine";
 
 import { resolve } from "node:path";
 
 import { createProgressPrinter } from "../progress.js";
+import { readWorkflowInput } from "../input.js";
 import { ensureTemporalCli, startDevServer } from "../temporal-cli/index.js";
 import type { DevServer } from "../temporal-cli/index.js";
 import { loadWorkflow } from "./load.js";
@@ -28,6 +30,8 @@ export type ServerOptions =
 
 /** Options of {@link run}. */
 export interface RunOptions {
+  /** Value of `--input`: a JSON object, or the path of a `.json` file. */
+  input?: string | undefined;
   /** Temporal Server that runs the workflow. */
   server: ServerOptions;
   /** Cancels the run when aborted. */
@@ -61,11 +65,28 @@ const rootMessage = (error: unknown): string => {
  */
 export const run = async (
   name: string,
-  { prepareEngine, server, signal }: RunOptions,
+  { input: inputOption, prepareEngine, server, signal }: RunOptions,
   context: CommandContext,
 ): Promise<number> => {
   const workflow = await loadWorkflow(name, context);
   if (workflow === undefined) {
+    return 1;
+  }
+
+  const read =
+    inputOption === undefined
+      ? { ok: true as const, values: {} }
+      : await readWorkflowInput(inputOption, context.cwd);
+  if (!read.ok) {
+    context.stderr(`${name}: ${read.message}\n`);
+    return 1;
+  }
+  // The workflow validates the input again, but checking it here avoids starting a server.
+  const resolved = resolveWorkflowInput(workflow.intermediate.input, read.values);
+  if (!resolved.ok) {
+    for (const { message, path } of resolved.errors) {
+      context.stderr(`${name}: ${["workflow.input", ...path].join(".")}: ${message}\n`);
+    }
     return 1;
   }
 
@@ -100,6 +121,7 @@ export const run = async (
     const { executedSteps } = await runWorkflow({
       address,
       eventSink: createProgressPrinter(context),
+      input: read.values,
       intermediate: workflow.intermediate,
       name,
       scriptRunner: createLocalScriptRunner({ cwd: workflow.root }),

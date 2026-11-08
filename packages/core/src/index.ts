@@ -1,10 +1,16 @@
 export {
   intermediateSchema,
+  decimalNumberMessage,
+  decimalNumberPattern,
   intermediateVersion,
+  resolveWorkflowInput,
   validateIntermediate,
 } from "./intermediate/index.js";
 export type {
+  InputDeclaration,
   Intermediate,
+  ResolveInputResult,
+  WorkflowInput,
   IntermediateStep,
   Transition,
   ValidationError,

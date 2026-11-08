@@ -38,9 +38,34 @@ const scriptStepSchema = z.strictObject({
 
 const stepSchema = z.discriminatedUnion("type", [scriptStepSchema]);
 
+const inputBase = {
+  description: z.string().optional().describe("Description of the input"),
+  required: z
+    .boolean()
+    .default(false)
+    .describe("Whether the input must be given. It cannot be combined with default"),
+};
+
+// z.number() accepts only finite numbers.
+const inputSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("string"), ...inputBase, default: z.string().optional() }),
+  z.strictObject({ type: z.literal("number"), ...inputBase, default: z.number().optional() }),
+  z.strictObject({ type: z.literal("boolean"), ...inputBase, default: z.boolean().optional() }),
+  z.strictObject({
+    type: z.literal("choice"),
+    ...inputBase,
+    options: z.array(z.string().min(1)).min(1).describe("Values that the input accepts"),
+    default: z.string().optional(),
+  }),
+]);
+
 /** Schema for a workflow definition object, independent of its file format. */
 export const definitionSchema = z.strictObject({
   version: z.literal(definitionVersion),
+  input: z
+    .record(identifierSchema, inputSchema)
+    .optional()
+    .describe("Values that the workflow receives when it starts"),
   start: stepIdSchema,
   steps: z.record(stepIdSchema, stepSchema),
 });

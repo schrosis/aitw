@@ -20,6 +20,7 @@ const intermediate: Intermediate = {
     },
   },
   version: intermediateVersion,
+  input: {},
 };
 
 describe("runWorkflow", () => {
@@ -57,6 +58,38 @@ describe("runWorkflow", () => {
 
     await expect(result).resolves.toEqual({ executedSteps: ["fetch"] });
     expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh"]);
+  }, 60_000);
+
+  it("passes the workflow input", async () => {
+    const requests: ScriptRequest[] = [];
+    await runWorkflow({
+      address: environment.address,
+      input: { title: "hello" },
+      intermediate: {
+        ...intermediate,
+        input: { title: { required: true, type: "string" } },
+        steps: {
+          fetch: {
+            input: { title: "${{ workflow.input.title }}" },
+            next: { type: "end" },
+            output: {},
+            run: "./fetch.sh ${{ input.title }}",
+            timeoutMs: 5000,
+            type: "script",
+          },
+        },
+      },
+      name: "release/notes",
+      scriptRunner: {
+        run: async (request) => {
+          requests.push(request);
+          return { exitCode: 0, signal: null, stderr: "", stdout: "" };
+        },
+      },
+      workflowsPath: fileURLToPath(new URL("./workflows/index.ts", import.meta.url)),
+    });
+
+    expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh hello"]);
   }, 60_000);
 
   it("cancels the workflow and its script when aborted", async () => {

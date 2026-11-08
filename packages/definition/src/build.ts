@@ -16,6 +16,7 @@ const toMilliseconds = (duration: string): number => {
 
 /** Builds the intermediate representation of a definition that passed the schema. */
 export const buildIntermediate = (definition: Definition): Intermediate => ({
+  input: definition.input ?? {},
   start: definition.start,
   steps: Object.fromEntries(
     Object.entries(definition.steps).map(([id, step]) => [

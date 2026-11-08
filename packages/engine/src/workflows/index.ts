@@ -1,5 +1,5 @@
-import { evaluateExpression, validateIntermediate } from "@aitw/core";
-import type { IntermediateStep } from "@aitw/core";
+import { evaluateExpression, resolveWorkflowInput, validateIntermediate } from "@aitw/core";
+import type { IntermediateStep, WorkflowInput } from "@aitw/core";
 import { ApplicationFailure, proxyActivities } from "@temporalio/workflow";
 
 import type { Activities, StepOutput } from "../activities/index.js";
@@ -26,18 +26,23 @@ export interface WorkflowResult {
   executedSteps: string[];
 }
 
-/** Evaluates the input values of a step from the outputs of the steps that ran before it. */
+/**
+ * Evaluates the input values of a step from the workflow input and the outputs of the steps
+ * that ran before it.
+ */
 const evaluateInput = (
   id: string,
   expressions: Readonly<Record<string, string>>,
+  workflowInput: Readonly<WorkflowInput>,
   outputs: Readonly<Record<string, StepOutput>>,
 ): Record<string, unknown> => {
   const steps = Object.fromEntries(
     Object.entries(outputs).map(([stepId, output]) => [stepId, { output }]),
   );
+  const context = { steps, workflow: { input: workflowInput } };
   const input: Record<string, unknown> = {};
   for (const [name, expression] of Object.entries(expressions)) {
-    const evaluated = evaluateExpression(expression, { steps });
+    const evaluated = evaluateExpression(expression, context);
     if (!evaluated.ok) {
       throw ApplicationFailure.nonRetryable(
         `steps.${id}.input.${name}: ${evaluated.message}`,
@@ -64,15 +69,37 @@ const evaluateInput = (
  * The export name is the workflow type that Temporal shows. Renaming it prevents Workers from
  * continuing runs that started with the previous name.
  *
- * The input is validated again because it can be supplied without the definition package.
+ * Both arguments are validated again because they can be supplied without the CLI, such as
+ * from the Temporal Web UI.
+ *
+ * @param intermediate The workflow in the intermediate representation.
+ * @param input Values of the workflow input, keyed by name. Defaults are applied here.
  */
-export const aitw = async (input: unknown): Promise<WorkflowResult> => {
-  const validation = validateIntermediate(input);
+export const aitw = async (intermediate: unknown, input: unknown = {}): Promise<WorkflowResult> => {
+  const validation = validateIntermediate(intermediate);
   if (!validation.ok) {
     throw ApplicationFailure.nonRetryable(
       "Invalid intermediate representation",
       "InvalidIntermediate",
       validation.errors,
+    );
+  }
+
+  const resolved = resolveWorkflowInput(validation.intermediate.input, input);
+  if (!resolved.ok) {
+    throw ApplicationFailure.nonRetryable(
+      resolved.errors
+        .map(({ message, path }) => `${["workflow.input", ...path].join(".")}: ${message}`)
+        .join("\n"),
+      "InvalidInput",
+      resolved.errors,
+    );
+  }
+  const bytes = jsonBytes(resolved.input);
+  if (bytes > maxValueBytes) {
+    throw ApplicationFailure.nonRetryable(
+      `workflow.input is ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
+      "InputTooLarge",
     );
   }
 
@@ -94,7 +121,7 @@ export const aitw = async (input: unknown): Promise<WorkflowResult> => {
       startToCloseTimeout: step.timeoutMs + activityTimeoutGraceMs,
     });
     outputs[id] = await executeScriptStep({
-      input: evaluateInput(id, step.input, outputs),
+      input: evaluateInput(id, step.input, resolved.input, outputs),
       output: step.output,
       run: step.run,
       step: id,

@@ -1,4 +1,5 @@
 import { validateExpressions } from "./expressions.js";
+import { checkInputValue } from "./input.js";
 import { executionOrder } from "./order.js";
 import { intermediateSchema } from "./schema.js";
 import type { Intermediate } from "./schema.js";
@@ -14,6 +15,34 @@ export interface ValidationError {
 export type ValidationResult =
   | { ok: true; intermediate: Intermediate }
   | { ok: false; errors: ValidationError[] };
+
+/** Validates the parts of input declarations that the schema cannot express. */
+const validateInputDeclarations = ({ input }: Intermediate): ValidationError[] =>
+  Object.entries(input).flatMap(([name, declaration]): ValidationError[] => {
+    const path = ["input", name];
+    const errors: ValidationError[] = [];
+    if (declaration.type === "choice") {
+      const duplicate = declaration.options.find(
+        (option, index) => declaration.options.indexOf(option) !== index,
+      );
+      if (duplicate !== undefined) {
+        errors.push({ message: `Duplicate option: ${duplicate}`, path: [...path, "options"] });
+      }
+    }
+    if (declaration.default !== undefined) {
+      if (declaration.required) {
+        errors.push({
+          message: "A required input cannot have a default",
+          path: [...path, "default"],
+        });
+      }
+      const checked = checkInputValue(declaration, declaration.default);
+      if (!checked.ok) {
+        errors.push({ message: checked.message, path: [...path, "default"] });
+      }
+    }
+    return errors;
+  });
 
 const validateTransitions = (intermediate: Intermediate): ValidationError[] => {
   const errors: ValidationError[] = [];
@@ -72,6 +101,10 @@ export const validateIntermediate = (input: unknown): ValidationResult => {
     };
   }
 
-  const errors = [...validateTransitions(result.data), ...validateExpressions(result.data)];
+  const errors = [
+    ...validateInputDeclarations(result.data),
+    ...validateTransitions(result.data),
+    ...validateExpressions(result.data),
+  ];
   return errors.length > 0 ? { errors, ok: false } : { intermediate: result.data, ok: true };
 };

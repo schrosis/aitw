@@ -17,6 +17,7 @@ const intermediate = (start: string, steps: Record<string, string | null>): Inte
   start,
   steps: Object.fromEntries(Object.entries(steps).map(([id, next]) => [id, step(next)])),
   version: intermediateVersion,
+  input: {},
 });
 
 const errorsOf = (input: unknown) => {
@@ -74,6 +75,26 @@ describe("validateIntermediate", () => {
     expect(errorsOf(intermediate("a", { a: null, b: "c", c: "b" }))).toEqual([
       { message: "Step is not reachable from start", path: ["steps", "b"] },
       { message: "Step is not reachable from start", path: ["steps", "c"] },
+    ]);
+  });
+
+  it("rejects input declarations that the schema cannot check", () => {
+    expect(
+      errorsOf({
+        ...intermediate("fetch", { fetch: null }),
+        input: {
+          level: { default: "mid", options: ["low", "low"], required: true, type: "choice" },
+          threshold: { default: 1.5, required: true, type: "number" },
+        },
+      }),
+    ).toEqual([
+      { message: "Duplicate option: low", path: ["input", "level", "options"] },
+      { message: "A required input cannot have a default", path: ["input", "level", "default"] },
+      { message: "Must be one of low, low", path: ["input", "level", "default"] },
+      {
+        message: "A required input cannot have a default",
+        path: ["input", "threshold", "default"],
+      },
     ]);
   });
 });

@@ -13,6 +13,12 @@ export interface CommandContext {
   cwd: string;
   stdout: (text: string) => void;
   stderr: (text: string) => void;
+  /**
+   * Returns the stream that wait steps read answers from.
+   *
+   * It is a function so that commands that do not read it never open standard input.
+   */
+  stdin?: () => NodeJS.ReadableStream;
 }
 
 /** A workflow that passed validation. */

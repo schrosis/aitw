@@ -4,11 +4,23 @@ import {
   resolveWorkflowInput,
   validateIntermediate,
 } from "@aitw/core";
-import type { IntermediateStep, ScriptStep, WorkflowInput } from "@aitw/core";
-import { ApplicationFailure, proxyActivities } from "@temporalio/workflow";
+import type { IntermediateStep, ScriptStep, WaitStep, WorkflowInput } from "@aitw/core";
+import {
+  ApplicationFailure,
+  condition,
+  defineQuery,
+  defineUpdate,
+  proxyActivities,
+  setHandler,
+} from "@temporalio/workflow";
 
 import type { Activities, StepOutput } from "../activities/index.js";
 import { jsonBytes, maxValueBytes } from "../limits.js";
+import { answerUpdateName, waitingQueryName } from "../messages.js";
+import type { Answer, WaitingStep } from "../messages.js";
+
+const waitingQuery = defineQuery<WaitingStep | null>(waitingQueryName);
+const answerUpdate = defineUpdate<void, [Answer]>(answerUpdateName);
 
 /**
  * Extra time that lets a script runner report its own timeout before the activity times out.
@@ -86,6 +98,60 @@ const prepareStep = (id: string, step: ScriptStep, context: SharedContext) => {
   return { inputs, references };
 };
 
+const invalidExpression = (location: string, message: string): ApplicationFailure =>
+  ApplicationFailure.nonRetryable(`${location}: ${message}`, "InvalidExpression");
+
+/** Evaluates every string in a JSON value, such as the options in `with`. */
+const evaluateStrings = (
+  value: unknown,
+  location: string,
+  context: Readonly<Record<string, unknown>>,
+): unknown => {
+  if (typeof value === "string") {
+    const evaluated = evaluateExpression(value, context);
+    if (!evaluated.ok) {
+      throw invalidExpression(location, evaluated.message);
+    }
+    return evaluated.value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item, index) => evaluateStrings(item, `${location}[${index}]`, context));
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        evaluateStrings(item, `${location}.${key}`, context),
+      ]),
+    );
+  }
+  return value;
+};
+
+/** Evaluates the outputs of a wait step from the answers that it received. */
+const evaluateWaitOutputs = (
+  id: string,
+  step: WaitStep,
+  context: Readonly<Record<string, unknown>>,
+): StepOutput => {
+  const output: StepOutput = {};
+  for (const [name, expression] of Object.entries(step.outputs)) {
+    const evaluated = evaluateExpression(expression, context);
+    if (!evaluated.ok) {
+      throw invalidExpression(`steps.${id}.outputs.${name}`, evaluated.message);
+    }
+    output[name] = evaluated.value;
+  }
+  const bytes = jsonBytes(output);
+  if (bytes > maxValueBytes) {
+    throw ApplicationFailure.nonRetryable(
+      `steps.${id}.outputs is ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
+      "OutputTooLarge",
+    );
+  }
+  return output;
+};
+
 /**
  * Executes a workflow in the intermediate representation.
  *
@@ -129,6 +195,45 @@ export const aitw = async (
     );
   }
 
+  // The wait step that waits for an answer, and the answer that it received.
+  let waiting: WaitingStep | null = null;
+  let answer: WorkflowInput | undefined;
+  setHandler(waitingQuery, () => waiting);
+  setHandler(
+    answerUpdate,
+    ({ values }) => {
+      // The validator below has accepted these values, so the resolution succeeds.
+      const accepted = waiting === null ? undefined : resolveWorkflowInput(waiting.answers, values);
+      if (accepted?.ok === true) {
+        answer = accepted.inputs;
+        waiting = null;
+      }
+    },
+    {
+      // A rejected answer leaves no trace in the history, and the caller can answer again.
+      validator: ({ step, values }) => {
+        const current = waiting;
+        if (current === null || current.step !== step) {
+          throw new Error(`Step ${step} is not waiting for an answer`);
+        }
+        const accepted = resolveWorkflowInput(current.answers, values);
+        if (!accepted.ok) {
+          throw new Error(
+            accepted.errors
+              .map(({ message, path }) => `${[step, ...path].join(".")}: ${message}`)
+              .join("\n"),
+          );
+        }
+        const answerBytes = jsonBytes(accepted.inputs);
+        if (answerBytes > maxValueBytes) {
+          throw new Error(
+            `The answer is ${answerBytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
+          );
+        }
+      },
+    },
+  );
+
   const { start, steps } = validation.intermediate;
   const executedSteps: string[] = [];
   // The latest output of each step. Loops will keep every visit (B10b).
@@ -140,31 +245,53 @@ export const aitw = async (
     if (step === undefined) {
       throw ApplicationFailure.nonRetryable(`Unknown step: ${id}`, "InvalidIntermediate");
     }
-    if (step.type === "wait") {
-      throw ApplicationFailure.nonRetryable(
-        `steps.${id}: Wait steps are not supported yet`,
-        "UnsupportedStep",
-      );
-    }
-
-    const { executeScriptStep } = proxyActivities<Activities>({
-      heartbeatTimeout: activityHeartbeatTimeoutMs,
-      retry: { maximumAttempts: 1 },
-      startToCloseTimeout: step.timeoutMs + activityTimeoutGraceMs,
-    });
     const context: SharedContext = {
       steps: Object.fromEntries(
         Object.entries(outputs).map(([stepId, output]) => [stepId, { outputs: output }]),
       ),
       workflow: { inputs: resolved.inputs },
     };
-    outputs[id] = await executeScriptStep({
-      ...prepareStep(id, step, context),
-      outputs: step.outputs,
-      run: step.run,
-      step: id,
-      timeoutMs: step.timeoutMs,
-    });
+
+    if (step.type === "wait") {
+      if (step.answers === undefined) {
+        throw ApplicationFailure.nonRetryable(
+          `steps.${id}: Wait method ${step.method} does not describe its answers, which is not supported yet`,
+          "UnsupportedStep",
+        );
+      }
+      const stepInputs = evaluateInput(id, step.inputs, context);
+      const options = evaluateStrings(step.with, `steps.${id}.with`, {
+        ...context,
+        inputs: stepInputs,
+      });
+      waiting = {
+        answers: step.answers,
+        method: step.method,
+        options: typeof options === "object" && options !== null ? { ...options } : {},
+        step: id,
+      };
+      answer = undefined;
+      // Cancelling the workflow interrupts the wait.
+      await condition(() => answer !== undefined);
+      outputs[id] = evaluateWaitOutputs(id, step, {
+        ...context,
+        inputs: stepInputs,
+        result: answer,
+      });
+    } else {
+      const { executeScriptStep } = proxyActivities<Activities>({
+        heartbeatTimeout: activityHeartbeatTimeoutMs,
+        retry: { maximumAttempts: 1 },
+        startToCloseTimeout: step.timeoutMs + activityTimeoutGraceMs,
+      });
+      outputs[id] = await executeScriptStep({
+        ...prepareStep(id, step, context),
+        outputs: step.outputs,
+        run: step.run,
+        step: id,
+        timeoutMs: step.timeoutMs,
+      });
+    }
     executedSteps.push(id);
 
     id = step.next.type === "step" ? step.next.step : null;

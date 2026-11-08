@@ -1,13 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
-import type { EventSink, Intermediate, ScriptRunner } from "@aitw/core";
+import { createPluginRegistry } from "@aitw/core";
+import type { EventSink, Intermediate, PluginRegistry, ScriptRunner } from "@aitw/core";
 import { Client, Connection } from "@temporalio/client";
 import { DefaultLogger, NativeConnection, Runtime, Worker } from "@temporalio/worker";
 import type { LogLevel } from "@temporalio/worker";
 
 import { createActivities } from "./activities/index.js";
+import { answerWaits } from "./answer.js";
 import type { aitw, WorkflowResult } from "./workflows/index.js";
+
+const discardEvents: EventSink = { emit: () => {} };
 
 /** Path of the built workflow code that a Worker bundles. */
 export const workflowsPath = fileURLToPath(new URL("./workflows.js", import.meta.url));
@@ -58,6 +62,8 @@ export interface RunWorkflowOptions {
   workflowsPath?: string;
   /** Cancels the workflow, including its running script, when aborted. */
   signal?: AbortSignal;
+  /** Plugins whose wait methods answer the wait steps of the run. */
+  plugins?: PluginRegistry;
 }
 
 /**
@@ -72,6 +78,7 @@ export const runWorkflow = async ({
   intermediate,
   name,
   namespace = "default",
+  plugins = createPluginRegistry(),
   scriptRunner,
   signal,
   workflowsPath: path = workflowsPath,
@@ -107,10 +114,34 @@ export const runWorkflow = async ({
           cancel();
         }
         signal?.addEventListener("abort", cancel, { once: true });
+        // Stops answering when the run ends or is interrupted.
+        const answering = new AbortController();
+        const stopAnswering = (): void => answering.abort();
+        signal?.addEventListener("abort", stopAnswering, { once: true });
+        // A wait step that cannot be answered would wait forever, so the run is cancelled and
+        // reports why it could not be answered.
+        let answerFailure: { error: unknown } | undefined;
+        const answered = answerWaits({
+          eventSink: eventSink ?? discardEvents,
+          handle,
+          plugins,
+          signal: answering.signal,
+        }).catch((error: unknown) => {
+          // An interrupt also stops answering, and the result reports the cancellation.
+          if (!answering.signal.aborted) {
+            answerFailure = { error };
+            cancel();
+          }
+        });
         try {
           return await handle.result();
+        } catch (error) {
+          throw answerFailure === undefined ? error : answerFailure.error;
         } finally {
+          answering.abort();
+          await answered;
           signal?.removeEventListener("abort", cancel);
+          signal?.removeEventListener("abort", stopAnswering);
         }
       });
     } finally {

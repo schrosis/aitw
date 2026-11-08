@@ -8,6 +8,9 @@ const formatDuration = (durationMs: number): string => `${(durationMs / 1000).to
 /** Formats the start or the end of a step as lines for the terminal. */
 export const formatStepEvent = (event: StepEvent): string => {
   if (event.type === "stepStarted") {
+    if (event.run === undefined) {
+      return `▶ ${event.step}\n`;
+    }
     const run = event.run.endsWith("\n") ? event.run : `${event.run}\n`;
     return `▶ ${event.step}\n${run}`;
   }

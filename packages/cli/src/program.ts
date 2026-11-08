@@ -76,6 +76,7 @@ const processContext = (): ProgramContext => ({
     process.exitCode = code;
   },
   stderr: (text) => process.stderr.write(text),
+  stdin: () => process.stdin,
   stdout: (text) => process.stdout.write(text),
 });
 

@@ -24,6 +24,7 @@ const intermediate: Intermediate = {
   start: "fetch",
   steps: { fetch: step("./fetch.sh", "report"), report: step("./report.sh", null) },
   version: intermediateVersion,
+  input: {},
 };
 
 describe("aitw", () => {
@@ -43,6 +44,7 @@ describe("aitw", () => {
     input: unknown,
     exitCodes: Record<string, number> = {},
     stdouts: Record<string, string> = {},
+    workflowInput?: unknown,
   ) => {
     const requests: ScriptRequest[] = [];
     const taskQueue = randomUUID();
@@ -68,7 +70,11 @@ describe("aitw", () => {
 
     const result = await worker.runUntil(
       environment.client.workflow
-        .execute(aitw, { args: [input], taskQueue, workflowId: randomUUID() })
+        .execute(aitw, {
+          args: workflowInput === undefined ? [input] : [input, workflowInput],
+          taskQueue,
+          workflowId: randomUUID(),
+        })
         .then(
           (value) => ({ ok: true as const, value }),
           (error: unknown) => ({ error, ok: false as const }),
@@ -216,6 +222,56 @@ describe("aitw", () => {
 
     expect(result).toMatchObject({ error: { cause: { type: "InvalidIntermediate" } }, ok: false });
     expect(requests).toEqual([]);
+  }, 60_000);
+
+  const withWorkflowInput: Intermediate = {
+    ...intermediate,
+    input: {
+      level: { options: ["low", "high"], required: true, type: "choice" },
+      note: { required: false, type: "string" },
+      threshold: { default: 1.5, required: false, type: "number" },
+    },
+    steps: {
+      fetch: {
+        ...step('./fetch.sh "${{ input.threshold }}" "${{ input.note }}"', null),
+        input: {
+          level: "${{ workflow.input.level }}",
+          note: "${{ workflow.input.note }}",
+          threshold: "${{ workflow.input.threshold }}",
+        },
+      },
+    },
+  };
+
+  it("passes the workflow input to steps with defaults applied", async () => {
+    const { requests, result } = await run(withWorkflowInput, {}, {}, { level: "high" });
+
+    expect(result).toEqual({ ok: true, value: { executedSteps: ["fetch"] } });
+    expect(requests).toEqual([
+      {
+        input: { level: "high", note: null, threshold: 1.5 },
+        run: './fetch.sh "1.5" ""',
+        timeoutMs: 5000,
+      },
+    ]);
+  }, 60_000);
+
+  it("rejects invalid workflow input before running any step", async () => {
+    const { requests, result } = await run(withWorkflowInput, {}, {}, { level: "mid" });
+
+    expect(result).toMatchObject({
+      error: {
+        cause: { message: "workflow.input.level: Must be one of low, high", type: "InvalidInput" },
+      },
+      ok: false,
+    });
+    expect(requests).toEqual([]);
+  }, 60_000);
+
+  it("rejects missing required workflow input when started without it", async () => {
+    const { result } = await run(withWorkflowInput);
+
+    expect(result).toMatchObject({ error: { cause: { type: "InvalidInput" } }, ok: false });
   }, 60_000);
 
   it("rejects an invalid intermediate representation", async () => {

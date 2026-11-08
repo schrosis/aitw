@@ -1,0 +1,22 @@
+version: v0.1
+input:
+  threshold:
+    type: number
+    description: Minimum score to report
+    default: 1.5
+  level:
+    type: choice
+    options: [low, high]
+    required: true
+  note:
+    type: string
+start: report
+steps:
+  report:
+    type: script
+    input:
+      threshold: ${{ workflow.input.threshold }}
+      level: ${{ workflow.input.level }}
+      note: ${{ workflow.input.note }}
+    run: echo "threshold=${{ input.threshold }} level=${{ input.level }} note=[${{ input.note }}]"
+    next: end

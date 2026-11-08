@@ -26,7 +26,8 @@ const resolve = (context: Readonly<Record<string, unknown>>, path: readonly stri
 /**
  * Converts a value to the string that a template embeds.
  *
- * Strings are kept as they are, and objects and arrays are converted to JSON.
+ * Strings are kept as they are, `null` becomes an empty string, and objects and arrays are
+ * converted to JSON.
  *
  * @throws When the value cannot be converted to JSON, such as a BigInt.
  */
@@ -34,7 +35,11 @@ export const embedValue = (value: unknown): string => {
   if (typeof value === "string") {
     return value;
   }
-  if (typeof value === "number" || typeof value === "boolean" || value === null) {
+  // A workflow input that is not given is null, and embeds like a missing value in a shell.
+  if (value === null) {
+    return "";
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
   }
   // JSON.stringify throws on values such as BigInt and circular references.

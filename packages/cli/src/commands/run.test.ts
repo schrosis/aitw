@@ -21,11 +21,12 @@ describe("run", () => {
     name: string,
     signal = new AbortController().signal,
     onStdout: (text: string) => void = () => {},
+    input?: string,
   ) => {
     const output = createOutput();
     const exitCode = await run(
       name,
-      { server: { address: environment.address, type: "address" }, signal },
+      { input, server: { address: environment.address, type: "address" }, signal },
       {
         cwd: fixtureProject,
         stderr: output.stderr,
@@ -61,6 +62,44 @@ describe("run", () => {
 
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
     expect(result.stdout).toContain('test "hello" = hello && echo "title=hello"\ntitle=hello\n');
+  }, 60_000);
+
+  it("passes the workflow input with defaults applied", async () => {
+    const result = await execute("run-input", undefined, undefined, '{"level": "high"}');
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(result.stdout).toContain("threshold=1.5 level=high note=[]\n");
+  }, 60_000);
+
+  it("reports invalid workflow input without starting the workflow", async () => {
+    await expect(
+      execute("run-input", undefined, undefined, '{"level": "mid", "extra": 1}'),
+    ).resolves.toEqual({
+      exitCode: 1,
+      stderr:
+        "run-input: workflow.input.extra: Unknown input\nrun-input: workflow.input.level: Must be one of low, high\n",
+      stdout: "",
+    });
+  }, 60_000);
+
+  it("rejects workflow input over the size limit without starting the workflow", async () => {
+    const note = "x".repeat(600 * 1024);
+    await expect(
+      execute("run-input", undefined, undefined, JSON.stringify({ level: "high", note })),
+    ).resolves.toEqual({
+      exitCode: 1,
+      stderr: expect.stringMatching(
+        /^run-input: workflow\.input is \d+ bytes, which exceeds the limit of 524288 bytes\n$/u,
+      ) as unknown,
+      stdout: "",
+    });
+  }, 60_000);
+
+  it("reports unreadable workflow input", async () => {
+    await expect(execute("run-input", undefined, undefined, "input.yaml")).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: "run-input: --input must be a JSON object or the path of a .json file: input.yaml\n",
+    });
   }, 60_000);
 
   it("reports a failed script", async () => {

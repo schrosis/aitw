@@ -103,13 +103,14 @@ export const createProgram = (context: ProgramContext = processContext()) => {
         .default("localhost:7233")
         .conflicts("dev"),
     )
+    .option("--input <json-or-file>", "workflow input as a JSON object or the path of a .json file")
     .option("--dev", "start a temporary Temporal development server for this run")
     .option("--dev-db <path>", "keep the state of the development server in a SQLite file")
     .option(
       "--temporal-bin <path>",
       "Temporal CLI to start the development server with, as a path or a name in PATH",
     )
-    .action(async (workflow, { address, dev, devDb, temporalBin }, command) => {
+    .action(async (workflow, { address, dev, devDb, input, temporalBin }, command) => {
       if (!dev && (devDb !== undefined || temporalBin !== undefined)) {
         command.error("error: --dev-db and --temporal-bin require --dev");
       }
@@ -118,7 +119,11 @@ export const createProgram = (context: ProgramContext = processContext()) => {
         ? { dbFilename: devDb, temporalBin, type: "dev" }
         : { address, type: "address" };
       context.setExitCode(
-        await run(workflow, { prepareEngine: context.prepareEngine, server, signal }, context),
+        await run(
+          workflow,
+          { input, prepareEngine: context.prepareEngine, server, signal },
+          context,
+        ),
       );
     });
 

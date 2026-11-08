@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { evaluateExpression, parseTemplate } from "./index.ts";
 
 const context = {
-  input: { count: 3, title: "hello" },
+  input: { absent: null, count: 3, title: "hello" },
   result: { exitCode: 0, stdout: "out" },
   steps: { fetch: { output: { flag: true, items: ["a"], title: "hello" } } },
 };
@@ -69,6 +69,14 @@ describe("evaluateExpression", () => {
     expect(evaluateExpression("items: ${{ steps.fetch.output.items }}", context)).toEqual({
       ok: true,
       value: 'items: ["a"]',
+    });
+  });
+
+  it("keeps null for a single reference and embeds it as an empty string", () => {
+    expect(evaluateExpression("${{ input.absent }}", context)).toEqual({ ok: true, value: null });
+    expect(evaluateExpression("[${{ input.absent }}]", context)).toEqual({
+      ok: true,
+      value: "[]",
     });
   });
 

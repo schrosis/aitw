@@ -1,4 +1,5 @@
 import { isAlias, isMap, isNode, isScalar, isSeq, LineCounter, parseDocument, visit } from "yaml";
+import { decimalNumberMessage, decimalNumberPattern } from "@aitw/core";
 import type { z } from "zod";
 
 import { definitionSchema } from "./schema.js";
@@ -57,6 +58,44 @@ const findAliasErrors = (
   });
 
   return errors;
+};
+
+/**
+ * Finds defaults of number inputs written in a notation other than plain decimals.
+ *
+ * YAML also reads numbers such as `1e3`, `0x10`, and `.inf`, which the parsed value no longer
+ * shows.
+ */
+const findNumberNotationErrors = (
+  document: DefinitionDocument,
+  lineCounter: LineCounter,
+): DefinitionError[] => {
+  const inputs = isMap(document.contents) ? document.contents.get("input") : undefined;
+  if (!isMap(inputs)) {
+    return [];
+  }
+  return inputs.items.flatMap(({ key, value }): DefinitionError[] => {
+    if (!isMap(value) || value.get("type") !== "number") {
+      return [];
+    }
+    const defaultValue = value.get("default", true);
+    if (
+      !isScalar(key) ||
+      !isScalar(defaultValue) ||
+      typeof defaultValue.value !== "number" ||
+      decimalNumberPattern.test(defaultValue.source ?? "")
+    ) {
+      return [];
+    }
+    return [
+      createError(
+        lineCounter,
+        defaultValue.range?.[0] ?? 0,
+        ["input", String(key.value), "default"],
+        decimalNumberMessage,
+      ),
+    ];
+  });
 };
 
 /** Finds the source offset of a path, falling back to its closest existing parent. */
@@ -138,10 +177,19 @@ export const parseDefinition = (source: string): ParseResult => {
     return { errors: aliasErrors, ok: false };
   }
 
+  const numberErrors = findNumberNotationErrors(document, lineCounter);
   const result = definitionSchema.safeParse(document.toJS() as unknown);
-  if (!result.success) {
+  if (!result.success || numberErrors.length > 0) {
     return {
-      errors: result.error.issues.flatMap((issue) => convertIssue(issue, document, lineCounter)),
+      errors: [
+        ...numberErrors,
+        // A number notation error already explains why its value fails the schema.
+        ...(
+          result.error?.issues.flatMap((issue) => convertIssue(issue, document, lineCounter)) ?? []
+        ).filter(
+          ({ path }) => !numberErrors.some((error) => error.path.join(".") === path.join(".")),
+        ),
+      ],
       ok: false,
     };
   }

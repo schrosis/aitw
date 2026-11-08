@@ -32,7 +32,8 @@ const checkExpression = (
 /**
  * Validates the `${{ }}` references of every step.
  *
- * - `input` can read the declared output of a step that runs before it
+ * - `input` can read the declared output of a step that runs before it, and the declared
+ *   input of the workflow
  * - `run` can read the declared input of its own step
  * - `output` can read `exitCode`, `stdout`, and `stderr` of the script result
  */
@@ -54,6 +55,14 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
           expression,
           ["steps", id, "input", name],
           ([root, source, field, key, ...rest]) => {
+            if (root === "workflow" && source === "input" && field !== undefined) {
+              if (key !== undefined) {
+                return "Input cannot reference a field of a workflow input value";
+              }
+              return Object.hasOwn(intermediate.input, field)
+                ? undefined
+                : `The workflow does not declare the input ${field}`;
+            }
             if (
               root !== "steps" ||
               field !== "output" ||
@@ -61,7 +70,7 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
               key === undefined ||
               rest.length > 0
             ) {
-              return "Input can reference only steps.<id>.output.<name>";
+              return "Input can reference only steps.<id>.output.<name> or workflow.input.<name>";
             }
             if (!earlier.has(source)) {
               return `Step ${source} does not run before ${id}`;

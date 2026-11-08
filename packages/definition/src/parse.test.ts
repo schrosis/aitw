@@ -157,4 +157,52 @@ steps:
       ok: false,
     });
   });
+
+  it("reads input declarations with their defaults", () => {
+    const source = validSource.replace(
+      "start: fetch",
+      "input:\n  threshold:\n    type: number\n    default: -1.5\n  level:\n    type: choice\n    options: [low, high]\n    required: true\nstart: fetch",
+    );
+
+    expect(parseDefinition(source)).toMatchObject({
+      definition: {
+        input: {
+          level: { options: ["low", "high"], required: true, type: "choice" },
+          threshold: { default: -1.5, required: false, type: "number" },
+        },
+      },
+      ok: true,
+    });
+  });
+
+  it("reports a number default of a string input as a type error", () => {
+    const source = validSource.replace(
+      "start: fetch",
+      "input:\n  title:\n    type: string\n    default: 1e3\nstart: fetch",
+    );
+
+    expect(parseDefinition(source)).toMatchObject({
+      errors: [{ message: expect.stringContaining("expected string") as unknown }],
+      ok: false,
+    });
+  });
+
+  it.each(["1e3", "0x10", ".inf", ".nan", "+1"])("rejects the number notation %s", (value) => {
+    const source = validSource.replace(
+      "start: fetch",
+      `input:\n  threshold:\n    type: number\n    default: ${value}\nstart: fetch`,
+    );
+
+    expect(parseDefinition(source)).toMatchObject({
+      errors: [
+        {
+          column: 14,
+          line: 5,
+          message: expect.stringContaining("without exponent notation") as unknown,
+          path: ["input", "threshold", "default"],
+        },
+      ],
+      ok: false,
+    });
+  });
 });

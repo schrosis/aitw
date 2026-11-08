@@ -11,6 +11,7 @@
     { "path": "../core" },
     { "path": "../definition" },
     { "path": "../engine" },
-    { "path": "../adapter-script-local" }
+    { "path": "../adapter-script-local" },
+    { "path": "../adapter-wait-terminal" }
   ]
 }

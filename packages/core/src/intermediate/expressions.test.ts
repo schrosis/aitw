@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { intermediateVersion } from "./schema.ts";
-import type { InputDeclaration, Intermediate, IntermediateStep } from "./schema.ts";
+import type { InputDeclaration } from "./declarations.ts";
+import type { Intermediate, ScriptStep } from "./schema.ts";
 import { validateIntermediate } from "./validate.ts";
 
-const step = (fields: Partial<IntermediateStep>, next: string | null): IntermediateStep => ({
+const step = (fields: Partial<ScriptStep>, next: string | null): ScriptStep => ({
   inputs: {},
   next: next === null ? { type: "end" } : { step: next, type: "step" },
   outputs: {},
@@ -14,10 +15,7 @@ const step = (fields: Partial<IntermediateStep>, next: string | null): Intermedi
   ...fields,
 });
 
-const workflow = (
-  report: Partial<IntermediateStep>,
-  fetch: Partial<IntermediateStep> = {},
-): Intermediate => ({
+const workflow = (report: Partial<ScriptStep>, fetch: Partial<ScriptStep> = {}): Intermediate => ({
   inputs: {},
   start: "fetch",
   steps: {

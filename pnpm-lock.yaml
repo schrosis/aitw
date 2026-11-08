@@ -234,11 +234,27 @@ importers:
         specifier: 'catalog:'
         version: 26.6.6
 
+  packages/adapter-wait-terminal:
+    dependencies:
+      '@aitw/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.6
+
   packages/cli:
     dependencies:
       '@aitw/adapter-script-local':
         specifier: workspace:*
         version: link:../adapter-script-local
+      '@aitw/adapter-wait-terminal':
+        specifier: workspace:*
+        version: link:../adapter-wait-terminal
       '@aitw/core':
         specifier: workspace:*
         version: link:../core

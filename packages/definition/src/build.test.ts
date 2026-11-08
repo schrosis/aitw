@@ -55,6 +55,11 @@ describe("toDefinitionPath", () => {
   it("maps renamed fields", () => {
     expect(toDefinitionPath(["steps", "a", "timeoutMs"])).toEqual(["steps", "a", "timeout"]);
     expect(toDefinitionPath(["steps", "a", "next", "step"])).toEqual(["steps", "a", "next"]);
+    expect(toDefinitionPath(["steps", "a", "answers", "name", "default"])).toEqual([
+      "steps",
+      "a",
+      "with",
+    ]);
   });
 
   it("keeps step IDs that match field names", () => {

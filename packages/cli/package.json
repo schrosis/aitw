@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@aitw/adapter-script-local": "workspace:*",
+    "@aitw/adapter-wait-terminal": "workspace:*",
     "@aitw/core": "workspace:*",
     "@aitw/definition": "workspace:*",
     "@aitw/engine": "workspace:*",

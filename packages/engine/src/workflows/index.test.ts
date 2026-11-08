@@ -362,6 +362,26 @@ describe("aitw", () => {
     expect(result).toMatchObject({ error: { cause: { type: "InvalidInput" } }, ok: false });
   }, 60_000);
 
+  it("rejects a wait step until it is supported", async () => {
+    const { requests, result } = await run({
+      ...intermediate,
+      steps: {
+        ...intermediate.steps,
+        fetch: {
+          inputs: {},
+          method: "terminal",
+          next: { step: "report", type: "step" },
+          outputs: {},
+          type: "wait",
+          with: { message: "Continue?" },
+        },
+      },
+    });
+
+    expect(result).toMatchObject({ error: { cause: { type: "UnsupportedStep" } }, ok: false });
+    expect(requests).toEqual([]);
+  }, 60_000);
+
   it("rejects an invalid intermediate representation", async () => {
     const { requests, result } = await run({ ...intermediate, start: "missing" });
 

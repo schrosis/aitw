@@ -1,4 +1,4 @@
-import type { InputDeclaration } from "./schema.js";
+import type { InputDeclaration } from "./declarations.js";
 import type { ValidationError } from "./validate.js";
 
 /**

@@ -45,7 +45,9 @@ describe("definitionSchema", () => {
   });
 
   it("applies the default timeout", () => {
-    expect(definitionSchema.parse(validDefinition).steps.report?.timeout).toBe(defaultStepTimeout);
+    expect(definitionSchema.parse(validDefinition).steps.report).toMatchObject({
+      timeout: defaultStepTimeout,
+    });
   });
 
   it("accepts end as a transition target", () => {
@@ -101,6 +103,7 @@ describe("createDefinitionJsonSchema", () => {
                 },
                 required: ["type", "run", "next"],
               },
+              { required: ["type", "method", "next"] },
             ],
           },
         },

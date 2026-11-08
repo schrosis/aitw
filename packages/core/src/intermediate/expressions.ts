@@ -4,7 +4,24 @@ import type { Intermediate } from "./schema.js";
 import type { ValidationError } from "./validate.js";
 
 /** Fields of the script result that `outputs` can read. */
-const resultFields = new Set(["exitCode", "stdout", "stderr"]);
+const scriptResultFields: ReadonlySet<string> = new Set(["exitCode", "stdout", "stderr"]);
+
+/** Returns every string in a JSON value with its path, such as the strings of `with`. */
+const stringLeaves = (
+  value: unknown,
+  path: (number | string)[],
+): { path: (number | string)[]; text: string }[] => {
+  if (typeof value === "string") {
+    return [{ path, text: value }];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => stringLeaves(item, [...path, index]));
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.entries(value).flatMap(([key, item]) => stringLeaves(item, [...path, key]));
+  }
+  return [];
+};
 
 /**
  * Checks a field that may contain `${{ }}` references.
@@ -33,8 +50,11 @@ const checkExpression = (
 interface Scope {
   /** Whether the field can read the declared input of its own step. */
   inputs: boolean;
-  /** Whether the field can read the script result. */
-  result: boolean;
+  /**
+   * Fields of the result that the field can read. `any` allows every field, for a wait method
+   * whose result is known only when it runs.
+   */
+  result?: ReadonlySet<string> | "any";
 }
 
 const describeScope = ({ inputs, result }: Scope): string => {
@@ -42,7 +62,9 @@ const describeScope = ({ inputs, result }: Scope): string => {
     "steps.<id>.outputs.<name>",
     "workflow.inputs.<name>",
     ...(inputs ? ["inputs.<name>"] : []),
-    ...(result ? ["result.exitCode", "result.stdout", "result.stderr"] : []),
+    ...(result === "any"
+      ? ["result.<name>"]
+      : [...(result ?? [])].map((field) => `result.${field}`)),
   ];
   return `${references.slice(0, -1).join(", ")}, or ${references.at(-1) ?? ""}`;
 };
@@ -51,8 +73,9 @@ const describeScope = ({ inputs, result }: Scope): string => {
  * Validates the `${{ }}` references of every step.
  *
  * Every field can read the declared output of a step that runs before it, and the declared
- * input of the workflow. In addition, `run` and `outputs` can read the declared inputs of their
- * own step, and `outputs` can read `exitCode`, `stdout`, and `stderr` of the script result.
+ * input of the workflow. In addition, `run`, the strings of `with`, and `outputs` can read the
+ * declared inputs of their own step. `outputs` can read the result: `exitCode`, `stdout`, and
+ * `stderr` of a script, or the declared answers of a wait step.
  */
 export const validateExpressions = (intermediate: Intermediate): ValidationError[] => {
   const order = executionOrder(intermediate);
@@ -99,30 +122,42 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
           }
           return second === undefined ? undefined : "Cannot reference a field of an input value";
         }
-        if (root === "result" && scope.result && first !== undefined) {
-          return resultFields.has(first) && second === undefined ? undefined : unsupported;
+        if (root === "result" && scope.result !== undefined && first !== undefined) {
+          if (scope.result === "any") {
+            return undefined;
+          }
+          if (step.type === "wait" && !scope.result.has(first)) {
+            return `Step ${id} does not declare the answer ${first}`;
+          }
+          return scope.result.has(first) && second === undefined ? undefined : unsupported;
         }
         return unsupported;
       };
 
     for (const [name, expression] of Object.entries(step.inputs)) {
       errors.push(
-        ...checkExpression(
-          expression,
-          ["steps", id, "inputs", name],
-          check({ inputs: false, result: false }),
-        ),
+        ...checkExpression(expression, ["steps", id, "inputs", name], check({ inputs: false })),
       );
     }
-    errors.push(
-      ...checkExpression(step.run, ["steps", id, "run"], check({ inputs: true, result: false })),
-    );
+    if (step.type === "script") {
+      errors.push(...checkExpression(step.run, ["steps", id, "run"], check({ inputs: true })));
+    } else {
+      for (const { path, text } of stringLeaves(step.with, ["steps", id, "with"])) {
+        errors.push(...checkExpression(text, path, check({ inputs: true })));
+      }
+    }
+    const result =
+      step.type === "script"
+        ? scriptResultFields
+        : step.answers === undefined
+          ? "any"
+          : new Set(Object.keys(step.answers));
     for (const [name, expression] of Object.entries(step.outputs)) {
       errors.push(
         ...checkExpression(
           expression,
           ["steps", id, "outputs", name],
-          check({ inputs: true, result: true }),
+          check({ inputs: true, result }),
         ),
       );
     }

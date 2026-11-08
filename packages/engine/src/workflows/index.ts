@@ -4,7 +4,7 @@ import {
   resolveWorkflowInput,
   validateIntermediate,
 } from "@aitw/core";
-import type { IntermediateStep, WorkflowInput } from "@aitw/core";
+import type { IntermediateStep, ScriptStep, WorkflowInput } from "@aitw/core";
 import { ApplicationFailure, proxyActivities } from "@temporalio/workflow";
 
 import type { Activities, StepOutput } from "../activities/index.js";
@@ -67,7 +67,7 @@ const evaluateInput = (
  * The step receives only the shared values that its `run` and `outputs` reference, so that the
  * history does not store every value of the workflow again for each step.
  */
-const prepareStep = (id: string, step: IntermediateStep, context: SharedContext) => {
+const prepareStep = (id: string, step: ScriptStep, context: SharedContext) => {
   const inputs = evaluateInput(id, step.inputs, context);
   const references = pickReferences(
     [step.run, ...Object.values(step.outputs)],
@@ -139,6 +139,12 @@ export const aitw = async (
     const step: IntermediateStep | undefined = steps[id];
     if (step === undefined) {
       throw ApplicationFailure.nonRetryable(`Unknown step: ${id}`, "InvalidIntermediate");
+    }
+    if (step.type === "wait") {
+      throw ApplicationFailure.nonRetryable(
+        `steps.${id}: Wait steps are not supported yet`,
+        "UnsupportedStep",
+      );
     }
 
     const { executeScriptStep } = proxyActivities<Activities>({

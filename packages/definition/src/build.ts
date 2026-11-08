@@ -1,5 +1,5 @@
 import { intermediateVersion } from "@aitw/core";
-import type { Intermediate } from "@aitw/core";
+import type { InputDeclaration, Intermediate, IntermediateStep } from "@aitw/core";
 
 import type { Definition } from "./schema.js";
 
@@ -14,22 +14,48 @@ const toMilliseconds = (duration: string): number => {
   return Number(duration.slice(0, -1)) * unit;
 };
 
-/** Builds the intermediate representation of a definition that passed the schema. */
-export const buildIntermediate = (definition: Definition): Intermediate => ({
+/** Answers of the wait steps, keyed by step ID, as their methods describe them. */
+export type WaitAnswers = Readonly<
+  Record<string, Readonly<Record<string, InputDeclaration>> | undefined>
+>;
+
+const buildStep = (
+  id: string,
+  step: Definition["steps"][string],
+  answers: WaitAnswers,
+): IntermediateStep => {
+  const common = {
+    inputs: step.inputs ?? {},
+    next:
+      step.next === "end" ? { type: "end" as const } : { step: step.next, type: "step" as const },
+    outputs: step.outputs ?? {},
+  };
+  if (step.type === "script") {
+    return { ...common, run: step.run, timeoutMs: toMilliseconds(step.timeout), type: "script" };
+  }
+  const stepAnswers = answers[id];
+  return {
+    ...common,
+    ...(stepAnswers === undefined ? {} : { answers: { ...stepAnswers } }),
+    method: step.method,
+    type: "wait",
+    with: step.with ?? {},
+  };
+};
+
+/**
+ * Builds the intermediate representation of a definition that passed the schema.
+ *
+ * @param answers Answers of the wait steps, which come from their methods.
+ */
+export const buildIntermediate = (
+  definition: Definition,
+  answers: WaitAnswers = {},
+): Intermediate => ({
   inputs: definition.inputs ?? {},
   start: definition.start,
   steps: Object.fromEntries(
-    Object.entries(definition.steps).map(([id, step]) => [
-      id,
-      {
-        inputs: step.inputs ?? {},
-        next: step.next === "end" ? { type: "end" } : { step: step.next, type: "step" },
-        outputs: step.outputs ?? {},
-        run: step.run,
-        timeoutMs: toMilliseconds(step.timeout),
-        type: step.type,
-      },
-    ]),
+    Object.entries(definition.steps).map(([id, step]) => [id, buildStep(id, step, answers)]),
   ),
   version: intermediateVersion,
 });
@@ -46,6 +72,10 @@ export const toDefinitionPath = (path: readonly (number | string)[]): (number | 
   // A transition is written as a single value in a definition.
   if (field === "next") {
     return [root, id ?? "", field];
+  }
+  // Answers come from with, in a form that only the method knows.
+  if (field === "answers") {
+    return [root, id ?? "", "with"];
   }
   return [root, id ?? "", definitionFields[field] ?? field, ...rest];
 };

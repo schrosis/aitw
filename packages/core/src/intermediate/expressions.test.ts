@@ -5,9 +5,9 @@ import type { InputDeclaration, Intermediate, IntermediateStep } from "./schema.
 import { validateIntermediate } from "./validate.ts";
 
 const step = (fields: Partial<IntermediateStep>, next: string | null): IntermediateStep => ({
-  input: {},
+  inputs: {},
   next: next === null ? { type: "end" } : { step: next, type: "step" },
-  output: {},
+  outputs: {},
   run: "./run.sh",
   timeoutMs: 1000,
   type: "script",
@@ -18,10 +18,10 @@ const workflow = (
   report: Partial<IntermediateStep>,
   fetch: Partial<IntermediateStep> = {},
 ): Intermediate => ({
-  input: {},
+  inputs: {},
   start: "fetch",
   steps: {
-    fetch: step({ output: { title: "${{ result.stdout }}" }, ...fetch }, "report"),
+    fetch: step({ outputs: { title: "${{ result.stdout }}" }, ...fetch }, "report"),
     report: step(report, null),
   },
   version: intermediateVersion,
@@ -30,16 +30,16 @@ const workflow = (
 const level: InputDeclaration = { options: ["low"], required: false, type: "choice" };
 
 /** A workflow whose report step has the given field, with a declared workflow input. */
-const withField = (field: "input" | "output" | "run", expression: string): Intermediate => ({
+const withField = (field: "inputs" | "outputs" | "run", expression: string): Intermediate => ({
   ...workflow(
     field === "run"
-      ? { input: { title: "${{ steps.fetch.output.title }}" }, run: expression }
-      : { input: { title: "${{ steps.fetch.output.title }}" }, [field]: { value: expression } },
+      ? { inputs: { title: "${{ steps.fetch.outputs.title }}" }, run: expression }
+      : { inputs: { title: "${{ steps.fetch.outputs.title }}" }, [field]: { value: expression } },
   ),
-  input: { level },
+  inputs: { level },
 });
 
-const pathOf = (field: "input" | "output" | "run"): string[] =>
+const pathOf = (field: "inputs" | "outputs" | "run"): string[] =>
   field === "run" ? ["steps", "report", "run"] : ["steps", "report", field, "value"];
 
 const errorsOf = (intermediate: Intermediate) => {
@@ -52,16 +52,16 @@ describe("validateIntermediate expressions", () => {
     expect(
       errorsOf(
         workflow({
-          input: { title: "${{ steps.fetch.output.title }}" },
-          output: { code: "${{ result.exitCode }}", log: "[${{ result.stderr }}]" },
-          run: './report.sh "${{ input.title }}"',
+          inputs: { title: "${{ steps.fetch.outputs.title }}" },
+          outputs: { code: "${{ result.exitCode }}", log: "[${{ result.stderr }}]" },
+          run: './report.sh "${{ inputs.title }}"',
         }),
       ),
     ).toEqual([]);
   });
 
-  describe.each(["input", "run", "output"] as const)("in %s", (field) => {
-    it.each(["${{ steps.fetch.output.title }}", "${{ workflow.input.level }}"])(
+  describe.each(["inputs", "run", "outputs"] as const)("in %s", (field) => {
+    it.each(["${{ steps.fetch.outputs.title }}", "${{ workflow.inputs.level }}"])(
       "accepts %s",
       (expression) => {
         expect(errorsOf(withField(field, expression))).toEqual([]);
@@ -69,15 +69,15 @@ describe("validateIntermediate expressions", () => {
     );
 
     it.each([
-      ["${{ steps.report.output.title }}", "Step report does not run before report"],
-      ["${{ steps.fetch.output.missing }}", "Step fetch does not declare the output missing"],
-      ["${{ steps.fetch.output.title.length }}", "Cannot reference a field of an output value"],
-      ["${{ steps.fetch.title }}", "Can reference only steps.<id>.output.<name>"],
-      ["${{ workflow.input.missing }}", "The workflow does not declare the input missing"],
-      ["${{ workflow.input.level.length }}", "Cannot reference a field of a workflow input value"],
+      ["${{ steps.report.outputs.title }}", "Step report does not run before report"],
+      ["${{ steps.fetch.outputs.missing }}", "Step fetch does not declare the output missing"],
+      ["${{ steps.fetch.outputs.title.length }}", "Cannot reference a field of an output value"],
+      ["${{ steps.fetch.title }}", "Can reference only steps.<id>.outputs.<name>"],
+      ["${{ workflow.inputs.missing }}", "The workflow does not declare the input missing"],
+      ["${{ workflow.inputs.level.length }}", "Cannot reference a field of a workflow input value"],
       ["${{ workflow.name }}", "Can reference only"],
       ["${{ env.HOME }}", "Can reference only"],
-      ["${{ input.title", "Unterminated expression"],
+      ["${{ inputs.title", "Unterminated expression"],
     ])("rejects %s", (expression, message) => {
       expect(errorsOf(withField(field, expression))).toEqual([
         { message: expect.stringContaining(message) as unknown, path: pathOf(field) },
@@ -86,21 +86,21 @@ describe("validateIntermediate expressions", () => {
   });
 
   it("does not let input reference its own input or the script result", () => {
-    for (const expression of ["${{ input.title }}", "${{ result.stdout }}"]) {
-      expect(errorsOf(withField("input", expression))).toEqual([
+    for (const expression of ["${{ inputs.title }}", "${{ result.stdout }}"]) {
+      expect(errorsOf(withField("inputs", expression))).toEqual([
         {
           message: expect.stringContaining(
-            "Can reference only steps.<id>.output.<name>, or workflow.input.<name>:",
+            "Can reference only steps.<id>.outputs.<name>, or workflow.inputs.<name>:",
           ) as unknown,
-          path: pathOf("input"),
+          path: pathOf("inputs"),
         },
       ]);
     }
   });
 
-  it.each(["run", "output"] as const)("lets %s reference its own input", (field) => {
-    expect(errorsOf(withField(field, "${{ input.title }}"))).toEqual([]);
-    expect(errorsOf(withField(field, "${{ input.missing }}"))).toEqual([
+  it.each(["run", "outputs"] as const)("lets %s reference its own input", (field) => {
+    expect(errorsOf(withField(field, "${{ inputs.title }}"))).toEqual([]);
+    expect(errorsOf(withField(field, "${{ inputs.missing }}"))).toEqual([
       {
         message: expect.stringContaining(
           "Step report does not declare the input missing",
@@ -108,7 +108,7 @@ describe("validateIntermediate expressions", () => {
         path: pathOf(field),
       },
     ]);
-    expect(errorsOf(withField(field, "${{ input.title.length }}"))).toEqual([
+    expect(errorsOf(withField(field, "${{ inputs.title.length }}"))).toEqual([
       {
         message: expect.stringContaining("Cannot reference a field of an input value") as unknown,
         path: pathOf(field),
@@ -117,17 +117,17 @@ describe("validateIntermediate expressions", () => {
   });
 
   it("lets only output reference the script result", () => {
-    expect(errorsOf(withField("output", "${{ result.stdout }}"))).toEqual([]);
+    expect(errorsOf(withField("outputs", "${{ result.stdout }}"))).toEqual([]);
     expect(errorsOf(withField("run", "${{ result.stdout }}"))).toMatchObject([
       { path: pathOf("run") },
     ]);
     for (const expression of ["${{ result.missing }}", "${{ result.stdout.length }}"]) {
-      expect(errorsOf(withField("output", expression))).toEqual([
+      expect(errorsOf(withField("outputs", expression))).toEqual([
         {
           message: expect.stringContaining(
             "result.exitCode, result.stdout, or result.stderr",
           ) as unknown,
-          path: pathOf("output"),
+          path: pathOf("outputs"),
         },
       ]);
     }

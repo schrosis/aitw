@@ -5,9 +5,9 @@ import type { Intermediate, IntermediateStep } from "./schema.ts";
 import { validateIntermediate } from "./validate.ts";
 
 const step = (next: string | null): IntermediateStep => ({
-  input: {},
+  inputs: {},
   next: next === null ? { type: "end" } : { step: next, type: "step" },
-  output: {},
+  outputs: {},
   run: "./run.sh",
   timeoutMs: 1000,
   type: "script",
@@ -17,7 +17,7 @@ const intermediate = (start: string, steps: Record<string, string | null>): Inte
   start,
   steps: Object.fromEntries(Object.entries(steps).map(([id, next]) => [id, step(next)])),
   version: intermediateVersion,
-  input: {},
+  inputs: {},
 });
 
 const errorsOf = (input: unknown) => {
@@ -82,18 +82,18 @@ describe("validateIntermediate", () => {
     expect(
       errorsOf({
         ...intermediate("fetch", { fetch: null }),
-        input: {
+        inputs: {
           level: { default: "mid", options: ["low", "low"], required: true, type: "choice" },
           threshold: { default: 1.5, required: true, type: "number" },
         },
       }),
     ).toEqual([
-      { message: "Duplicate option: low", path: ["input", "level", "options"] },
-      { message: "A required input cannot have a default", path: ["input", "level", "default"] },
-      { message: "Must be one of low, low", path: ["input", "level", "default"] },
+      { message: "Duplicate option: low", path: ["inputs", "level", "options"] },
+      { message: "A required input cannot have a default", path: ["inputs", "level", "default"] },
+      { message: "Must be one of low, low", path: ["inputs", "level", "default"] },
       {
         message: "A required input cannot have a default",
-        path: ["input", "threshold", "default"],
+        path: ["inputs", "threshold", "default"],
       },
     ]);
   });

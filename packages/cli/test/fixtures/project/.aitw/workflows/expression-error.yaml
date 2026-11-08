@@ -3,7 +3,7 @@ start: fetch
 steps:
   fetch:
     type: script
-    run: echo "${{ input.title }}"
-    output:
+    run: echo "${{ inputs.title }}"
+    outputs:
       title: ${{ result.body }}
     next: end

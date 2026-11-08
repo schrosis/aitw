@@ -4,12 +4,12 @@ steps:
   fetch:
     type: script
     run: echo "hello"
-    output:
+    outputs:
       title: ${{ result.stdout }}
     next: report
   report:
     type: script
-    run: test "${{ input.title }}" = hello && echo "title=${{ input.title }}"
-    input:
-      title: ${{ steps.fetch.output.title }}
+    run: test "${{ inputs.title }}" = hello && echo "title=${{ inputs.title }}"
+    inputs:
+      title: ${{ steps.fetch.outputs.title }}
     next: end

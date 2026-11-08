@@ -38,8 +38,8 @@ describe("validate", () => {
     await expect(run("expression-error")).resolves.toEqual({
       exitCode: 1,
       stderr: [
-        ".aitw/workflows/expression-error.yaml:6:10 steps.fetch.run: Step fetch does not declare the input title: ${{ input.title }}",
-        ".aitw/workflows/expression-error.yaml:8:14 steps.fetch.output.title: Can reference only steps.<id>.output.<name>, workflow.input.<name>, input.<name>, result.exitCode, result.stdout, or result.stderr: ${{ result.body }}",
+        ".aitw/workflows/expression-error.yaml:6:10 steps.fetch.run: Step fetch does not declare the input title: ${{ inputs.title }}",
+        ".aitw/workflows/expression-error.yaml:8:14 steps.fetch.outputs.title: Can reference only steps.<id>.outputs.<name>, workflow.inputs.<name>, inputs.<name>, result.exitCode, result.stdout, or result.stderr: ${{ result.body }}",
         "",
       ].join("\n"),
       stdout: "",
@@ -50,11 +50,11 @@ describe("validate", () => {
     await expect(run("input-error")).resolves.toEqual({
       exitCode: 1,
       stderr: [
-        ".aitw/workflows/input-error.yaml:8:14 input.level.options: Duplicate option: low",
-        ".aitw/workflows/input-error.yaml:10:14 input.level.default: A required input cannot have a default",
-        ".aitw/workflows/input-error.yaml:10:14 input.level.default: Must be one of low, low",
-        ".aitw/workflows/input-error.yaml:16:16 steps.report.input.missing: The workflow does not declare the input missing: ${{ workflow.input.missing }}",
-        ".aitw/workflows/input-error.yaml:17:15 steps.report.input.nested: Cannot reference a field of a workflow input value: ${{ workflow.input.threshold.value }}",
+        ".aitw/workflows/input-error.yaml:8:14 inputs.level.options: Duplicate option: low",
+        ".aitw/workflows/input-error.yaml:10:14 inputs.level.default: A required input cannot have a default",
+        ".aitw/workflows/input-error.yaml:10:14 inputs.level.default: Must be one of low, low",
+        ".aitw/workflows/input-error.yaml:16:16 steps.report.inputs.missing: The workflow does not declare the input missing: ${{ workflow.inputs.missing }}",
+        ".aitw/workflows/input-error.yaml:17:15 steps.report.inputs.nested: Cannot reference a field of a workflow input value: ${{ workflow.inputs.threshold.value }}",
         "",
       ].join("\n"),
       stdout: "",

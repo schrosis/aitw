@@ -54,7 +54,7 @@ describe("compileDefinition", () => {
   it("locates an invalid reference in a definition", () => {
     const source = validSource.replace(
       "    next: end\n",
-      "    input:\n      title: ${{ steps.missing.output.title }}\n    next: end\n",
+      "    inputs:\n      title: ${{ steps.missing.outputs.title }}\n    next: end\n",
     );
 
     expect(compileDefinition(source)).toEqual({
@@ -62,8 +62,8 @@ describe("compileDefinition", () => {
         {
           column: 14,
           line: 8,
-          message: "Step missing does not run before fetch: ${{ steps.missing.output.title }}",
-          path: ["steps", "fetch", "input", "title"],
+          message: "Step missing does not run before fetch: ${{ steps.missing.outputs.title }}",
+          path: ["steps", "fetch", "inputs", "title"],
         },
       ],
       ok: false,

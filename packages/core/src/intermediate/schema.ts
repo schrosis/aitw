@@ -17,8 +17,8 @@ const scriptStepSchema = z.strictObject({
   run: z.string().min(1),
   next: transitionSchema,
   timeoutMs: z.int().positive(),
-  input: expressionMapSchema,
-  output: expressionMapSchema,
+  inputs: expressionMapSchema,
+  outputs: expressionMapSchema,
 });
 
 const inputBase = {
@@ -42,7 +42,7 @@ const inputDeclarationSchema = z.discriminatedUnion("type", [
 /** Schema of the intermediate representation that the engine executes. */
 export const intermediateSchema = z.strictObject({
   version: z.literal(intermediateVersion),
-  input: z.record(inputNameSchema, inputDeclarationSchema),
+  inputs: z.record(inputNameSchema, inputDeclarationSchema),
   start: stepIdSchema,
   steps: z.record(stepIdSchema, z.discriminatedUnion("type", [scriptStepSchema])),
 });

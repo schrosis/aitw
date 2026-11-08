@@ -70,7 +70,7 @@ const findNumberNotationErrors = (
   document: DefinitionDocument,
   lineCounter: LineCounter,
 ): DefinitionError[] => {
-  const inputs = isMap(document.contents) ? document.contents.get("input") : undefined;
+  const inputs = isMap(document.contents) ? document.contents.get("inputs") : undefined;
   if (!isMap(inputs)) {
     return [];
   }
@@ -91,7 +91,7 @@ const findNumberNotationErrors = (
       createError(
         lineCounter,
         defaultValue.range?.[0] ?? 0,
-        ["input", String(key.value), "default"],
+        ["inputs", String(key.value), "default"],
         decimalNumberMessage,
       ),
     ];

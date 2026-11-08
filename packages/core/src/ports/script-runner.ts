@@ -3,7 +3,7 @@ export interface ScriptRequest {
   /** Command line to run in a shell. */
   run: string;
   /** Evaluated input values of the step. */
-  input: Readonly<Record<string, unknown>>;
+  inputs: Readonly<Record<string, unknown>>;
   /**
    * Maximum duration of the script in milliseconds.
    *

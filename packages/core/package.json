@@ -20,6 +20,7 @@
     "typecheck": "tsc -b && tsc -p tsconfig.test.json"
   },
   "dependencies": {
+    "@standard-schema/spec": "catalog:",
     "zod": "catalog:"
   },
   "engines": {

@@ -1,0 +1,47 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
+import type { InputDeclaration } from "../intermediate/index.js";
+
+/**
+ * A way for a `wait` step to wait, such as asking in the terminal or watching a CI run.
+ *
+ * Its code runs outside the workflow, so that a method cannot break the determinism of the
+ * workflow. The workflow only waits for what the intermediate representation describes.
+ */
+export interface WaitMethod<Options = unknown> {
+  /**
+   * Name of the method within its plugin, such as `terminal`.
+   *
+   * It must start with a letter and contain only letters, digits, or `_`.
+   */
+  name: string;
+  /** Schema of the `with` field of a step. It must validate synchronously. */
+  with: StandardSchemaV1<unknown, Options>;
+  /**
+   * Returns the values that the step receives as answers, when the method waits for an answer
+   * that someone sends to the workflow.
+   *
+   * They are stored in the intermediate representation, so that the workflow can validate an
+   * answer without the plugin.
+   */
+  answers?(options: Options): Readonly<Record<string, InputDeclaration>>;
+}
+
+/** A package that extends aitw. */
+export interface Plugin {
+  /**
+   * Name that prefixes the names of the extensions of a plugin that is not built in, such as
+   * `acme` in `acme/slack`.
+   *
+   * It must start with a letter and contain only letters, digits, or `_`.
+   */
+  name: string;
+  waitMethods?: readonly WaitMethod[];
+}
+
+/** Declares a plugin. It only checks the type. */
+export const definePlugin = (plugin: Plugin): Plugin => plugin;
+
+/** Declares a wait method, inferring the type of its options from the schema of `with`. */
+export const defineWaitMethod = <Options>(method: WaitMethod<Options>): WaitMethod<Options> =>
+  method;

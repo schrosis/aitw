@@ -39,3 +39,16 @@ export type {
   TemplatePart,
 } from "./expression/index.js";
 export { identifierPattern, identifierSource } from "./identifier.js";
+export {
+  createPluginRegistry,
+  definePlugin,
+  defineWaitMethod,
+  validateWithSchema,
+} from "./plugin/index.js";
+export type {
+  Plugin,
+  PluginRegistry,
+  PluginRegistryOptions,
+  SchemaResult,
+  WaitMethod,
+} from "./plugin/index.js";

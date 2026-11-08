@@ -9,6 +9,7 @@ import { Worker } from "@temporalio/worker";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
 import { createActivities } from "../activities/index.ts";
+import type { ScriptStepRequest } from "../activities/index.ts";
 import { aitw } from "./index.ts";
 
 const step = (run: string, next: string | null): Intermediate["steps"][string] => ({
@@ -47,22 +48,30 @@ describe("aitw", () => {
     workflowInput?: unknown,
   ) => {
     const requests: ScriptRequest[] = [];
+    const stepRequests: ScriptStepRequest[] = [];
     const taskQueue = randomUUID();
-    const worker = await Worker.create({
-      activities: createActivities({
-        scriptRunner: {
-          run: async (request, { signal }): Promise<ScriptResult> => {
-            expect(signal).toBeInstanceOf(AbortSignal);
-            requests.push(request);
-            return {
-              exitCode: exitCodes[request.run] ?? 0,
-              signal: null,
-              stderr: "",
-              stdout: stdouts[request.run] ?? "",
-            };
-          },
+    const activities = createActivities({
+      scriptRunner: {
+        run: async (request, { signal }): Promise<ScriptResult> => {
+          expect(signal).toBeInstanceOf(AbortSignal);
+          requests.push(request);
+          return {
+            exitCode: exitCodes[request.run] ?? 0,
+            signal: null,
+            stderr: "",
+            stdout: stdouts[request.run] ?? "",
+          };
         },
-      }),
+      },
+    });
+    const worker = await Worker.create({
+      activities: {
+        // Records what the workflow sends, which the history stores.
+        executeScriptStep: async (request: ScriptStepRequest) => {
+          stepRequests.push(request);
+          return activities.executeScriptStep(request);
+        },
+      },
       connection: environment.nativeConnection,
       taskQueue,
       workflowsPath: fileURLToPath(new URL("./index.ts", import.meta.url)),
@@ -80,7 +89,7 @@ describe("aitw", () => {
           (error: unknown) => ({ error, ok: false as const }),
         ),
     );
-    return { requests, result };
+    return { requests, result, stepRequests };
   };
 
   it("runs the steps in order", async () => {
@@ -280,6 +289,59 @@ describe("aitw", () => {
       run: './report.sh "pre" "hello"',
       timeoutMs: 5000,
     });
+  }, 60_000);
+
+  it("sends only the referenced values to a step", async () => {
+    const { stepRequests } = await run(
+      {
+        ...intermediate,
+        input: {
+          level: { default: "high", required: false, type: "string" },
+          unused: { default: "x", required: false, type: "string" },
+        },
+        steps: {
+          fetch: {
+            ...step("./fetch.sh", "report"),
+            output: { title: "${{ result.stdout }}", unused: "${{ result.stderr }}" },
+          },
+          report: {
+            ...step("./report.sh ${{ steps.fetch.output.title }}", null),
+            output: { level: "${{ workflow.input.level }}" },
+          },
+        },
+      },
+      {},
+      { "./fetch.sh": "hello" },
+      {},
+    );
+
+    expect(stepRequests.at(-1)?.references).toEqual({
+      steps: { fetch: { output: { title: "hello" } } },
+      workflow: { input: { level: "high" } },
+    });
+  }, 60_000);
+
+  it("fails when the referenced values exceed the size limit", async () => {
+    const half = "x".repeat(300 * 1024);
+    const { requests, result } = await run(
+      {
+        ...intermediate,
+        start: "first",
+        steps: {
+          first: { ...step("./first.sh", "second"), output: { data: "${{ result.stdout }}" } },
+          second: { ...step("./second.sh", "report"), output: { data: "${{ result.stdout }}" } },
+          report: step(
+            './report.sh "${{ steps.first.output.data }}" "${{ steps.second.output.data }}"',
+            null,
+          ),
+        },
+      },
+      {},
+      { "./first.sh": half, "./second.sh": half },
+    );
+
+    expect(result).toMatchObject({ error: { cause: { type: "InputTooLarge" } }, ok: false });
+    expect(requests.map(({ run: command }) => command)).toEqual(["./first.sh", "./second.sh"]);
   }, 60_000);
 
   it("rejects invalid workflow input before running any step", async () => {

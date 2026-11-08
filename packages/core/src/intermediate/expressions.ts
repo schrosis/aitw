@@ -29,13 +29,30 @@ const checkExpression = (
   });
 };
 
+/** What a field of a step can reference, in addition to earlier steps and the workflow input. */
+interface Scope {
+  /** Whether the field can read the declared input of its own step. */
+  input: boolean;
+  /** Whether the field can read the script result. */
+  result: boolean;
+}
+
+const describeScope = ({ input, result }: Scope): string => {
+  const references = [
+    "steps.<id>.output.<name>",
+    "workflow.input.<name>",
+    ...(input ? ["input.<name>"] : []),
+    ...(result ? ["result.exitCode", "result.stdout", "result.stderr"] : []),
+  ];
+  return `${references.slice(0, -1).join(", ")}, or ${references.at(-1) ?? ""}`;
+};
+
 /**
  * Validates the `${{ }}` references of every step.
  *
- * - `input` can read the declared output of a step that runs before it, and the declared
- *   input of the workflow
- * - `run` can read the declared input of its own step
- * - `output` can read `exitCode`, `stdout`, and `stderr` of the script result
+ * Every field can read the declared output of a step that runs before it, and the declared
+ * input of the workflow. In addition, `run` and `output` can read the declared input of their
+ * own step, and `output` can read `exitCode`, `stdout`, and `stderr` of the script result.
  */
 export const validateExpressions = (intermediate: Intermediate): ValidationError[] => {
   const order = executionOrder(intermediate);
@@ -49,59 +66,63 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
       continue;
     }
 
+    const check =
+      (scope: Scope) =>
+      ([root, first, second, third, ...rest]: readonly string[]): string | undefined => {
+        const unsupported = `Can reference only ${describeScope(scope)}`;
+        if (root === "steps") {
+          if (first === undefined || second !== "output" || third === undefined) {
+            return unsupported;
+          }
+          if (!earlier.has(first)) {
+            return `Step ${first} does not run before ${id}`;
+          }
+          if (!Object.hasOwn(intermediate.steps[first]?.output ?? {}, third)) {
+            return `Step ${first} does not declare the output ${third}`;
+          }
+          return rest.length > 0 ? "Cannot reference a field of an output value" : undefined;
+        }
+        if (root === "workflow") {
+          if (first !== "input" || second === undefined) {
+            return unsupported;
+          }
+          if (!Object.hasOwn(intermediate.input, second)) {
+            return `The workflow does not declare the input ${second}`;
+          }
+          return third === undefined
+            ? undefined
+            : "Cannot reference a field of a workflow input value";
+        }
+        if (root === "input" && scope.input && first !== undefined) {
+          if (!Object.hasOwn(step.input, first)) {
+            return `Step ${id} does not declare the input ${first}`;
+          }
+          return second === undefined ? undefined : "Cannot reference a field of an input value";
+        }
+        if (root === "result" && scope.result && first !== undefined) {
+          return resultFields.has(first) && second === undefined ? undefined : unsupported;
+        }
+        return unsupported;
+      };
+
     for (const [name, expression] of Object.entries(step.input)) {
       errors.push(
         ...checkExpression(
           expression,
           ["steps", id, "input", name],
-          ([root, source, field, key, ...rest]) => {
-            if (root === "workflow" && source === "input" && field !== undefined) {
-              if (key !== undefined) {
-                return "Input cannot reference a field of a workflow input value";
-              }
-              return Object.hasOwn(intermediate.input, field)
-                ? undefined
-                : `The workflow does not declare the input ${field}`;
-            }
-            if (
-              root !== "steps" ||
-              field !== "output" ||
-              source === undefined ||
-              key === undefined ||
-              rest.length > 0
-            ) {
-              return "Input can reference only steps.<id>.output.<name> or workflow.input.<name>";
-            }
-            if (!earlier.has(source)) {
-              return `Step ${source} does not run before ${id}`;
-            }
-            if (!Object.hasOwn(intermediate.steps[source]?.output ?? {}, key)) {
-              return `Step ${source} does not declare the output ${key}`;
-            }
-            return undefined;
-          },
+          check({ input: false, result: false }),
         ),
       );
     }
-
     errors.push(
-      ...checkExpression(step.run, ["steps", id, "run"], ([root, name, ...rest]) => {
-        if (root !== "input" || name === undefined) {
-          return "Run can reference only input.<name>";
-        }
-        if (!Object.hasOwn(step.input, name)) {
-          return `Step ${id} does not declare the input ${name}`;
-        }
-        return rest.length > 0 ? "Run cannot reference a field of an input value" : undefined;
-      }),
+      ...checkExpression(step.run, ["steps", id, "run"], check({ input: true, result: false })),
     );
-
     for (const [name, expression] of Object.entries(step.output)) {
       errors.push(
-        ...checkExpression(expression, ["steps", id, "output", name], ([root, field, ...rest]) =>
-          root === "result" && field !== undefined && resultFields.has(field) && rest.length === 0
-            ? undefined
-            : "Output can reference only result.exitCode, result.stdout, or result.stderr",
+        ...checkExpression(
+          expression,
+          ["steps", id, "output", name],
+          check({ input: true, result: true }),
         ),
       );
     }

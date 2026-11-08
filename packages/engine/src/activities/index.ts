@@ -32,6 +32,11 @@ export interface ScriptStepRequest extends ScriptRequest {
   step: string;
   /** Expressions of the values that the step publishes, keyed by name. */
   output: Readonly<Record<string, string>>;
+  /**
+   * Values of earlier steps and of the workflow input that `run` and `output` reference, as
+   * `steps` and `workflow` entries.
+   */
+  references: Readonly<Record<string, unknown>>;
 }
 
 /** Values that a step publishes to later steps, keyed by name. */
@@ -51,6 +56,7 @@ const invalidExpression = (location: string, message: string): ApplicationFailur
 /** Evaluates the declared output values from the result of a script. */
 const evaluateOutput = (
   expressions: Readonly<Record<string, string>>,
+  context: Readonly<Record<string, unknown>>,
   { exitCode, stderr, stdout }: ScriptResult,
 ): StepOutput => {
   const result = {
@@ -60,7 +66,7 @@ const evaluateOutput = (
   };
   const output: StepOutput = {};
   for (const [name, expression] of Object.entries(expressions)) {
-    const evaluated = evaluateExpression(expression, { result });
+    const evaluated = evaluateExpression(expression, { ...context, result });
     if (!evaluated.ok) {
       throw invalidExpression(`output.${name}`, evaluated.message);
     }
@@ -134,12 +140,13 @@ export const createActivities = ({
   /**
    * Runs a script step and fails without retrying when the script does not exit with zero.
    *
-   * The `${{ }}` references in `run` are expanded with the input values as plain text. Only
-   * the declared output values are returned, because the workflow history stores the result.
+   * The `${{ }}` references in `run` are expanded as plain text. Only the declared output
+   * values are returned, because the workflow history stores the result.
    */
   executeScriptStep: async ({
     input,
     output: outputExpressions,
+    references,
     run: runTemplate,
     step,
     timeoutMs,
@@ -157,7 +164,9 @@ export const createActivities = ({
     const startedAt = performance.now();
     // Output that arrives after the script settles would appear after the end of the step.
     let settled = false;
-    const expanded = evaluateExpression(runTemplate, { input });
+    // The step input is added last, so that references cannot replace it.
+    const values = { ...references, input };
+    const expanded = evaluateExpression(runTemplate, values);
     const run = expanded.ok ? embedValue(expanded.value) : runTemplate;
     emit({ run, step, type: "stepStarted" });
     const heartbeat = setInterval(() => context.heartbeat(), heartbeatIntervalMs);
@@ -179,7 +188,7 @@ export const createActivities = ({
         },
       );
       settled = true;
-      const output = evaluateOutput(outputExpressions, result);
+      const output = evaluateOutput(outputExpressions, values, result);
       emit({
         durationMs: Math.round(performance.now() - startedAt),
         outcome: "succeeded",

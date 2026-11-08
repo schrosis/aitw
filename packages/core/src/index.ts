@@ -30,6 +30,7 @@ export {
   evaluateExpression,
   evaluateTemplate,
   parseTemplate,
+  pickReferences,
 } from "./expression/index.js";
 export type {
   EvaluateResult,

@@ -2,7 +2,7 @@ import { evaluateTemplate } from "./evaluate.js";
 import type { EvaluateResult } from "./evaluate.js";
 import { parseTemplate } from "./template.js";
 
-export { embedValue, evaluateTemplate } from "./evaluate.js";
+export { embedValue, evaluateTemplate, pickReferences } from "./evaluate.js";
 export type { EvaluateResult } from "./evaluate.js";
 export { parseTemplate } from "./template.js";
 export type { ParseTemplateResult, Template, TemplatePart } from "./template.js";

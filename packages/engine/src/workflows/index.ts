@@ -1,4 +1,9 @@
-import { evaluateExpression, resolveWorkflowInput, validateIntermediate } from "@aitw/core";
+import {
+  evaluateExpression,
+  pickReferences,
+  resolveWorkflowInput,
+  validateIntermediate,
+} from "@aitw/core";
 import type { IntermediateStep, WorkflowInput } from "@aitw/core";
 import { ApplicationFailure, proxyActivities } from "@temporalio/workflow";
 
@@ -26,20 +31,21 @@ export interface WorkflowResult {
   executedSteps: string[];
 }
 
-/**
- * Evaluates the input values of a step from the workflow input and the outputs of the steps
- * that ran before it.
- */
+/** Values that every field of a step can reference: earlier outputs and the workflow input. */
+type SharedContext = Readonly<{
+  steps: Readonly<Record<string, { output: StepOutput }>>;
+  workflow: Readonly<{ input: Readonly<WorkflowInput> }>;
+}>;
+
+/** Top-level names of {@link SharedContext}. */
+const sharedRoots: ReadonlySet<string> = new Set(["steps", "workflow"]);
+
+/** Evaluates the input values of a step. */
 const evaluateInput = (
   id: string,
   expressions: Readonly<Record<string, string>>,
-  workflowInput: Readonly<WorkflowInput>,
-  outputs: Readonly<Record<string, StepOutput>>,
+  context: SharedContext,
 ): Record<string, unknown> => {
-  const steps = Object.fromEntries(
-    Object.entries(outputs).map(([stepId, output]) => [stepId, { output }]),
-  );
-  const context = { steps, workflow: { input: workflowInput } };
   const input: Record<string, unknown> = {};
   for (const [name, expression] of Object.entries(expressions)) {
     const evaluated = evaluateExpression(expression, context);
@@ -52,15 +58,32 @@ const evaluateInput = (
     input[name] = evaluated.value;
   }
 
-  // Input can combine the output of several steps, so it is limited separately.
-  const bytes = jsonBytes(input);
+  return input;
+};
+
+/**
+ * Builds the values that a step receives and checks their size.
+ *
+ * The step receives only the shared values that its `run` and `output` reference, so that the
+ * history does not store every value of the workflow again for each step.
+ */
+const prepareStep = (id: string, step: IntermediateStep, context: SharedContext) => {
+  const input = evaluateInput(id, step.input, context);
+  const references = pickReferences(
+    [step.run, ...Object.values(step.output)],
+    context,
+    sharedRoots,
+  );
+
+  // The values can combine the output of several steps, so they are limited separately.
+  const bytes = jsonBytes({ input, references });
   if (bytes > maxValueBytes) {
     throw ApplicationFailure.nonRetryable(
-      `steps.${id}.input is ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
+      `The values for steps.${id} are ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
       "InputTooLarge",
     );
   }
-  return input;
+  return { input, references };
 };
 
 /**
@@ -120,8 +143,14 @@ export const aitw = async (intermediate: unknown, input: unknown = {}): Promise<
       retry: { maximumAttempts: 1 },
       startToCloseTimeout: step.timeoutMs + activityTimeoutGraceMs,
     });
+    const context: SharedContext = {
+      steps: Object.fromEntries(
+        Object.entries(outputs).map(([stepId, output]) => [stepId, { output }]),
+      ),
+      workflow: { input: resolved.input },
+    };
     outputs[id] = await executeScriptStep({
-      input: evaluateInput(id, step.input, resolved.input, outputs),
+      ...prepareStep(id, step, context),
       output: step.output,
       run: step.run,
       step: id,

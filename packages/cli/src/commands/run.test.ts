@@ -82,6 +82,14 @@ describe("run", () => {
     });
   }, 60_000);
 
+  it("expands the workflow input and earlier outputs in run and output directly", async () => {
+    const result = await execute("run-direct", undefined, undefined, '{"name": "aitw"}');
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(result.stdout).toContain("Hello aitw!!\n");
+    expect(result.stdout).toContain("echo 'report-Hello aitw!!'\nreport-Hello aitw!!\n");
+  }, 60_000);
+
   it("rejects workflow input over the size limit without starting the workflow", async () => {
     const note = "x".repeat(600 * 1024);
     await expect(

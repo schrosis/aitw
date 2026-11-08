@@ -17,7 +17,7 @@ export type WorkflowInput = Record<string, boolean | number | string | null>;
 
 /** Result of {@link resolveWorkflowInput}. */
 export type ResolveInputResult =
-  | { ok: true; input: WorkflowInput }
+  | { ok: true; inputs: WorkflowInput }
   | { ok: false; errors: ValidationError[] };
 
 type CheckResult = { ok: true; value: boolean | number | string } | { ok: false; message: string };
@@ -67,22 +67,22 @@ export const resolveWorkflowInput = (
     }
   }
 
-  const input: WorkflowInput = {};
+  const inputs: WorkflowInput = {};
   for (const [name, declaration] of Object.entries(declarations)) {
     if (!Object.hasOwn(values, name)) {
       if (declaration.required) {
         errors.push({ message: "Required", path: [name] });
       }
-      input[name] = declaration.default ?? null;
+      inputs[name] = declaration.default ?? null;
       continue;
     }
     const checked = checkInputValue(declaration, values[name]);
     if (checked.ok) {
-      input[name] = checked.value;
+      inputs[name] = checked.value;
     } else {
       errors.push({ message: checked.message, path: [name] });
     }
   }
 
-  return errors.length > 0 ? { errors, ok: false } : { input, ok: true };
+  return errors.length > 0 ? { errors, ok: false } : { inputs, ok: true };
 };

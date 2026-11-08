@@ -82,17 +82,17 @@ export const run = async (
     return 1;
   }
   // The workflow validates the input again, but checking it here avoids starting a server.
-  const resolved = resolveWorkflowInput(workflow.intermediate.input, read.values);
+  const resolved = resolveWorkflowInput(workflow.intermediate.inputs, read.values);
   if (!resolved.ok) {
     for (const { message, path } of resolved.errors) {
-      context.stderr(`${name}: ${["workflow.input", ...path].join(".")}: ${message}\n`);
+      context.stderr(`${name}: ${["workflow.inputs", ...path].join(".")}: ${message}\n`);
     }
     return 1;
   }
-  const bytes = jsonBytes(resolved.input);
+  const bytes = jsonBytes(resolved.inputs);
   if (bytes > maxValueBytes) {
     context.stderr(
-      `${name}: workflow.input is ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes\n`,
+      `${name}: workflow.inputs is ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes\n`,
     );
     return 1;
   }
@@ -128,7 +128,7 @@ export const run = async (
     const { executedSteps } = await runWorkflow({
       address,
       eventSink: createProgressPrinter(context),
-      input: read.values,
+      inputs: read.values,
       intermediate: workflow.intermediate,
       name,
       scriptRunner: createLocalScriptRunner({ cwd: workflow.root }),

@@ -31,9 +31,9 @@ export interface ScriptStepRequest extends ScriptRequest {
   /** ID of the step in the workflow definition. */
   step: string;
   /** Expressions of the values that the step publishes, keyed by name. */
-  output: Readonly<Record<string, string>>;
+  outputs: Readonly<Record<string, string>>;
   /**
-   * Values of earlier steps and of the workflow input that `run` and `output` reference, as
+   * Values of earlier steps and of the workflow input that `run` and `outputs` reference, as
    * `steps` and `workflow` entries.
    */
   references: Readonly<Record<string, unknown>>;
@@ -68,7 +68,7 @@ const evaluateOutput = (
   for (const [name, expression] of Object.entries(expressions)) {
     const evaluated = evaluateExpression(expression, { ...context, result });
     if (!evaluated.ok) {
-      throw invalidExpression(`output.${name}`, evaluated.message);
+      throw invalidExpression(`outputs.${name}`, evaluated.message);
     }
     output[name] = evaluated.value;
   }
@@ -144,8 +144,8 @@ export const createActivities = ({
    * values are returned, because the workflow history stores the result.
    */
   executeScriptStep: async ({
-    input,
-    output: outputExpressions,
+    inputs,
+    outputs: outputExpressions,
     references,
     run: runTemplate,
     step,
@@ -164,8 +164,8 @@ export const createActivities = ({
     const startedAt = performance.now();
     // Output that arrives after the script settles would appear after the end of the step.
     let settled = false;
-    // The step input is added last, so that references cannot replace it.
-    const values = { ...references, input };
+    // The step inputs are added last, so that references cannot replace it.
+    const values = { ...references, inputs };
     const expanded = evaluateExpression(runTemplate, values);
     const run = expanded.ok ? embedValue(expanded.value) : runTemplate;
     emit({ run, step, type: "stepStarted" });
@@ -177,7 +177,7 @@ export const createActivities = ({
       }
       const result = await runScript(
         scriptRunner,
-        { input, run, timeoutMs },
+        { inputs, run, timeoutMs },
         {
           onOutput: (output) => {
             if (!settled) {

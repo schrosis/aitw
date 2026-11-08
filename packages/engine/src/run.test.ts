@@ -11,16 +11,16 @@ const intermediate: Intermediate = {
   start: "fetch",
   steps: {
     fetch: {
-      input: {},
+      inputs: {},
       next: { type: "end" },
-      output: {},
+      outputs: {},
       run: "./fetch.sh",
       timeoutMs: 5000,
       type: "script",
     },
   },
   version: intermediateVersion,
-  input: {},
+  inputs: {},
 };
 
 describe("runWorkflow", () => {
@@ -64,16 +64,16 @@ describe("runWorkflow", () => {
     const requests: ScriptRequest[] = [];
     await runWorkflow({
       address: environment.address,
-      input: { title: "hello" },
+      inputs: { title: "hello" },
       intermediate: {
         ...intermediate,
-        input: { title: { required: true, type: "string" } },
+        inputs: { title: { required: true, type: "string" } },
         steps: {
           fetch: {
-            input: { title: "${{ workflow.input.title }}" },
+            inputs: { title: "${{ workflow.inputs.title }}" },
             next: { type: "end" },
-            output: {},
-            run: "./fetch.sh ${{ input.title }}",
+            outputs: {},
+            run: "./fetch.sh ${{ inputs.title }}",
             timeoutMs: 5000,
             type: "script",
           },

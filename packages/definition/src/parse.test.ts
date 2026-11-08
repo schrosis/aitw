@@ -161,12 +161,12 @@ steps:
   it("reads input declarations with their defaults", () => {
     const source = validSource.replace(
       "start: fetch",
-      "input:\n  threshold:\n    type: number\n    default: -1.5\n  level:\n    type: choice\n    options: [low, high]\n    required: true\nstart: fetch",
+      "inputs:\n  threshold:\n    type: number\n    default: -1.5\n  level:\n    type: choice\n    options: [low, high]\n    required: true\nstart: fetch",
     );
 
     expect(parseDefinition(source)).toMatchObject({
       definition: {
-        input: {
+        inputs: {
           level: { options: ["low", "high"], required: true, type: "choice" },
           threshold: { default: -1.5, required: false, type: "number" },
         },
@@ -178,7 +178,7 @@ steps:
   it("reports a number default of a string input as a type error", () => {
     const source = validSource.replace(
       "start: fetch",
-      "input:\n  title:\n    type: string\n    default: 1e3\nstart: fetch",
+      "inputs:\n  title:\n    type: string\n    default: 1e3\nstart: fetch",
     );
 
     expect(parseDefinition(source)).toMatchObject({
@@ -190,7 +190,7 @@ steps:
   it.each(["1e3", "0x10", ".inf", ".nan", "+1"])("rejects the number notation %s", (value) => {
     const source = validSource.replace(
       "start: fetch",
-      `input:\n  threshold:\n    type: number\n    default: ${value}\nstart: fetch`,
+      `inputs:\n  threshold:\n    type: number\n    default: ${value}\nstart: fetch`,
     );
 
     expect(parseDefinition(source)).toMatchObject({
@@ -199,7 +199,7 @@ steps:
           column: 14,
           line: 5,
           message: expect.stringContaining("without exponent notation") as unknown,
-          path: ["input", "threshold", "default"],
+          path: ["inputs", "threshold", "default"],
         },
       ],
       ok: false,

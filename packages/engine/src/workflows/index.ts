@@ -33,8 +33,8 @@ export interface WorkflowResult {
 
 /** Values that every field of a step can reference: earlier outputs and the workflow input. */
 type SharedContext = Readonly<{
-  steps: Readonly<Record<string, { output: StepOutput }>>;
-  workflow: Readonly<{ input: Readonly<WorkflowInput> }>;
+  steps: Readonly<Record<string, { outputs: StepOutput }>>;
+  workflow: Readonly<{ inputs: Readonly<WorkflowInput> }>;
 }>;
 
 /** Top-level names of {@link SharedContext}. */
@@ -51,7 +51,7 @@ const evaluateInput = (
     const evaluated = evaluateExpression(expression, context);
     if (!evaluated.ok) {
       throw ApplicationFailure.nonRetryable(
-        `steps.${id}.input.${name}: ${evaluated.message}`,
+        `steps.${id}.inputs.${name}: ${evaluated.message}`,
         "InvalidExpression",
       );
     }
@@ -64,26 +64,26 @@ const evaluateInput = (
 /**
  * Builds the values that a step receives and checks their size.
  *
- * The step receives only the shared values that its `run` and `output` reference, so that the
+ * The step receives only the shared values that its `run` and `outputs` reference, so that the
  * history does not store every value of the workflow again for each step.
  */
 const prepareStep = (id: string, step: IntermediateStep, context: SharedContext) => {
-  const input = evaluateInput(id, step.input, context);
+  const inputs = evaluateInput(id, step.inputs, context);
   const references = pickReferences(
-    [step.run, ...Object.values(step.output)],
+    [step.run, ...Object.values(step.outputs)],
     context,
     sharedRoots,
   );
 
   // The values can combine the output of several steps, so they are limited separately.
-  const bytes = jsonBytes({ input, references });
+  const bytes = jsonBytes({ inputs, references });
   if (bytes > maxValueBytes) {
     throw ApplicationFailure.nonRetryable(
       `The values for steps.${id} are ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
       "InputTooLarge",
     );
   }
-  return { input, references };
+  return { inputs, references };
 };
 
 /**
@@ -108,20 +108,20 @@ export const aitw = async (intermediate: unknown, input: unknown = {}): Promise<
     );
   }
 
-  const resolved = resolveWorkflowInput(validation.intermediate.input, input);
+  const resolved = resolveWorkflowInput(validation.intermediate.inputs, input);
   if (!resolved.ok) {
     throw ApplicationFailure.nonRetryable(
       resolved.errors
-        .map(({ message, path }) => `${["workflow.input", ...path].join(".")}: ${message}`)
+        .map(({ message, path }) => `${["workflow.inputs", ...path].join(".")}: ${message}`)
         .join("\n"),
       "InvalidInput",
       resolved.errors,
     );
   }
-  const bytes = jsonBytes(resolved.input);
+  const bytes = jsonBytes(resolved.inputs);
   if (bytes > maxValueBytes) {
     throw ApplicationFailure.nonRetryable(
-      `workflow.input is ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
+      `workflow.inputs is ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
       "InputTooLarge",
     );
   }
@@ -145,13 +145,13 @@ export const aitw = async (intermediate: unknown, input: unknown = {}): Promise<
     });
     const context: SharedContext = {
       steps: Object.fromEntries(
-        Object.entries(outputs).map(([stepId, output]) => [stepId, { output }]),
+        Object.entries(outputs).map(([stepId, output]) => [stepId, { outputs: output }]),
       ),
-      workflow: { input: resolved.input },
+      workflow: { inputs: resolved.inputs },
     };
     outputs[id] = await executeScriptStep({
       ...prepareStep(id, step, context),
-      output: step.output,
+      outputs: step.outputs,
       run: step.run,
       step: id,
       timeoutMs: step.timeoutMs,

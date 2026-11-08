@@ -77,7 +77,7 @@ describe("run", () => {
     ).resolves.toEqual({
       exitCode: 1,
       stderr:
-        "run-input: workflow.input.extra: Unknown input\nrun-input: workflow.input.level: Must be one of low, high\n",
+        "run-input: workflow.inputs.extra: Unknown input\nrun-input: workflow.inputs.level: Must be one of low, high\n",
       stdout: "",
     });
   }, 60_000);
@@ -97,7 +97,7 @@ describe("run", () => {
     ).resolves.toEqual({
       exitCode: 1,
       stderr: expect.stringMatching(
-        /^run-input: workflow\.input is \d+ bytes, which exceeds the limit of 524288 bytes\n$/u,
+        /^run-input: workflow\.inputs is \d+ bytes, which exceeds the limit of 524288 bytes\n$/u,
       ) as unknown,
       stdout: "",
     });

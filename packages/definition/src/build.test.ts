@@ -11,12 +11,12 @@ describe("buildIntermediate", () => {
       version: definitionVersion,
     });
 
-    expect(buildIntermediate(definition).input).toEqual({});
+    expect(buildIntermediate(definition).inputs).toEqual({});
   });
 
   it("makes every field explicit", () => {
     const definition = definitionSchema.parse({
-      input: { level: { options: ["low"], type: "choice" } },
+      inputs: { level: { options: ["low"], type: "choice" } },
       start: "a",
       steps: {
         a: { next: "b", run: "./a.sh", timeout: "90s", type: "script" },
@@ -26,21 +26,21 @@ describe("buildIntermediate", () => {
     });
 
     expect(buildIntermediate(definition)).toEqual({
-      input: { level: { options: ["low"], required: false, type: "choice" } },
+      inputs: { level: { options: ["low"], required: false, type: "choice" } },
       start: "a",
       steps: {
         a: {
-          input: {},
+          inputs: {},
           next: { step: "b", type: "step" },
-          output: {},
+          outputs: {},
           run: "./a.sh",
           timeoutMs: 90_000,
           type: "script",
         },
         b: {
-          input: {},
+          inputs: {},
           next: { type: "end" },
-          output: {},
+          outputs: {},
           run: "./b.sh",
           timeoutMs: 1_800_000,
           type: "script",

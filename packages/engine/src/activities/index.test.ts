@@ -11,7 +11,7 @@ const execute = async (scriptRunner: ScriptRunner, events: WorkflowEvent[] = [])
   new MockActivityEnvironment().run(
     createActivities({ eventSink: { emit: (event) => events.push(event) }, scriptRunner })
       .executeScriptStep,
-    { input: {}, output: {}, references: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
+    { inputs: {}, outputs: {}, references: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
   );
 
 const runStep = async (
@@ -29,8 +29,8 @@ const runStep = async (
       },
     }).executeScriptStep,
     {
-      input: {},
-      output: {},
+      inputs: {},
+      outputs: {},
       references: {},
       run: "./run.sh",
       step: "build",
@@ -112,7 +112,7 @@ describe("executeScriptStep", () => {
             }),
         },
       }).executeScriptStep,
-      { input: {}, output: {}, references: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
+      { inputs: {}, outputs: {}, references: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
     );
     environment.cancel();
 
@@ -131,7 +131,7 @@ describe("executeScriptStep", () => {
         },
         scriptRunner: { run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }) },
       }).executeScriptStep,
-      { input: {}, output: {}, references: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
+      { inputs: {}, outputs: {}, references: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
     );
 
     await expect(result).resolves.toEqual({});
@@ -158,13 +158,13 @@ describe("executeScriptStep", () => {
   it("expands input references in run", async () => {
     const requests: ScriptRequest[] = [];
     await runStep(
-      { input: { title: "hello" }, run: './report.sh "${{ input.title }}"' },
+      { inputs: { title: "hello" }, run: './report.sh "${{ inputs.title }}"' },
       {},
       requests,
     );
 
     expect(requests).toEqual([
-      { input: { title: "hello" }, run: './report.sh "hello"', timeoutMs: 1000 },
+      { inputs: { title: "hello" }, run: './report.sh "hello"', timeoutMs: 1000 },
     ]);
   });
 
@@ -172,13 +172,13 @@ describe("executeScriptStep", () => {
     const requests: ScriptRequest[] = [];
     const output = await runStep(
       {
-        input: { suffix: "!" },
-        output: { name: "${{ workflow.input.prefix }}-${{ result.stdout }}${{ input.suffix }}" },
+        inputs: { suffix: "!" },
+        outputs: { name: "${{ workflow.inputs.prefix }}-${{ result.stdout }}${{ inputs.suffix }}" },
         references: {
-          steps: { fetch: { output: { title: "hello" } } },
-          workflow: { input: { prefix: "pre" } },
+          steps: { fetch: { outputs: { title: "hello" } } },
+          workflow: { inputs: { prefix: "pre" } },
         },
-        run: 'echo "${{ steps.fetch.output.title }}"',
+        run: 'echo "${{ steps.fetch.outputs.title }}"',
       },
       { stdout: "result\n" },
       requests,
@@ -192,9 +192,9 @@ describe("executeScriptStep", () => {
     const requests: ScriptRequest[] = [];
     await runStep(
       {
-        input: { title: "own" },
-        references: { input: { title: "other" } },
-        run: "${{ input.title }}",
+        inputs: { title: "own" },
+        references: { inputs: { title: "other" } },
+        run: "${{ inputs.title }}",
       },
       {},
       requests,
@@ -207,7 +207,7 @@ describe("executeScriptStep", () => {
     await expect(
       runStep(
         {
-          output: {
+          outputs: {
             code: "${{ result.exitCode }}",
             lines: "${{ result.stdout }}",
             title: "[${{ result.stdout }}]",
@@ -219,10 +219,10 @@ describe("executeScriptStep", () => {
   });
 
   it.each([
-    [{ run: "${{ input.missing }}" }, "run: Unknown reference: ${{ input.missing }}"],
+    [{ run: "${{ inputs.missing }}" }, "run: Unknown reference: ${{ inputs.missing }}"],
     [
-      { output: { title: "${{ result.missing }}" } },
-      "output.title: Unknown reference: ${{ result.missing }}",
+      { outputs: { title: "${{ result.missing }}" } },
+      "outputs.title: Unknown reference: ${{ result.missing }}",
     ],
   ])("fails without retrying on an invalid expression", async (request, message) => {
     await expect(runStep(request)).rejects.toMatchObject({
@@ -234,7 +234,7 @@ describe("executeScriptStep", () => {
 
   it("fails when the output exceeds the size limit", async () => {
     await expect(
-      runStep({ output: { data: "${{ result.stdout }}" } }, { stdout: "x".repeat(maxValueBytes) }),
+      runStep({ outputs: { data: "${{ result.stdout }}" } }, { stdout: "x".repeat(maxValueBytes) }),
     ).rejects.toMatchObject({ nonRetryable: true, type: "OutputTooLarge" });
   });
 });

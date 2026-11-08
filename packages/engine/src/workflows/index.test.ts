@@ -13,9 +13,9 @@ import type { ScriptStepRequest } from "../activities/index.ts";
 import { aitw } from "./index.ts";
 
 const step = (run: string, next: string | null): Intermediate["steps"][string] => ({
-  input: {},
+  inputs: {},
   next: next === null ? { type: "end" } : { step: next, type: "step" },
-  output: {},
+  outputs: {},
   run,
   timeoutMs: 5000,
   type: "script",
@@ -25,7 +25,7 @@ const intermediate: Intermediate = {
   start: "fetch",
   steps: { fetch: step("./fetch.sh", "report"), report: step("./report.sh", null) },
   version: intermediateVersion,
-  input: {},
+  inputs: {},
 };
 
 describe("aitw", () => {
@@ -100,8 +100,8 @@ describe("aitw", () => {
       value: { executedSteps: ["fetch", "report"] },
     });
     expect(requests).toEqual([
-      { input: {}, run: "./fetch.sh", timeoutMs: 5000 },
-      { input: {}, run: "./report.sh", timeoutMs: 5000 },
+      { inputs: {}, run: "./fetch.sh", timeoutMs: 5000 },
+      { inputs: {}, run: "./report.sh", timeoutMs: 5000 },
     ]);
   }, 60_000);
 
@@ -169,10 +169,10 @@ describe("aitw", () => {
       {
         ...intermediate,
         steps: {
-          fetch: { ...step("./fetch.sh", "report"), output: { title: "${{ result.stdout }}" } },
+          fetch: { ...step("./fetch.sh", "report"), outputs: { title: "${{ result.stdout }}" } },
           report: {
-            ...step('./report.sh "${{ input.title }}"', null),
-            input: { title: "${{ steps.fetch.output.title }}" },
+            ...step('./report.sh "${{ inputs.title }}"', null),
+            inputs: { title: "${{ steps.fetch.outputs.title }}" },
           },
         },
       },
@@ -185,7 +185,7 @@ describe("aitw", () => {
       value: { executedSteps: ["fetch", "report"] },
     });
     expect(requests.at(-1)).toEqual({
-      input: { title: "hello" },
+      inputs: { title: "hello" },
       run: './report.sh "hello"',
       timeoutMs: 5000,
     });
@@ -198,13 +198,13 @@ describe("aitw", () => {
         ...intermediate,
         start: "first",
         steps: {
-          first: { ...step("./first.sh", "second"), output: { data: "${{ result.stdout }}" } },
-          second: { ...step("./second.sh", "report"), output: { data: "${{ result.stdout }}" } },
+          first: { ...step("./first.sh", "second"), outputs: { data: "${{ result.stdout }}" } },
+          second: { ...step("./second.sh", "report"), outputs: { data: "${{ result.stdout }}" } },
           report: {
             ...step("./report.sh", null),
-            input: {
-              first: "${{ steps.first.output.data }}",
-              second: "${{ steps.second.output.data }}",
+            inputs: {
+              first: "${{ steps.first.outputs.data }}",
+              second: "${{ steps.second.outputs.data }}",
             },
           },
         },
@@ -224,7 +224,7 @@ describe("aitw", () => {
         fetch: step("./fetch.sh", "report"),
         report: {
           ...step("./report.sh", null),
-          input: { title: "${{ steps.fetch.output.title }}" },
+          inputs: { title: "${{ steps.fetch.outputs.title }}" },
         },
       },
     });
@@ -235,18 +235,18 @@ describe("aitw", () => {
 
   const withWorkflowInput: Intermediate = {
     ...intermediate,
-    input: {
+    inputs: {
       level: { options: ["low", "high"], required: true, type: "choice" },
       note: { required: false, type: "string" },
       threshold: { default: 1.5, required: false, type: "number" },
     },
     steps: {
       fetch: {
-        ...step('./fetch.sh "${{ input.threshold }}" "${{ input.note }}"', null),
-        input: {
-          level: "${{ workflow.input.level }}",
-          note: "${{ workflow.input.note }}",
-          threshold: "${{ workflow.input.threshold }}",
+        ...step('./fetch.sh "${{ inputs.threshold }}" "${{ inputs.note }}"', null),
+        inputs: {
+          level: "${{ workflow.inputs.level }}",
+          note: "${{ workflow.inputs.note }}",
+          threshold: "${{ workflow.inputs.threshold }}",
         },
       },
     },
@@ -258,7 +258,7 @@ describe("aitw", () => {
     expect(result).toEqual({ ok: true, value: { executedSteps: ["fetch"] } });
     expect(requests).toEqual([
       {
-        input: { level: "high", note: null, threshold: 1.5 },
+        inputs: { level: "high", note: null, threshold: 1.5 },
         run: './fetch.sh "1.5" ""',
         timeoutMs: 5000,
       },
@@ -269,11 +269,11 @@ describe("aitw", () => {
     const { requests, result } = await run(
       {
         ...intermediate,
-        input: { prefix: { default: "pre", required: false, type: "string" } },
+        inputs: { prefix: { default: "pre", required: false, type: "string" } },
         steps: {
-          fetch: { ...step("./fetch.sh", "report"), output: { title: "${{ result.stdout }}" } },
+          fetch: { ...step("./fetch.sh", "report"), outputs: { title: "${{ result.stdout }}" } },
           report: step(
-            './report.sh "${{ workflow.input.prefix }}" "${{ steps.fetch.output.title }}"',
+            './report.sh "${{ workflow.inputs.prefix }}" "${{ steps.fetch.outputs.title }}"',
             null,
           ),
         },
@@ -285,7 +285,7 @@ describe("aitw", () => {
 
     expect(result).toEqual({ ok: true, value: { executedSteps: ["fetch", "report"] } });
     expect(requests.at(-1)).toEqual({
-      input: {},
+      inputs: {},
       run: './report.sh "pre" "hello"',
       timeoutMs: 5000,
     });
@@ -295,18 +295,18 @@ describe("aitw", () => {
     const { stepRequests } = await run(
       {
         ...intermediate,
-        input: {
+        inputs: {
           level: { default: "high", required: false, type: "string" },
           unused: { default: "x", required: false, type: "string" },
         },
         steps: {
           fetch: {
             ...step("./fetch.sh", "report"),
-            output: { title: "${{ result.stdout }}", unused: "${{ result.stderr }}" },
+            outputs: { title: "${{ result.stdout }}", unused: "${{ result.stderr }}" },
           },
           report: {
-            ...step("./report.sh ${{ steps.fetch.output.title }}", null),
-            output: { level: "${{ workflow.input.level }}" },
+            ...step("./report.sh ${{ steps.fetch.outputs.title }}", null),
+            outputs: { level: "${{ workflow.inputs.level }}" },
           },
         },
       },
@@ -316,8 +316,8 @@ describe("aitw", () => {
     );
 
     expect(stepRequests.at(-1)?.references).toEqual({
-      steps: { fetch: { output: { title: "hello" } } },
-      workflow: { input: { level: "high" } },
+      steps: { fetch: { outputs: { title: "hello" } } },
+      workflow: { inputs: { level: "high" } },
     });
   }, 60_000);
 
@@ -328,10 +328,10 @@ describe("aitw", () => {
         ...intermediate,
         start: "first",
         steps: {
-          first: { ...step("./first.sh", "second"), output: { data: "${{ result.stdout }}" } },
-          second: { ...step("./second.sh", "report"), output: { data: "${{ result.stdout }}" } },
+          first: { ...step("./first.sh", "second"), outputs: { data: "${{ result.stdout }}" } },
+          second: { ...step("./second.sh", "report"), outputs: { data: "${{ result.stdout }}" } },
           report: step(
-            './report.sh "${{ steps.first.output.data }}" "${{ steps.second.output.data }}"',
+            './report.sh "${{ steps.first.outputs.data }}" "${{ steps.second.outputs.data }}"',
             null,
           ),
         },
@@ -349,7 +349,7 @@ describe("aitw", () => {
 
     expect(result).toMatchObject({
       error: {
-        cause: { message: "workflow.input.level: Must be one of low, high", type: "InvalidInput" },
+        cause: { message: "workflow.inputs.level: Must be one of low, high", type: "InvalidInput" },
       },
       ok: false,
     });

@@ -13,7 +13,7 @@ const declarations: Record<string, InputDeclaration> = {
 describe("resolveWorkflowInput", () => {
   it("applies defaults and uses null for an optional input without a default", () => {
     expect(resolveWorkflowInput(declarations, { level: "high" })).toEqual({
-      input: { enabled: false, level: "high", note: null, threshold: 1.5 },
+      inputs: { enabled: false, level: "high", note: null, threshold: 1.5 },
       ok: true,
     });
   });
@@ -26,7 +26,7 @@ describe("resolveWorkflowInput", () => {
         note: "hello",
         threshold: -2,
       }),
-    ).toEqual({ input: { enabled: true, level: "low", note: "hello", threshold: -2 }, ok: true });
+    ).toEqual({ inputs: { enabled: true, level: "low", note: "hello", threshold: -2 }, ok: true });
   });
 
   it("reports unknown, missing, and mistyped values", () => {

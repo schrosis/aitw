@@ -17,9 +17,9 @@ export type ValidationResult =
   | { ok: false; errors: ValidationError[] };
 
 /** Validates the parts of input declarations that the schema cannot express. */
-const validateInputDeclarations = ({ input }: Intermediate): ValidationError[] =>
-  Object.entries(input).flatMap(([name, declaration]): ValidationError[] => {
-    const path = ["input", name];
+const validateInputDeclarations = ({ inputs }: Intermediate): ValidationError[] =>
+  Object.entries(inputs).flatMap(([name, declaration]): ValidationError[] => {
+    const path = ["inputs", name];
     const errors: ValidationError[] = [];
     if (declaration.type === "choice") {
       const duplicate = declaration.options.find(

@@ -1,5 +1,5 @@
 version: v0.1
-input:
+inputs:
   threshold:
     type: number
     default: 1.5
@@ -12,8 +12,8 @@ start: report
 steps:
   report:
     type: script
-    input:
-      missing: ${{ workflow.input.missing }}
-      nested: ${{ workflow.input.threshold.value }}
+    inputs:
+      missing: ${{ workflow.inputs.missing }}
+      nested: ${{ workflow.inputs.threshold.value }}
     run: "true"
     next: end

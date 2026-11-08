@@ -15,13 +15,13 @@ const validDefinition = {
       type: "script",
       run: "./fetch.sh",
       timeout: "5m",
-      output: { title: "${{ result.stdout }}" },
+      outputs: { title: "${{ result.stdout }}" },
       next: "report",
     },
     report: {
       type: "script",
-      run: './report.sh "${{ input.title }}"',
-      input: { title: "${{ steps.fetch.output.title }}" },
+      run: './report.sh "${{ inputs.title }}"',
+      inputs: { title: "${{ steps.fetch.outputs.title }}" },
       next: "end",
     },
   },
@@ -77,9 +77,9 @@ describe("definitionSchema", () => {
     ["a timeout without a unit", withFetchStep({ timeout: "5" })],
     ["a zero timeout", withFetchStep({ timeout: "0s" })],
     ["a numeric timeout", withFetchStep({ timeout: 5 })],
-    ["a hyphen in an output name", withFetchStep({ output: { "my-title": "x" } })],
-    ["a hyphen in an input name", withFetchStep({ input: { "my-title": "x" } })],
-    ["an empty input expression", withFetchStep({ input: { title: "" } })],
+    ["a hyphen in an output name", withFetchStep({ outputs: { "my-title": "x" } })],
+    ["a hyphen in an input name", withFetchStep({ inputs: { "my-title": "x" } })],
+    ["an empty input expression", withFetchStep({ inputs: { title: "" } })],
   ])("rejects %s", (_name, definition) => {
     expect(definitionSchema.safeParse(definition).success).toBe(false);
   });

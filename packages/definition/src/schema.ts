@@ -32,8 +32,8 @@ const scriptStepSchema = z.strictObject({
     .regex(durationPattern, "Must be a positive duration such as 30s, 5m, or 1h")
     .default(defaultStepTimeout)
     .describe("Maximum duration of the step"),
-  input: expressionMapSchema.optional(),
-  output: expressionMapSchema.optional(),
+  inputs: expressionMapSchema.optional(),
+  outputs: expressionMapSchema.optional(),
 });
 
 const stepSchema = z.discriminatedUnion("type", [scriptStepSchema]);
@@ -62,7 +62,7 @@ const inputSchema = z.discriminatedUnion("type", [
 /** Schema for a workflow definition object, independent of its file format. */
 export const definitionSchema = z.strictObject({
   version: z.literal(definitionVersion),
-  input: z
+  inputs: z
     .record(identifierSchema, inputSchema)
     .optional()
     .describe("Values that the workflow receives when it starts"),

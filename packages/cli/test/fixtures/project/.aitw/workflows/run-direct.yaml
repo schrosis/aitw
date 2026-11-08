@@ -1,5 +1,5 @@
 version: v0.1
-input:
+inputs:
   name:
     type: string
     required: true
@@ -10,11 +10,11 @@ start: greet
 steps:
   greet:
     type: script
-    run: echo 'Hello ${{ workflow.input.name }}!!'
-    output:
-      file: ${{ workflow.input.prefix }}-${{ result.stdout }}
+    run: echo 'Hello ${{ workflow.inputs.name }}!!'
+    outputs:
+      file: ${{ workflow.inputs.prefix }}-${{ result.stdout }}
     next: report
   report:
     type: script
-    run: echo '${{ steps.greet.output.file }}'
+    run: echo '${{ steps.greet.outputs.file }}'
     next: end

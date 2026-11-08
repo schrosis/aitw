@@ -1,6 +1,6 @@
 import { identifierPattern } from "../identifier.js";
 
-/** A part of a template: literal text or a reference such as `steps.fetch.output.title`. */
+/** A part of a template: literal text or a reference such as `steps.fetch.outputs.title`. */
 export type TemplatePart =
   | { type: "text"; value: string }
   | { type: "reference"; path: string[]; source: string };
@@ -45,7 +45,7 @@ export const parseTemplate = (text: string): ParseTemplateResult => {
       .split(".");
     if (!path.every((segment) => identifierPattern.test(segment))) {
       return {
-        message: `Invalid expression: ${source}. Use a reference such as steps.fetch.output.title`,
+        message: `Invalid expression: ${source}. Use a reference such as steps.fetch.outputs.title`,
         ok: false,
       };
     }

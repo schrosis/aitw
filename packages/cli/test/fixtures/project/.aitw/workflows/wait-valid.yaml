@@ -1,0 +1,26 @@
+version: v0.1
+inputs:
+  greeting:
+    type: string
+    default: Hello
+start: ask
+steps:
+  ask:
+    type: wait
+    method: terminal
+    with:
+      message: ${{ workflow.inputs.greeting }}, what is your name?
+      schema:
+        name:
+          type: string
+          required: true
+        approve:
+          type: boolean
+    outputs:
+      name: ${{ result.name }}
+      approve: ${{ result.approve }}
+    next: greet
+  greet:
+    type: script
+    run: echo "${{ workflow.inputs.greeting }} ${{ steps.ask.outputs.name }}!!"
+    next: end

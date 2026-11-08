@@ -1,7 +1,11 @@
 export {
-  intermediateSchema,
+  checkInputDeclarations,
   decimalNumberMessage,
   decimalNumberPattern,
+  inputDeclarationDefinitionSchema,
+  inputDeclarationSchema,
+  inputDeclarationsSchema,
+  intermediateSchema,
   intermediateVersion,
   resolveWorkflowInput,
   validateIntermediate,
@@ -9,12 +13,14 @@ export {
 export type {
   InputDeclaration,
   Intermediate,
-  ResolveInputResult,
-  WorkflowInput,
   IntermediateStep,
+  ResolveInputResult,
+  ScriptStep,
   Transition,
   ValidationError,
   ValidationResult,
+  WaitStep,
+  WorkflowInput,
 } from "./intermediate/index.js";
 export { ScriptTimeoutError } from "./ports/script-runner.js";
 export type {

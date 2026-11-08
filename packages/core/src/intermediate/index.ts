@@ -1,5 +1,12 @@
 export { intermediateSchema, intermediateVersion } from "./schema.js";
-export type { InputDeclaration, Intermediate, IntermediateStep, Transition } from "./schema.js";
+export type { Intermediate, IntermediateStep, ScriptStep, Transition, WaitStep } from "./schema.js";
+export {
+  checkInputDeclarations,
+  inputDeclarationDefinitionSchema,
+  inputDeclarationSchema,
+  inputDeclarationsSchema,
+} from "./declarations.js";
+export type { InputDeclaration } from "./declarations.js";
 export {
   checkInputValue,
   decimalNumberMessage,

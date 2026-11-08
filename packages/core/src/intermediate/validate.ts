@@ -1,5 +1,5 @@
 import { validateExpressions } from "./expressions.js";
-import { checkInputValue } from "./input.js";
+import { checkInputDeclarations } from "./declarations.js";
 import { executionOrder } from "./order.js";
 import { intermediateSchema } from "./schema.js";
 import type { Intermediate } from "./schema.js";
@@ -16,33 +16,34 @@ export type ValidationResult =
   | { ok: true; intermediate: Intermediate }
   | { ok: false; errors: ValidationError[] };
 
-/** Validates the parts of input declarations that the schema cannot express. */
-const validateInputDeclarations = ({ inputs }: Intermediate): ValidationError[] =>
-  Object.entries(inputs).flatMap(([name, declaration]): ValidationError[] => {
-    const path = ["inputs", name];
-    const errors: ValidationError[] = [];
-    if (declaration.type === "choice") {
-      const duplicate = declaration.options.find(
-        (option, index) => declaration.options.indexOf(option) !== index,
-      );
-      if (duplicate !== undefined) {
-        errors.push({ message: `Duplicate option: ${duplicate}`, path: [...path, "options"] });
-      }
+const prefixed = (prefix: (number | string)[], errors: ValidationError[]): ValidationError[] =>
+  errors.map(({ message, path }) => ({ message, path: [...prefix, ...path] }));
+
+/** Validates the parts of declarations that the schema cannot express. */
+const validateDeclarations = ({ inputs, steps }: Intermediate): ValidationError[] => [
+  ...prefixed(["inputs"], checkInputDeclarations(inputs)),
+  ...Object.entries(steps).flatMap(([id, step]) => {
+    if (step.type !== "wait" || step.answers === undefined) {
+      return [];
     }
-    if (declaration.default !== undefined) {
-      if (declaration.required) {
+    const errors = prefixed(["steps", id, "answers"], checkInputDeclarations(step.answers));
+    // Answers are built before the workflow runs, so expressions in them would never be
+    // evaluated.
+    for (const [name, declaration] of Object.entries(step.answers)) {
+      const values = [
+        declaration.default,
+        ...(declaration.type === "choice" ? declaration.options : []),
+      ];
+      if (values.some((value) => typeof value === "string" && value.includes("${{"))) {
         errors.push({
-          message: "A required input cannot have a default",
-          path: [...path, "default"],
+          message: "Defaults and options of answers cannot contain expressions",
+          path: ["steps", id, "answers", name],
         });
-      }
-      const checked = checkInputValue(declaration, declaration.default);
-      if (!checked.ok) {
-        errors.push({ message: checked.message, path: [...path, "default"] });
       }
     }
     return errors;
-  });
+  }),
+];
 
 const validateTransitions = (intermediate: Intermediate): ValidationError[] => {
   const errors: ValidationError[] = [];
@@ -102,7 +103,7 @@ export const validateIntermediate = (input: unknown): ValidationResult => {
   }
 
   const errors = [
-    ...validateInputDeclarations(result.data),
+    ...validateDeclarations(result.data),
     ...validateTransitions(result.data),
     ...validateExpressions(result.data),
   ];

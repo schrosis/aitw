@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { resolveWorkflowInput } from "./input.ts";
-import type { InputDeclaration } from "./schema.ts";
+import type { InputDeclaration } from "./declarations.ts";
 
 const declarations: Record<string, InputDeclaration> = {
   enabled: { default: false, required: false, type: "boolean" },

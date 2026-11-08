@@ -5,6 +5,7 @@ import type { Intermediate } from "@aitw/core";
 import { compileDefinition } from "@aitw/definition";
 import type { DefinitionError } from "@aitw/definition";
 
+import { createRegistry } from "../plugins.js";
 import { resolveWorkflow } from "../workflows.js";
 
 /** Environment that a command runs in. */
@@ -56,7 +57,7 @@ export const loadWorkflow = async (
     return undefined;
   }
 
-  const result = compileDefinition(source);
+  const result = compileDefinition(source, { plugins: createRegistry() });
   if (!result.ok) {
     for (const error of result.errors) {
       context.stderr(formatError(file, error));

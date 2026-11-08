@@ -1,0 +1,26 @@
+version: v0.1
+start: ask
+steps:
+  ask:
+    type: wait
+    method: terminal
+    with:
+      message: ${{ steps.greet.outputs.name }}
+      schema:
+        name:
+          type: integer
+    outputs:
+      name: ${{ result.name }}
+    next: confirm
+  confirm:
+    type: wait
+    method: terminal
+    with:
+      message: Continue?
+    outputs:
+      missing: ${{ result.missing }}
+    next: later
+  later:
+    type: wait
+    method: slack
+    next: end

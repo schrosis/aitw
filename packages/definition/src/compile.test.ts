@@ -1,4 +1,6 @@
+import { createPluginRegistry, definePlugin, defineWaitMethod } from "@aitw/core";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { compileDefinition } from "./compile.ts";
 
@@ -68,5 +70,105 @@ describe("compileDefinition", () => {
       ],
       ok: false,
     });
+  });
+});
+
+const waitSource = (ask: string) => `version: v0.1
+start: ask
+steps:
+  ask:
+    type: wait
+${ask}
+    next: end
+`;
+
+describe("compileDefinition wait steps", () => {
+  const plugins = createPluginRegistry({
+    builtins: [
+      definePlugin({
+        name: "test",
+        waitMethods: [
+          defineWaitMethod({
+            answers: ({ name }) => ({ [name]: { required: true, type: "string" } }),
+            name: "ask",
+            with: z.strictObject({ message: z.string(), name: z.string() }),
+          }),
+          defineWaitMethod({ name: "watch", with: z.strictObject({}) }),
+        ],
+      }),
+    ],
+  });
+
+  it("builds the answers from the method", () => {
+    expect(
+      compileDefinition(
+        waitSource(
+          "    method: ask\n    with:\n      message: Name?\n      name: who\n    outputs:\n      who: ${{ result.who }}",
+        ),
+        { plugins },
+      ),
+    ).toMatchObject({
+      intermediate: {
+        steps: {
+          ask: {
+            answers: { who: { required: true, type: "string" } },
+            method: "ask",
+            type: "wait",
+            with: { message: "Name?", name: "who" },
+          },
+        },
+      },
+      ok: true,
+    });
+  });
+
+  it("builds a method without answers", () => {
+    const result = compileDefinition(waitSource("    method: watch"), { plugins });
+
+    expect(result).toMatchObject({ intermediate: { steps: { ask: { with: {} } } }, ok: true });
+    expect(result.ok && result.intermediate.steps.ask).not.toHaveProperty("answers");
+  });
+
+  it("locates an unknown method", () => {
+    expect(compileDefinition(waitSource("    method: slack"), { plugins })).toEqual({
+      errors: [
+        {
+          column: 13,
+          line: 6,
+          message: "Unknown wait method: slack. Available methods: ask, watch",
+          path: ["steps", "ask", "method"],
+        },
+      ],
+      ok: false,
+    });
+    expect(compileDefinition(waitSource("    method: ask"))).toMatchObject({
+      errors: [{ message: "Unknown wait method: ask. No methods are available" }],
+      ok: false,
+    });
+  });
+
+  it("locates invalid options with the schema of the method", () => {
+    expect(
+      compileDefinition(
+        waitSource("    method: ask\n    with:\n      message: 1\n      name: who"),
+        {
+          plugins,
+        },
+      ),
+    ).toMatchObject({
+      errors: [{ column: 16, line: 8, path: ["steps", "ask", "with", "message"] }],
+      ok: false,
+    });
+  });
+
+  it("reports invalid answers at with", () => {
+    expect(
+      compileDefinition(
+        waitSource("    method: ask\n    with:\n      message: Hi\n      name: 1st"),
+        {
+          plugins,
+        },
+      ),
+    ).toMatchObject({ errors: [{ line: 8, path: ["steps", "ask", "with"] }], ok: false });
   });
 });

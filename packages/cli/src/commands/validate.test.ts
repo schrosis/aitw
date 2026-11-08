@@ -61,6 +61,28 @@ describe("validate", () => {
     });
   });
 
+  it("validates a wait step with the built-in terminal method", async () => {
+    await expect(run("wait-valid")).resolves.toEqual({
+      exitCode: 0,
+      stderr: "",
+      stdout: "wait-valid: valid\n",
+    });
+  });
+
+  it("reports invalid wait steps", async () => {
+    await expect(run("wait-error")).resolves.toEqual({
+      exitCode: 1,
+      stderr: [
+        ".aitw/workflows/wait-error.yaml:11:17 steps.ask.with.schema.name.type: Invalid discriminator value. Expected 'string' | 'number' | 'boolean' | 'choice'",
+        ".aitw/workflows/wait-error.yaml:25:13 steps.later.method: Unknown wait method: slack. Available methods: terminal",
+        ".aitw/workflows/wait-error.yaml:8:16 steps.ask.with.message: Step greet does not run before ask: ${{ steps.greet.outputs.name }}",
+        ".aitw/workflows/wait-error.yaml:21:16 steps.confirm.outputs.missing: Step confirm does not declare the answer missing: ${{ result.missing }}",
+        "",
+      ].join("\n"),
+      stdout: "",
+    });
+  });
+
   it("reports a workflow that cannot be resolved", async () => {
     await expect(run("missing")).resolves.toEqual({
       exitCode: 1,

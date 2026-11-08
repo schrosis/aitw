@@ -1,5 +1,5 @@
 export { createActivities } from "./activities/index.js";
-export { maxValueBytes } from "./limits.js";
+export { jsonBytes, maxValueBytes } from "./limits.js";
 export type {
   Activities,
   ActivityDependencies,

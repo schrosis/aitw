@@ -4,6 +4,7 @@ import { z } from "zod";
 export const intermediateVersion = 1;
 
 const stepIdSchema = z.string().min(1);
+const inputNameSchema = z.string().min(1);
 const expressionMapSchema = z.record(z.string().min(1), z.string().min(1));
 
 const transitionSchema = z.discriminatedUnion("type", [
@@ -41,7 +42,7 @@ const inputDeclarationSchema = z.discriminatedUnion("type", [
 /** Schema of the intermediate representation that the engine executes. */
 export const intermediateSchema = z.strictObject({
   version: z.literal(intermediateVersion),
-  input: z.record(stepIdSchema, inputDeclarationSchema),
+  input: z.record(inputNameSchema, inputDeclarationSchema),
   start: stepIdSchema,
   steps: z.record(stepIdSchema, z.discriminatedUnion("type", [scriptStepSchema])),
 });

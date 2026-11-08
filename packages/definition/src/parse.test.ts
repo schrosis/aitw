@@ -175,6 +175,18 @@ steps:
     });
   });
 
+  it("reports a number default of a string input as a type error", () => {
+    const source = validSource.replace(
+      "start: fetch",
+      "input:\n  title:\n    type: string\n    default: 1e3\nstart: fetch",
+    );
+
+    expect(parseDefinition(source)).toMatchObject({
+      errors: [{ message: expect.stringContaining("expected string") as unknown }],
+      ok: false,
+    });
+  });
+
   it.each(["1e3", "0x10", ".inf", ".nan", "+1"])("rejects the number notation %s", (value) => {
     const source = validSource.replace(
       "start: fetch",

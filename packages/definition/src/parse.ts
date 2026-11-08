@@ -61,7 +61,7 @@ const findAliasErrors = (
 };
 
 /**
- * Finds input defaults written in a number notation other than plain decimals.
+ * Finds defaults of number inputs written in a notation other than plain decimals.
  *
  * YAML also reads numbers such as `1e3`, `0x10`, and `.inf`, which the parsed value no longer
  * shows.
@@ -75,7 +75,10 @@ const findNumberNotationErrors = (
     return [];
   }
   return inputs.items.flatMap(({ key, value }): DefinitionError[] => {
-    const defaultValue = isMap(value) ? value.get("default", true) : undefined;
+    if (!isMap(value) || value.get("type") !== "number") {
+      return [];
+    }
+    const defaultValue = value.get("default", true);
     if (
       !isScalar(key) ||
       !isScalar(defaultValue) ||

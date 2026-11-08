@@ -82,6 +82,19 @@ describe("run", () => {
     });
   }, 60_000);
 
+  it("rejects workflow input over the size limit without starting the workflow", async () => {
+    const note = "x".repeat(600 * 1024);
+    await expect(
+      execute("run-input", undefined, undefined, JSON.stringify({ level: "high", note })),
+    ).resolves.toEqual({
+      exitCode: 1,
+      stderr: expect.stringMatching(
+        /^run-input: workflow\.input is \d+ bytes, which exceeds the limit of 524288 bytes\n$/u,
+      ) as unknown,
+      stdout: "",
+    });
+  }, 60_000);
+
   it("reports unreadable workflow input", async () => {
     await expect(execute("run-input", undefined, undefined, "input.yaml")).resolves.toMatchObject({
       exitCode: 1,

@@ -1,6 +1,6 @@
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
 import { resolveWorkflowInput } from "@aitw/core";
-import { runWorkflow } from "@aitw/engine";
+import { jsonBytes, maxValueBytes, runWorkflow } from "@aitw/engine";
 
 import { resolve } from "node:path";
 
@@ -87,6 +87,13 @@ export const run = async (
     for (const { message, path } of resolved.errors) {
       context.stderr(`${name}: ${["workflow.input", ...path].join(".")}: ${message}\n`);
     }
+    return 1;
+  }
+  const bytes = jsonBytes(resolved.input);
+  if (bytes > maxValueBytes) {
+    context.stderr(
+      `${name}: workflow.input is ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes\n`,
+    );
     return 1;
   }
 

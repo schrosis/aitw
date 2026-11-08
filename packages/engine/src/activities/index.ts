@@ -164,7 +164,7 @@ export const createActivities = ({
     const startedAt = performance.now();
     // Output that arrives after the script settles would appear after the end of the step.
     let settled = false;
-    // The step inputs are added last, so that references cannot replace it.
+    // The step inputs are added last, so that references cannot replace them.
     const values = { ...references, inputs };
     const expanded = evaluateExpression(runTemplate, values);
     const run = expanded.ok ? embedValue(expanded.value) : runTemplate;

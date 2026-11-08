@@ -40,7 +40,7 @@ describe("parseTemplate", () => {
 });
 
 describe("parseTemplate names", () => {
-  it.each(["${{ steps.my-step.output.x }}", "${{ inputs._private }}", "${{ inputs.1st }}"])(
+  it.each(["${{ steps.my-step.outputs.x }}", "${{ inputs._private }}", "${{ inputs.1st }}"])(
     "rejects a name that workflows cannot define: %j",
     (text) => {
       expect(parseTemplate(text)).toMatchObject({ ok: false });

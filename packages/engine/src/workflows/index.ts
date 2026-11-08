@@ -46,7 +46,7 @@ const evaluateInput = (
   expressions: Readonly<Record<string, string>>,
   context: SharedContext,
 ): Record<string, unknown> => {
-  const input: Record<string, unknown> = {};
+  const inputs: Record<string, unknown> = {};
   for (const [name, expression] of Object.entries(expressions)) {
     const evaluated = evaluateExpression(expression, context);
     if (!evaluated.ok) {
@@ -55,10 +55,10 @@ const evaluateInput = (
         "InvalidExpression",
       );
     }
-    input[name] = evaluated.value;
+    inputs[name] = evaluated.value;
   }
 
-  return input;
+  return inputs;
 };
 
 /**
@@ -96,9 +96,12 @@ const prepareStep = (id: string, step: IntermediateStep, context: SharedContext)
  * from the Temporal Web UI.
  *
  * @param intermediate The workflow in the intermediate representation.
- * @param input Values of the workflow input, keyed by name. Defaults are applied here.
+ * @param inputs Values of the workflow input, keyed by name. Defaults are applied here.
  */
-export const aitw = async (intermediate: unknown, input: unknown = {}): Promise<WorkflowResult> => {
+export const aitw = async (
+  intermediate: unknown,
+  inputs: unknown = {},
+): Promise<WorkflowResult> => {
   const validation = validateIntermediate(intermediate);
   if (!validation.ok) {
     throw ApplicationFailure.nonRetryable(
@@ -108,7 +111,7 @@ export const aitw = async (intermediate: unknown, input: unknown = {}): Promise<
     );
   }
 
-  const resolved = resolveWorkflowInput(validation.intermediate.inputs, input);
+  const resolved = resolveWorkflowInput(validation.intermediate.inputs, inputs);
   if (!resolved.ok) {
     throw ApplicationFailure.nonRetryable(
       resolved.errors

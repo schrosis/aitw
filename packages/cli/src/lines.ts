@@ -33,12 +33,21 @@ export const createLineReader = (input: NodeJS.ReadableStream): LineReader => {
       signal.throwIfAborted();
       pending ??= iterator.next();
       const next = pending;
+      // The same signal is used for every read of a run, so the listener is removed after each.
+      const cleanup = new AbortController();
       const aborted = new Promise<never>((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+          signal: cleanup.signal,
+        });
       });
-      const result = await Promise.race([next, aborted]);
-      pending = undefined;
-      return result.done === true ? null : result.value;
+      try {
+        const result = await Promise.race([next, aborted]);
+        pending = undefined;
+        return result.done === true ? null : result.value;
+      } finally {
+        cleanup.abort();
+      }
     },
   };
 };

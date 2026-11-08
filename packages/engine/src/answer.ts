@@ -8,8 +8,14 @@ import type { WorkflowHandle } from "@temporalio/client";
 import { answerUpdateName, waitingQueryName } from "./messages.js";
 import type { Answer, WaitingStep } from "./messages.js";
 
-/** Interval of checking whether the workflow waits for an answer, in milliseconds. */
-const pollIntervalMs = 200;
+/**
+ * Intervals of checking whether the workflow waits for an answer, in milliseconds.
+ *
+ * The interval grows while the workflow does not wait, so that a long run sends few queries,
+ * and starts again from the shortest after each answer.
+ */
+const minPollIntervalMs = 200;
+const maxPollIntervalMs = 2000;
 
 /** Options of {@link answerWaits}. */
 export interface AnswerWaitsOptions {
@@ -85,6 +91,7 @@ const answerStep = async (
  */
 export const answerWaits = async (options: AnswerWaitsOptions): Promise<void> => {
   const { handle, signal } = options;
+  let interval = minPollIntervalMs;
   while (!signal.aborted) {
     // The query fails while no Worker can run it and after the workflow closes. The result of
     // the workflow reports those cases.
@@ -93,8 +100,10 @@ export const answerWaits = async (options: AnswerWaitsOptions): Promise<void> =>
       .catch((): WaitingStep | null => null);
     if (waiting !== null && !signal.aborted) {
       await answerStep(waiting, options);
+      interval = minPollIntervalMs;
       continue;
     }
-    await sleep(pollIntervalMs, undefined, { signal }).catch(() => {});
+    await sleep(interval, undefined, { signal }).catch(() => {});
+    interval = Math.min(interval * 2, maxPollIntervalMs);
   }
 };

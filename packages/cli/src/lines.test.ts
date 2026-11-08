@@ -1,3 +1,4 @@
+import { getEventListeners } from "node:events";
 import { PassThrough } from "node:stream";
 
 import { describe, expect, it } from "vitest";
@@ -16,6 +17,18 @@ describe("createLineReader", () => {
     await expect(reader.readLine(signal)).resolves.toBe("second");
     await expect(reader.readLine(signal)).resolves.toBe("last");
     await expect(reader.readLine(signal)).resolves.toBeNull();
+  });
+
+  it("removes its abort listener after each read", async () => {
+    const input = new PassThrough();
+    const reader = createLineReader(input);
+    const controller = new AbortController();
+    input.end("line\n".repeat(20));
+
+    for (let index = 0; index < 20; index += 1) {
+      await expect(reader.readLine(controller.signal)).resolves.toBe("line");
+    }
+    expect(getEventListeners(controller.signal, "abort")).toEqual([]);
   });
 
   it("keeps a line that arrives after an aborted read", async () => {

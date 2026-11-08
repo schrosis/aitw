@@ -18,13 +18,22 @@ const toPathSegment = (
  * Validates a value with a Standard Schema, such as a Zod schema of a plugin.
  *
  * Definitions are validated synchronously, so a schema that validates asynchronously is reported
- * as an error.
+ * as an error. A schema that throws, such as for a bug in a plugin, is also reported as an error.
+ *
+ * The paths of the errors are relative to the value. Callers prefix them with the location of
+ * the value, such as `["steps", id, "with"]`.
  */
 export const validateWithSchema = <Output>(
   schema: StandardSchemaV1<unknown, Output>,
   value: unknown,
 ): SchemaResult<Output> => {
-  const result = schema["~standard"].validate(value);
+  let result: StandardSchemaV1.Result<Output> | Promise<StandardSchemaV1.Result<Output>>;
+  try {
+    result = schema["~standard"].validate(value);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { errors: [{ message: `The schema failed: ${reason}`, path: [] }], ok: false };
+  }
   if (result instanceof Promise) {
     // The promise is not awaited, so a rejection must not become unhandled.
     result.catch(() => {});

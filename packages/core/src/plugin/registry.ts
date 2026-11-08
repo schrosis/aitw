@@ -28,16 +28,23 @@ const checkName = (kind: string, name: string): void => {
 /**
  * Creates a registry of plugins.
  *
- * @throws When a name is invalid or two extensions have the same name, because that is a mistake
+ * @throws When a name is invalid, or two plugins or two extensions have the same name, because
+ *   that is a mistake
  *   in how aitw or a plugin is put together.
  */
 export const createPluginRegistry = ({
   builtins = [],
   plugins = [],
 }: PluginRegistryOptions = {}): PluginRegistry => {
+  const pluginNames = new Set<string>();
   const waitMethods = new Map<string, WaitMethod>();
   const register = (plugin: Plugin, builtin: boolean): void => {
     checkName("plugin", plugin.name);
+    // The name of a plugin is the namespace of its extensions, including for built-in plugins.
+    if (pluginNames.has(plugin.name)) {
+      throw new Error(`Duplicate plugin: ${plugin.name}`);
+    }
+    pluginNames.add(plugin.name);
     for (const method of plugin.waitMethods ?? []) {
       checkName("wait method", method.name);
       const name = builtin ? method.name : `${plugin.name}/${method.name}`;

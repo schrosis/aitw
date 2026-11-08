@@ -40,7 +40,7 @@ describe("createPluginRegistry", () => {
     expect(createPluginRegistry().waitMethodNames()).toEqual([]);
   });
 
-  it("rejects duplicate names", () => {
+  it("rejects duplicate wait method names", () => {
     expect(() =>
       createPluginRegistry({
         builtins: [
@@ -49,6 +49,23 @@ describe("createPluginRegistry", () => {
         ],
       }),
     ).toThrow("Duplicate wait method: terminal");
+  });
+
+  it("rejects duplicate plugin names", () => {
+    expect(() =>
+      createPluginRegistry({
+        builtins: [definePlugin({ name: "acme", waitMethods: [terminal] })],
+        plugins: [definePlugin({ name: "acme", waitMethods: [slack] })],
+      }),
+    ).toThrow("Duplicate plugin: acme");
+    expect(() =>
+      createPluginRegistry({
+        plugins: [
+          definePlugin({ name: "acme", waitMethods: [slack] }),
+          definePlugin({ name: "acme", waitMethods: [terminal] }),
+        ],
+      }),
+    ).toThrow("Duplicate plugin: acme");
   });
 
   it.each([
@@ -103,6 +120,23 @@ describe("validateWithSchema", () => {
 
     expect(validateWithSchema(schema, {})).toEqual({
       errors: [{ message: "Invalid", path: ["a", 0, "b"] }],
+      ok: false,
+    });
+  });
+
+  it("reports a schema that throws", () => {
+    const schema: StandardSchemaV1<unknown, unknown> = {
+      "~standard": {
+        validate: () => {
+          throw new Error("broken refinement");
+        },
+        vendor: "test",
+        version: 1,
+      },
+    };
+
+    expect(validateWithSchema(schema, {})).toEqual({
+      errors: [{ message: "The schema failed: broken refinement", path: [] }],
       ok: false,
     });
   });

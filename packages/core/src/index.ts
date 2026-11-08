@@ -57,4 +57,5 @@ export type {
   PluginRegistryOptions,
   SchemaResult,
   WaitMethod,
+  WaitResponseContext,
 } from "./plugin/index.js";

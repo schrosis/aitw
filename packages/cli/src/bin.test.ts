@@ -122,6 +122,29 @@ describe("aitw executable", () => {
       }
     }, 40_000);
 
+    it("cancels the run and stops the server when interrupted while waiting", async () => {
+      let address: string | undefined;
+      const { exitCode, output } = await execute(
+        ["run", "wait-valid", "--dev", "--temporal-bin", executable],
+        fixtureProject,
+        {
+          onOutput: (child, text) => {
+            if (address === undefined && text.includes("name (string, required): ")) {
+              address = /Temporal Web UI: (http:\S+)/u.exec(text)?.[1];
+              child.kill("SIGINT");
+            }
+          },
+          timeoutMs: 30_000,
+        },
+      );
+
+      expect(exitCode).toBe(130);
+      expect(output).toContain("■ ask: cancelled");
+      expect(output).toContain("wait-valid: cancelled\n");
+      expect(address).toBeDefined();
+      await expect(fetch(address ?? "")).rejects.toThrow();
+    }, 40_000);
+
     it("stops the server when interrupted twice", async () => {
       let address: string | undefined;
       const { exitCode } = await execute(

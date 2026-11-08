@@ -362,7 +362,7 @@ describe("aitw", () => {
     expect(result).toMatchObject({ error: { cause: { type: "InvalidInput" } }, ok: false });
   }, 60_000);
 
-  it("rejects a wait step until it is supported", async () => {
+  it("rejects a wait step whose method describes no answers", async () => {
     const { requests, result } = await run({
       ...intermediate,
       steps: {

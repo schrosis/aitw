@@ -6,8 +6,8 @@ export type WorkflowEvent =
   | {
       type: "stepStarted";
       step: string;
-      /** Command line of a script step. */
-      run: string;
+      /** Command line of a script step. Other steps have none. */
+      run?: string;
     }
   | {
       type: "stepOutput";

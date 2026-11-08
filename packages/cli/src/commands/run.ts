@@ -6,6 +6,9 @@ import { resolve } from "node:path";
 
 import { createProgressPrinter } from "../progress.js";
 import { readWorkflowInput } from "../input.js";
+import { createLineReader } from "../lines.js";
+import type { LineReader } from "../lines.js";
+import { createRegistry } from "../plugins.js";
 import { ensureTemporalCli, startDevServer } from "../temporal-cli/index.js";
 import type { DevServer } from "../temporal-cli/index.js";
 import { loadWorkflow } from "./load.js";
@@ -98,6 +101,28 @@ export const run = async (
   }
 
   let devServer: DevServer | undefined;
+  // Standard input is opened only when a wait step asks, so that other runs never read it.
+  let lines: LineReader | undefined;
+  let echo = false;
+  const terminal = {
+    readLine: async (abort: AbortSignal): Promise<string | null> => {
+      if (context.stdin === undefined) {
+        return null;
+      }
+      if (lines === undefined) {
+        const input = context.stdin();
+        // A terminal shows what is typed. Piped answers are shown here instead.
+        echo = !("isTTY" in input && input.isTTY === true);
+        lines = createLineReader(input);
+      }
+      const line = await lines.readLine(abort);
+      if (echo && line !== null) {
+        context.stdout(`${line}\n`);
+      }
+      return line;
+    },
+    write: context.stdout,
+  };
   try {
     let address: string;
     if (server.type === "dev") {
@@ -131,6 +156,7 @@ export const run = async (
       inputs: read.values,
       intermediate: workflow.intermediate,
       name,
+      plugins: createRegistry(terminal),
       scriptRunner: createLocalScriptRunner({ cwd: workflow.root }),
       signal,
     });
@@ -145,6 +171,7 @@ export const run = async (
     context.stderr(`${name}: failed: ${rootMessage(error)}\n`);
     return 1;
   } finally {
+    lines?.close();
     await devServer?.stop();
   }
 };

@@ -1,3 +1,5 @@
+import { Readable } from "node:stream";
+
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
@@ -22,6 +24,7 @@ describe("run", () => {
     signal = new AbortController().signal,
     onStdout: (text: string) => void = () => {},
     input?: string,
+    stdin = "",
   ) => {
     const output = createOutput();
     const exitCode = await run(
@@ -30,6 +33,7 @@ describe("run", () => {
       {
         cwd: fixtureProject,
         stderr: output.stderr,
+        stdin: () => Readable.from([stdin]),
         stdout: (text) => {
           output.stdout(text);
           onStdout(text);
@@ -107,6 +111,35 @@ describe("run", () => {
     await expect(execute("run-input", undefined, undefined, "input.yaml")).resolves.toMatchObject({
       exitCode: 1,
       stderr: "run-input: --input must be a JSON object or the path of a .json file: input.yaml\n",
+    });
+  }, 60_000);
+
+  it("asks the answers of a wait step and passes them on", async () => {
+    const result = await execute(
+      "wait-valid",
+      undefined,
+      undefined,
+      undefined,
+      "schrosis\nmaybe\ny\n",
+    );
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(result.stdout).toMatch(
+      /^▶ ask\nHello, what is your name\?\nname \(string, required\): schrosis\napprove \(y\/n\): maybe\nEnter y or n\napprove \(y\/n\): y\n✓ ask \(\d+\.\ds\)\n▶ greet\necho "Hello schrosis!!"\nHello schrosis!!\n/u,
+    );
+  }, 60_000);
+
+  it("accepts an empty optional answer without asking again", async () => {
+    const result = await execute("wait-valid", undefined, undefined, undefined, "schrosis\n\n");
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(result.stdout).toContain("name (string, required): schrosis\napprove (y/n): \n✓ ask");
+  }, 60_000);
+
+  it("fails when the input ends before the answers", async () => {
+    await expect(execute("wait-valid")).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: "wait-valid: failed: The input ended before the answer was entered\n",
     });
   }, 60_000);
 

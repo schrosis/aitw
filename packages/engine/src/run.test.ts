@@ -1,9 +1,10 @@
 import { fileURLToPath } from "node:url";
 
-import { intermediateVersion } from "@aitw/core";
-import type { Intermediate, ScriptRequest } from "@aitw/core";
+import { createPluginRegistry, definePlugin, intermediateVersion } from "@aitw/core";
+import type { Intermediate, ScriptRequest, WaitMethod, WorkflowEvent } from "@aitw/core";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { z } from "zod";
 
 import { runWorkflow } from "./run.ts";
 
@@ -22,6 +23,22 @@ const intermediate: Intermediate = {
   version: intermediateVersion,
   inputs: {},
 };
+
+const pluginsWith = (respond: WaitMethod["respond"]) =>
+  createPluginRegistry({
+    builtins: [
+      definePlugin({
+        name: "test",
+        waitMethods: [
+          {
+            name: "ask",
+            ...(respond === undefined ? {} : { respond }),
+            with: z.strictObject({ message: z.string() }),
+          },
+        ],
+      }),
+    ],
+  });
 
 describe("runWorkflow", () => {
   let environment: TestWorkflowEnvironment;
@@ -122,4 +139,91 @@ describe("runWorkflow", () => {
 
     await expect(result).rejects.toMatchObject({ cause: { cause: { type: "ScriptFailed" } } });
   }, 60_000);
+
+  describe("with a wait step", () => {
+    const waiting: Intermediate = {
+      ...intermediate,
+      start: "ask",
+      steps: {
+        ...intermediate.steps,
+        ask: {
+          answers: { name: { required: true, type: "string" } },
+          inputs: {},
+          method: "ask",
+          next: { step: "fetch", type: "step" },
+          outputs: { name: "${{ result.name }}" },
+          type: "wait",
+          with: { message: "Name?" },
+        },
+      },
+    };
+
+    const runWaiting = async (respond: WaitMethod["respond"], events: WorkflowEvent[] = []) =>
+      runWorkflow({
+        address: environment.address,
+        eventSink: { emit: (event) => events.push(event) },
+        intermediate: waiting,
+        name: "ask",
+        plugins: pluginsWith(respond),
+        scriptRunner: { run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }) },
+        workflowsPath: fileURLToPath(new URL("./workflows/index.ts", import.meta.url)),
+      });
+
+    it("answers with the method and asks again when the answer is rejected", async () => {
+      const contexts: unknown[] = [];
+      const answers = [{}, { name: "aitw" }];
+      const events: WorkflowEvent[] = [];
+
+      await expect(
+        runWaiting(async (context) => {
+          contexts.push({ answers: context.answers, options: context.options, step: context.step });
+          return answers.shift() ?? {};
+        }, events),
+      ).resolves.toEqual({ executedSteps: ["ask", "fetch"] });
+
+      expect(contexts).toEqual([
+        {
+          answers: { name: { required: true, type: "string" } },
+          options: { message: "Name?" },
+          step: "ask",
+        },
+        {
+          answers: { name: { required: true, type: "string" } },
+          options: { message: "Name?" },
+          step: "ask",
+        },
+      ]);
+      expect(events.filter(({ step }) => step === "ask")).toEqual([
+        { step: "ask", type: "stepStarted" },
+        { step: "ask", stream: "stderr", text: "ask.name: Required\n", type: "stepOutput" },
+        {
+          durationMs: expect.any(Number) as unknown,
+          outcome: "succeeded",
+          step: "ask",
+          type: "stepFinished",
+        },
+      ]);
+    }, 60_000);
+
+    it("cancels the run and reports why the method could not answer", async () => {
+      const events: WorkflowEvent[] = [];
+
+      await expect(
+        runWaiting(async () => {
+          throw new Error("no one is here");
+        }, events),
+      ).rejects.toThrow("no one is here");
+      expect(events.at(-1)).toMatchObject({
+        message: "no one is here",
+        outcome: "failed",
+        step: "ask",
+      });
+    }, 60_000);
+
+    it("fails a run whose wait method cannot answer here", async () => {
+      await expect(runWaiting(undefined)).rejects.toThrow(
+        "steps.ask: Wait method ask cannot answer in this process",
+      );
+    }, 60_000);
+  });
 });

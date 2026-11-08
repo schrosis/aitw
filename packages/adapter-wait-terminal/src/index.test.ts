@@ -1,7 +1,14 @@
 import { validateWithSchema } from "@aitw/core";
+import type { InputDeclaration } from "@aitw/core";
 import { describe, expect, it } from "vitest";
 
-import { terminalPlugin, terminalWaitMethod } from "./index.ts";
+import {
+  createTerminalPlugin,
+  formatPrompt,
+  parseAnswer,
+  terminalPlugin,
+  terminalWaitMethod,
+} from "./index.ts";
 
 describe("terminalWaitMethod", () => {
   it("is provided by the terminal plugin", () => {
@@ -48,5 +55,117 @@ describe("terminalWaitMethod", () => {
       errors: [{ path }],
       ok: false,
     });
+  });
+});
+
+describe("parseAnswer", () => {
+  it.each<[InputDeclaration, string, unknown]>([
+    [{ required: false, type: "string" }, "  hello ", "  hello "],
+    [{ default: false, required: false, type: "boolean" }, "", false],
+    [{ default: "x", required: false, type: "string" }, "", "x"],
+    [{ required: true, type: "number" }, " -1.5 ", -1.5],
+    [{ required: true, type: "boolean" }, "Yes", true],
+    [{ required: true, type: "boolean" }, "n", false],
+    [{ options: ["low", "high"], required: true, type: "choice" }, "high", "high"],
+  ])("parses %j from %j", (declaration, line, value) => {
+    expect(parseAnswer(declaration, line)).toEqual({ ok: true, value });
+  });
+
+  it("leaves an empty optional answer without a default not given", () => {
+    expect(parseAnswer({ required: false, type: "boolean" }, " ")).toEqual({ ok: true });
+  });
+
+  it.each<[InputDeclaration, string, string]>([
+    [{ required: true, type: "string" }, "", "A value is required"],
+    [{ required: true, type: "number" }, "1e3", "without exponent notation"],
+    [{ required: true, type: "boolean" }, "maybe", "Enter y or n"],
+    [{ options: ["low", "high"], required: true, type: "choice" }, "mid", "Enter one of low, high"],
+  ])("rejects %j from %j", (declaration, line, message) => {
+    expect(parseAnswer(declaration, line)).toEqual({
+      message: expect.stringContaining(message) as unknown,
+      ok: false,
+    });
+  });
+});
+
+describe("formatPrompt", () => {
+  it("shows the type, whether it is required, and the default", () => {
+    expect(formatPrompt("approve", { required: true, type: "boolean" })).toBe(
+      "approve (y/n, required): ",
+    );
+    expect(
+      formatPrompt("level", {
+        default: "low",
+        description: "Log level",
+        options: ["low", "high"],
+        required: false,
+        type: "choice",
+      }),
+    ).toBe("level Log level (low/high, default: low): ");
+  });
+});
+
+const respondWith = async (
+  lines: string[],
+  options: unknown,
+  signal = new AbortController().signal,
+) => {
+  let output = "";
+  const method = createTerminalPlugin({
+    readLine: async () => lines.shift() ?? null,
+    write: (text) => {
+      output += text;
+    },
+  }).waitMethods?.[0];
+  const validated = validateWithSchema(terminalWaitMethod.with, options);
+  if (method?.respond === undefined || !validated.ok) {
+    throw new Error("The test setup is invalid");
+  }
+  const answers = method.answers?.(validated.value) ?? {};
+  const values = await method.respond({ answers, options: validated.value, signal, step: "ask" });
+  return { output, values };
+};
+
+describe("createTerminalPlugin", () => {
+  it("asks for every answer and asks again after an invalid value", async () => {
+    await expect(
+      respondWith(["", "schrosis", "maybe", "y"], {
+        message: "Enter your name",
+        schema: {
+          name: { required: true, type: "string" },
+          approve: { type: "boolean" },
+        },
+      }),
+    ).resolves.toEqual({
+      output:
+        "Enter your name\nname (string, required): A value is required\nname (string, required): approve (y/n): Enter y or n\napprove (y/n): ",
+      values: { approve: true, name: "schrosis" },
+    });
+  });
+
+  it("does not send an empty optional answer", async () => {
+    await expect(
+      respondWith(["schrosis", ""], {
+        message: "Enter your name",
+        schema: { name: { type: "string" }, approve: { type: "boolean" } },
+      }),
+    ).resolves.toMatchObject({ values: { name: "schrosis" } });
+  });
+
+  it("waits for Enter when no answers are declared", async () => {
+    await expect(respondWith([""], { message: "Continue?" })).resolves.toEqual({
+      output: "Continue?\nPress Enter to continue: ",
+      values: {},
+    });
+  });
+
+  it("fails when the input ends", async () => {
+    await expect(
+      respondWith([], { message: "Name?", schema: { name: { type: "string" } } }),
+    ).rejects.toThrow("The input ended before the answer was entered");
+  });
+
+  it("does not answer without a terminal", () => {
+    expect("respond" in terminalWaitMethod).toBe(false);
   });
 });

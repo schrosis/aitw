@@ -1,5 +1,11 @@
 import { ScriptTimeoutError } from "@aitw/core";
-import type { ScriptRequest, ScriptResult, ScriptRunner, WorkflowEvent } from "@aitw/core";
+import type {
+  EventLog,
+  ScriptRequest,
+  ScriptResult,
+  ScriptRunner,
+  WorkflowEvent,
+} from "@aitw/core";
 import { MockActivityEnvironment } from "@temporalio/testing";
 import { describe, expect, it } from "vitest";
 
@@ -7,10 +13,17 @@ import { maxValueBytes } from "../limits.ts";
 import { createActivities } from "./index.ts";
 import type { ScriptStepRequest } from "./index.ts";
 
+/** An event log that collects the events of every run. */
+const logTo = (events: WorkflowEvent[]): EventLog => ({
+  append: (_runId, event) => {
+    events.push(event);
+  },
+  read: async () => ({ cursor: "", events: [] }),
+});
+
 const execute = async (scriptRunner: ScriptRunner, events: WorkflowEvent[] = []) =>
   new MockActivityEnvironment().run(
-    createActivities({ eventSink: { emit: (event) => events.push(event) }, scriptRunner })
-      .executeScriptStep,
+    createActivities({ eventLog: logTo(events), scriptRunner }).executeScriptStep,
     { inputs: {}, outputs: {}, references: {}, run: "./run.sh", step: "build", timeoutMs: 1000 },
   );
 
@@ -104,7 +117,7 @@ describe("executeScriptStep", () => {
     const environment = new MockActivityEnvironment();
     const result = environment.run(
       createActivities({
-        eventSink: { emit: (event) => events.push(event) },
+        eventLog: logTo(events),
         scriptRunner: {
           run: async (_request, { signal }) =>
             new Promise((_resolve, reject) => {
@@ -120,14 +133,15 @@ describe("executeScriptStep", () => {
     expect(events.at(-1)).toMatchObject({ outcome: "cancelled", step: "build" });
   });
 
-  it("keeps the result of a step when the event sink fails", async () => {
+  it("keeps the result of a step when the event log fails", async () => {
     const environment = new MockActivityEnvironment();
     const result = environment.run(
       createActivities({
-        eventSink: {
-          emit: () => {
-            throw new Error("sink failed");
+        eventLog: {
+          append: () => {
+            throw new Error("log failed");
           },
+          read: async () => ({ cursor: "", events: [] }),
         },
         scriptRunner: { run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }) },
       }).executeScriptStep,

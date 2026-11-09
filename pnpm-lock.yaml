@@ -224,6 +224,16 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.6(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
 
+  packages/adapter-event-log-file:
+    dependencies:
+      '@aitw/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.6
+
   packages/adapter-script-local:
     dependencies:
       '@aitw/core':
@@ -249,6 +259,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@aitw/adapter-event-log-file':
+        specifier: workspace:*
+        version: link:../adapter-event-log-file
       '@aitw/adapter-script-local':
         specifier: workspace:*
         version: link:../adapter-script-local

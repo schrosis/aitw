@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /** How a step ended. */
 export type StepOutcome = "succeeded" | "failed" | "cancelled";
 
@@ -7,7 +9,7 @@ export type WorkflowEvent =
       type: "stepStarted";
       step: string;
       /** Command line of a script step. Other steps have none. */
-      run?: string;
+      run?: string | undefined;
     }
   | {
       type: "stepOutput";
@@ -21,7 +23,7 @@ export type WorkflowEvent =
       outcome: StepOutcome;
       durationMs: number;
       /** Reason of a failure, absent when the step succeeded. */
-      message?: string;
+      message?: string | undefined;
     };
 
 /**
@@ -32,3 +34,23 @@ export type WorkflowEvent =
 export interface EventSink {
   emit: (event: WorkflowEvent) => void;
 }
+
+const stepEventBase = { step: z.string() };
+
+/** Schema of {@link WorkflowEvent}, for events that come from outside the process. */
+export const workflowEventSchema: z.ZodType<WorkflowEvent> = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("stepStarted"), ...stepEventBase, run: z.string().optional() }),
+  z.strictObject({
+    type: z.literal("stepOutput"),
+    ...stepEventBase,
+    stream: z.enum(["stdout", "stderr"]),
+    text: z.string(),
+  }),
+  z.strictObject({
+    type: z.literal("stepFinished"),
+    ...stepEventBase,
+    outcome: z.enum(["succeeded", "failed", "cancelled"]),
+    durationMs: z.number(),
+    message: z.string().optional(),
+  }),
+]);

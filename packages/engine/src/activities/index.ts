@@ -1,6 +1,6 @@
 import { embedValue, evaluateExpression, ScriptTimeoutError } from "@aitw/core";
 import type {
-  EventSink,
+  EventLog,
   ScriptRequest,
   ScriptResult,
   ScriptRunner,
@@ -15,8 +15,8 @@ import { jsonBytes, maxValueBytes } from "../limits.js";
 /** Adapters and settings that the activities use. */
 export interface ActivityDependencies {
   scriptRunner: ScriptRunner;
-  /** Receives progress events. Events are discarded when it is omitted. */
-  eventSink?: EventSink | undefined;
+  /** Stores progress events, keyed by the workflow ID. Events are discarded when it is omitted. */
+  eventLog?: EventLog | undefined;
   /**
    * Interval of activity heartbeats, in milliseconds.
    *
@@ -83,7 +83,10 @@ const evaluateOutput = (
   return output;
 };
 
-const discardEvents: EventSink = { emit: () => {} };
+const discardEvents: EventLog = {
+  append: () => {},
+  read: async () => ({ cursor: "", events: [] }),
+};
 
 /** Reasons of an aborted activity that mean the step itself failed. */
 const failedAbortReasons = new Set(["TIMED_OUT", "HEARTBEAT_DETAILS_CONVERSION_FAILED"]);
@@ -133,10 +136,28 @@ const runScript = async (
 
 /** Creates the activities that a Worker registers. */
 export const createActivities = ({
-  eventSink = discardEvents,
+  eventLog = discardEvents,
   heartbeatIntervalMs = 5000,
   scriptRunner,
 }: ActivityDependencies) => ({
+  /**
+   * Stores a progress event of the workflow, such as the start of a wait step.
+   *
+   * The workflow cannot write the log itself, and storing events from the Worker keeps them in
+   * the order of the steps.
+   */
+  recordEvent: async (event: WorkflowEvent): Promise<void> => {
+    const context = Context.current();
+    try {
+      const runId = context.info.workflowExecution?.workflowId;
+      if (runId !== undefined) {
+        eventLog.append(runId, event);
+      }
+    } catch (error) {
+      // Progress is only observed, so a failing log must not stop the workflow.
+      context.log.warn("Failed to record a progress event", { error, step: event.step });
+    }
+  },
   /**
    * Runs a script step and fails without retrying when the script does not exit with zero.
    *
@@ -152,10 +173,14 @@ export const createActivities = ({
     timeoutMs,
   }: ScriptStepRequest): Promise<StepOutput> => {
     const context = Context.current();
-    // Progress is only observed, so a failing sink must not change the result of the step.
+    // Progress is only observed, so a failing log must not change the result of the step.
     const emit = (event: WorkflowEvent): void => {
       try {
-        eventSink.emit(event);
+        // Events are keyed by the workflow, so an activity outside a workflow stores none.
+        const runId = context.info.workflowExecution?.workflowId;
+        if (runId !== undefined) {
+          eventLog.append(runId, event);
+        }
       } catch (error) {
         context.log.warn("Failed to emit a progress event", { error, step });
       }

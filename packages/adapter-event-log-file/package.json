@@ -1,0 +1,31 @@
+{
+  "name": "@aitw/adapter-event-log-file",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b && vite build",
+    "lint": "oxlint --type-aware -c ../../.oxlintrc.json .",
+    "test": "vitest run --root ../.. --passWithNoTests packages/adapter-event-log-file/",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@aitw/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  },
+  "engines": {
+    "node": ">=26.13.0"
+  }
+}

@@ -213,11 +213,8 @@ describe("runWorkflow", () => {
           throw new Error("no one is here");
         }, events),
       ).rejects.toThrow("no one is here");
-      expect(events.at(-1)).toMatchObject({
-        message: "no one is here",
-        outcome: "failed",
-        step: "ask",
-      });
+      // The workflow stores the end of the step, which the cancellation interrupted.
+      expect(events.at(-1)).toMatchObject({ outcome: "cancelled", step: "ask" });
     }, 60_000);
 
     it("fails a run whose wait method cannot answer here", async () => {

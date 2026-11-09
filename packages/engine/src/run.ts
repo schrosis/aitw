@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import { createPluginRegistry } from "@aitw/core";
-import type { EventSink, Intermediate, PluginRegistry, ScriptRunner } from "@aitw/core";
+import type { EventLog, EventSink, Intermediate, PluginRegistry, ScriptRunner } from "@aitw/core";
 import { Client, Connection } from "@temporalio/client";
 import { DefaultLogger, NativeConnection, Runtime, Worker } from "@temporalio/worker";
 import type { LogLevel } from "@temporalio/worker";
 
 import { createActivities } from "./activities/index.js";
 import { answerWaits } from "./answer.js";
+import { createMemoryEventLog, followEvents } from "./events.js";
 import type { aitw, WorkflowResult } from "./workflows/index.js";
 
 const discardEvents: EventSink = { emit: () => {} };
@@ -56,8 +57,13 @@ export interface RunWorkflowOptions {
   /** Values of the workflow input, keyed by name. The workflow validates them. */
   inputs?: Readonly<Record<string, unknown>>;
   scriptRunner: ScriptRunner;
-  /** Receives progress events of the run. */
+  /** Receives progress events of the run, in order. */
   eventSink?: EventSink;
+  /**
+   * Stores the progress events, so that the Worker and the process that shows the run can be
+   * different. Defaults to a log in memory.
+   */
+  eventLog?: EventLog;
   /** Path of the workflow code. Defaults to {@link workflowsPath}. */
   workflowsPath?: string;
   /** Cancels the workflow, including its running script, when aborted. */
@@ -73,7 +79,8 @@ export interface RunWorkflowOptions {
  */
 export const runWorkflow = async ({
   address,
-  eventSink,
+  eventLog = createMemoryEventLog(),
+  eventSink = discardEvents,
   inputs = {},
   intermediate,
   name,
@@ -92,7 +99,7 @@ export const runWorkflow = async ({
     const clientConnection = await Connection.connect({ address });
     try {
       const worker = await Worker.create({
-        activities: createActivities({ eventSink, scriptRunner }),
+        activities: createActivities({ eventLog, scriptRunner }),
         connection: workerConnection,
         namespace,
         taskQueue,
@@ -101,11 +108,13 @@ export const runWorkflow = async ({
       const client = new Client({ connection: clientConnection, namespace });
 
       return await worker.runUntil(async () => {
+        const workflowId = `${name}-${id}`;
         const handle = await client.workflow.start<typeof aitw>("aitw", {
           args: [intermediate, inputs],
           taskQueue,
-          workflowId: `${name}-${id}`,
+          workflowId,
         });
+        const follower = followEvents({ log: eventLog, runId: workflowId, sink: eventSink });
         const cancel = (): void => {
           // The result below reports the cancellation, so a failed request is not rethrown.
           handle.cancel().catch(() => {});
@@ -122,9 +131,13 @@ export const runWorkflow = async ({
         // reports why it could not be answered.
         let answerFailure: { error: unknown } | undefined;
         const answered = answerWaits({
-          eventSink: eventSink ?? discardEvents,
           handle,
           plugins,
+          flush: follower.flush,
+          report: async (event) => {
+            eventLog.append(workflowId, event);
+            await follower.flush();
+          },
           signal: answering.signal,
         }).catch((error: unknown) => {
           // An interrupt also stops answering, and the result reports the cancellation.
@@ -140,6 +153,8 @@ export const runWorkflow = async ({
         } finally {
           answering.abort();
           await answered;
+          // Events that the last steps stored are shown before the run ends.
+          await follower.stop();
           signal?.removeEventListener("abort", cancel);
           signal?.removeEventListener("abort", stopAnswering);
         }

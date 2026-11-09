@@ -1,7 +1,9 @@
+import { createFileEventLog } from "@aitw/adapter-event-log-file";
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
 import { resolveWorkflowInput } from "@aitw/core";
 import { jsonBytes, maxValueBytes, runWorkflow } from "@aitw/engine";
 
+import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { createProgressPrinter } from "../progress.js";
@@ -9,6 +11,7 @@ import { readWorkflowInput } from "../input.js";
 import { createLineReader } from "../lines.js";
 import type { LineReader } from "../lines.js";
 import { createRegistry } from "../plugins.js";
+import { projectLogDirectory } from "../state.js";
 import { ensureTemporalCli, startDevServer } from "../temporal-cli/index.js";
 import type { DevServer } from "../temporal-cli/index.js";
 import { loadWorkflow } from "./load.js";
@@ -152,6 +155,9 @@ export const run = async (
     prepareEngine?.();
     const { executedSteps } = await runWorkflow({
       address,
+      eventLog: createFileEventLog({
+        directory: projectLogDirectory(await realpath(workflow.root)),
+      }),
       eventSink: createProgressPrinter(context),
       inputs: read.values,
       intermediate: workflow.intermediate,

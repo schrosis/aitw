@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { validateWithSchema } from "@aitw/core";
-import type { EventSink, PluginRegistry } from "@aitw/core";
+import type { PluginRegistry, WorkflowEvent } from "@aitw/core";
 import { WorkflowUpdateFailedError } from "@temporalio/client";
 import type { WorkflowHandle } from "@temporalio/client";
 
@@ -21,7 +21,10 @@ const maxPollIntervalMs = 2000;
 export interface AnswerWaitsOptions {
   handle: WorkflowHandle;
   plugins: PluginRegistry;
-  eventSink: EventSink;
+  /** Reports a progress event of a wait step, and resolves after the event is shown. */
+  report: (event: WorkflowEvent) => Promise<void>;
+  /** Shows the events that the run has stored so far. */
+  flush: () => Promise<void>;
   /** Stops answering when aborted, such as when the run ends or is interrupted. */
   signal: AbortSignal;
 }
@@ -32,7 +35,7 @@ const formatPrefixedErrors = (prefix: string, errors: { path: unknown[]; message
 /** Asks the method of a waiting step for an answer until the workflow accepts one. */
 const answerStep = async (
   { answers, method: name, options, step }: WaitingStep,
-  { eventSink, handle, plugins, signal }: AnswerWaitsOptions,
+  { flush, handle, plugins, report, signal }: AnswerWaitsOptions,
 ): Promise<void> => {
   const method = plugins.waitMethod(name);
   if (method?.respond === undefined) {
@@ -43,43 +46,22 @@ const answerStep = async (
     throw new Error(formatPrefixedErrors(`steps.${step}.with`, validated.errors));
   }
 
-  eventSink.emit({ step, type: "stepStarted" });
-  const startedAt = performance.now();
-  const finish = (outcome: "cancelled" | "failed" | "succeeded", message?: string): void => {
-    eventSink.emit({
-      durationMs: Math.round(performance.now() - startedAt),
-      ...(message === undefined ? {} : { message }),
-      outcome,
-      step,
-      type: "stepFinished",
-    });
-  };
-
+  // The workflow stores the start of the step before it waits, so it is shown before the
+  // questions of the method.
+  await flush();
   for (;;) {
-    let values: Readonly<Record<string, unknown>>;
-    try {
-      values = await method.respond({ answers, options: validated.value, signal, step });
-    } catch (error) {
-      if (signal.aborted) {
-        finish("cancelled");
-      } else {
-        finish("failed", error instanceof Error ? error.message : String(error));
-      }
-      throw error;
-    }
+    const values = await method.respond({ answers, options: validated.value, signal, step });
     try {
       const answer: Answer = { step, values };
       await handle.executeUpdate(answerUpdateName, { args: [answer] });
-      finish("succeeded");
       return;
     } catch (error) {
       // The workflow rejected the answer, so the method asks again.
       if (!(error instanceof WorkflowUpdateFailedError)) {
-        finish("failed", error instanceof Error ? error.message : String(error));
         throw error;
       }
       const reason = error.cause instanceof Error ? error.cause.message : error.message;
-      eventSink.emit({ step, stream: "stderr", text: `${reason}\n`, type: "stepOutput" });
+      await report({ step, stream: "stderr", text: `${reason}\n`, type: "stepOutput" });
     }
   }
 };

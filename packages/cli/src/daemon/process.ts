@@ -1,4 +1,6 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { setTimeout as sleep } from "node:timers/promises";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -25,6 +27,46 @@ export interface RunDaemonOptions {
 const respond = (response: ServerResponse, code: number, body: unknown): void => {
   response.writeHead(code, { "content-type": "application/json" });
   response.end(body === undefined ? "" : JSON.stringify(body));
+};
+
+/** Returns whether a process runs a Temporal development server, by its command line. */
+const isDevServer = (pid: number): boolean => {
+  try {
+    const command = execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" });
+    return command.includes("server start-dev");
+  } catch {
+    // ps fails when no process has the ID.
+    return false;
+  }
+};
+
+/**
+ * Stops the development server that a killed resident process left, if it still runs.
+ *
+ * The command line is checked, so that a process that reused the ID is not stopped.
+ */
+const stopLeftoverDevServer = async (file: string, context: CommandContext): Promise<void> => {
+  let pid: number;
+  try {
+    pid = Number(readFileSync(file, "utf8").trim());
+  } catch {
+    return;
+  }
+  if (Number.isInteger(pid) && pid > 0 && isDevServer(pid)) {
+    log(context, `aitw daemon: stopping the development server that was left running (pid ${pid})`);
+    try {
+      process.kill(-pid, "SIGTERM");
+      for (let attempt = 0; attempt < 50 && isDevServer(pid); attempt += 1) {
+        await sleep(100);
+      }
+      if (isDevServer(pid)) {
+        process.kill(-pid, "SIGKILL");
+      }
+    } catch {
+      // The server stopped in the meantime.
+    }
+  }
+  rmSync(file, { force: true });
 };
 
 const log = (context: CommandContext, message: string): void => {
@@ -64,9 +106,15 @@ export const runDaemon = async (
     if ((await getDaemonStatus(paths)) === undefined) {
       rmSync(paths.socket, { force: true });
     }
+    // A resident process that was killed could not stop its development server, which would
+    // share the SQLite file with the new one.
+    await stopLeftoverDevServer(paths.devServer, context);
     opened = await openServer(server, context, signal);
     if (!opened.durable) {
       throw new Error("aitw daemon needs a Temporal Server that keeps its runs");
+    }
+    if (opened.pid !== undefined) {
+      writeFileSync(paths.devServer, `${opened.pid}\n`, { mode: 0o600 });
     }
 
     const stopping = new AbortController();
@@ -116,6 +164,7 @@ export const runDaemon = async (
     });
     rmSync(paths.socket, { force: true });
     await opened?.stop();
+    rmSync(paths.devServer, { force: true });
     lock.release();
     log(context, "aitw daemon: stopped");
   }

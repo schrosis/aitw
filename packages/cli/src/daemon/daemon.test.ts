@@ -16,6 +16,20 @@ describe("aitw daemon", () => {
     state = mkdtempSync("/tmp/aitw-daemon-");
   });
 
+  /** Returns the process IDs of the development servers that use the SQLite file of the test. */
+  const devServers = (): string[] => {
+    try {
+      return execFileSync("pgrep", ["-f", "--", `--db-filename ${join(state, "temporal.db")}`], {
+        encoding: "utf8",
+      })
+        .trim()
+        .split("\n")
+        .filter((line) => line !== "");
+    } catch {
+      return [];
+    }
+  };
+
   /** Stops processes that use the state of the test, such as a development server. */
   const stopLeftovers = (): void => {
     try {
@@ -98,8 +112,23 @@ describe("aitw daemon", () => {
     process.kill(pid, "SIGKILL");
 
     await expect(start()).resolves.toMatchObject({ exitCode: 0 });
-    // The killed process could not stop its development server.
-    stopLeftovers();
+    // The new process stopped the development server of the killed one, which used the same
+    // SQLite file.
+    expect(devServers()).toHaveLength(1);
+    expect(readFileSync(join(state, "aitw", "daemon", "daemon.log"), "utf8")).toContain(
+      "stopping the development server that was left running",
+    );
+  }, 60_000);
+
+  it("warns when the running process uses other options", async () => {
+    await start();
+
+    const again = await execute(["daemon", "start", "--address", "localhost:7233"]);
+
+    expect(again).toMatchObject({ exitCode: 0 });
+    expect(again.stderr).toMatch(
+      /^aitw daemon: it uses the server options "--dev --dev-db \S+ --temporal-bin \S+"\. Run "aitw daemon stop" and start it again to change it\n$/u,
+    );
   }, 60_000);
 
   it("needs --dev-db with --dev", async () => {

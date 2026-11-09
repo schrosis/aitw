@@ -23,6 +23,8 @@ export interface DevServer {
   address: string;
   /** URL of the Web UI. */
   uiUrl: string;
+  /** Process ID of the server, which also leads its process group. */
+  pid: number;
   /** Stops the server and waits for it to exit. */
   stop: () => Promise<void>;
 }
@@ -170,7 +172,13 @@ const startOnce = async ({
     await stop();
     throw error;
   }
-  return { address: `${host}:${port}`, stop, uiUrl: `http://${host}:${uiPort}` };
+  return {
+    address: `${host}:${port}`,
+    // The server accepts connections, so it has started and has a process ID.
+    pid: child.pid ?? 0,
+    stop,
+    uiUrl: `http://${host}:${uiPort}`,
+  };
 };
 
 /**

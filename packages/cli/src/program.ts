@@ -226,7 +226,7 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .action(async (options, command) => {
       const server = toServerOptions(options, command);
       context.setExitCode(
-        await startDaemon({ executable: context.executable ?? "aitw", server }, context),
+        await startDaemon({ executable: context.executable ?? "aitw", server, version }, context),
       );
     });
 

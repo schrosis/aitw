@@ -4,6 +4,9 @@ import { resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import type { CommandContext } from "../commands/load.js";
+import { workflowCodeVersion } from "@aitw/engine";
+
+import { defaultAddress } from "../server.js";
 import type { ServerOptions } from "../server.js";
 import { getDaemonStatus, requestDaemonStop } from "./client.js";
 import type { DaemonStatus } from "./client.js";
@@ -15,6 +18,8 @@ const waitTimeoutMs = 60_000;
 /** Options of {@link startDaemon}. */
 export interface StartDaemonOptions {
   server: ServerOptions;
+  /** Version of this aitw, to tell whether a running resident process differs. */
+  version: string;
   /** Path of the aitw executable that runs the resident process. */
   executable: string;
 }
@@ -26,10 +31,29 @@ const serverArguments = (server: ServerOptions, cwd: string): string[] => {
   }
   return [
     "--dev",
-    // The resident process may run in another directory, so the path is made absolute.
+    // The resident process runs in the state directory, so paths are made absolute.
     ...(server.dbFilename === undefined ? [] : ["--dev-db", resolve(cwd, server.dbFilename)]),
-    ...(server.temporalBin === undefined ? [] : ["--temporal-bin", server.temporalBin]),
+    ...(server.temporalBin === undefined
+      ? []
+      : [
+          "--temporal-bin",
+          server.temporalBin.includes("/") ? resolve(cwd, server.temporalBin) : server.temporalBin,
+        ]),
   ];
+};
+
+/** Returns how a running resident process differs from the one that a command asks for. */
+const differences = (running: DaemonStatus, version: string, requested: string[]): string[] => {
+  const notes: string[] = [];
+  if (running.version !== version || running.workflowCodeVersion !== workflowCodeVersion) {
+    notes.push(`it runs aitw ${running.version}, and this is aitw ${version}`);
+  }
+  // The default address has no options.
+  const runningOptions = running.serverOptions.trim() || `--address ${defaultAddress}`;
+  if (runningOptions !== requested.join(" ")) {
+    notes.push(`it uses the server options "${runningOptions}"`);
+  }
+  return notes;
 };
 
 /** Returns the end of the log, to explain why the resident process did not start. */
@@ -59,7 +83,7 @@ const describe = ({ address, pid, version }: DaemonStatus): string =>
  * @returns The exit code of the command.
  */
 export const startDaemon = async (
-  { executable, server }: StartDaemonOptions,
+  { executable, server, version }: StartDaemonOptions,
   context: CommandContext,
 ): Promise<number> => {
   const paths = daemonPaths();
@@ -70,9 +94,16 @@ export const startDaemon = async (
     );
     return 1;
   }
+  const requested = serverArguments(server, context.cwd);
   const running = await getDaemonStatus(paths);
   if (running !== undefined) {
     context.stdout(`aitw daemon: already running (${describe(running)})\n`);
+    const notes = differences(running, version, requested);
+    if (notes.length > 0) {
+      context.stderr(
+        `aitw daemon: ${notes.join(", and ")}. Run "aitw daemon stop" and start it again to change it\n`,
+      );
+    }
     return 0;
   }
 
@@ -82,9 +113,10 @@ export const startDaemon = async (
   try {
     const child = spawn(
       process.execPath,
-      [executable, "daemon", "run", ...serverArguments(server, context.cwd)],
+      [executable, "daemon", "run", ...requested],
       // The resident process outlives the terminal, so it has its own session and no terminal.
-      { cwd: context.cwd, detached: true, stdio: ["ignore", logFile, logFile] },
+      // It runs in the state directory, so that it does not hold a project directory.
+      { cwd: paths.directory, detached: true, stdio: ["ignore", logFile, logFile] },
     );
     child.once("exit", (code) => {
       exited = code;
@@ -108,8 +140,9 @@ export const startDaemon = async (
     }
     await sleep(100);
   }
+  // It may still start, such as after downloading the Temporal CLI on a slow network.
   context.stderr(
-    `aitw daemon: did not start within ${waitTimeoutMs / 1000} seconds. See ${paths.log}\n`,
+    `aitw daemon: did not answer within ${waitTimeoutMs / 1000} seconds, and may still be starting. Run "aitw daemon status" later, or see ${paths.log}\n`,
   );
   return 1;
 };

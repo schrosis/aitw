@@ -96,6 +96,8 @@ export interface RunWorkflowOptions extends FollowOptions {
   inputs?: Readonly<Record<string, unknown>>;
   /** Values that mark the run, such as its project, for {@link listRunningWorkflows}. */
   memo?: Readonly<Record<string, string>>;
+  /** Called with the workflow ID as soon as the workflow starts. */
+  onStart?: (workflowId: string) => void;
 }
 
 /** Options of {@link resumeWorkflow}. */
@@ -137,7 +139,7 @@ const withConnections = async <T>(
  */
 const follow = async (
   options: FollowOptions & { taskQueue: string; cancelNow?: boolean },
-  connections: { client: Client; worker: NativeConnection },
+  connections: { client: Client; connection: Connection; worker: NativeConnection },
   open: () => Promise<WorkflowHandle<typeof aitw>>,
 ): Promise<RunOutcome> => {
   const {
@@ -202,16 +204,20 @@ const follow = async (
       // A wait step that cannot be answered would wait forever, so the run is cancelled and
       // reports why it could not be answered.
       let answerFailure: { error: unknown } | undefined;
-      const answered = answerWaits({
-        flush: visible.flush,
-        handle: current,
-        plugins,
-        report: async (event) => {
-          eventLog.append(workflowId, event);
-          await visible.flush();
-        },
-        signal: answering.signal,
-      }).catch((error: unknown) => {
+      // A run that is cancelled right away is not answered.
+      const answeringTask = cancelNow
+        ? Promise.resolve()
+        : answerWaits({
+            flush: visible.flush,
+            handle: current,
+            plugins,
+            report: async (event) => {
+              eventLog.append(workflowId, event);
+              await visible.flush();
+            },
+            signal: answering.signal,
+          });
+      const answered = answeringTask.catch((error: unknown) => {
         // An interrupt also stops answering, and the result reports the cancellation.
         if (!answering.signal.aborted) {
           answerFailure = { error };
@@ -225,16 +231,23 @@ const follow = async (
         }
         detach?.addEventListener("abort", onDetach, { once: true });
       });
+      // Waiting for the result is a long call, which is aborted when the run detaches. A call
+      // that is left running would retry on a closed connection and crash the process.
+      const waitingForResult = new AbortController();
+      const result = connections.connection.withAbortSignal(waitingForResult.signal, async () =>
+        current.result(),
+      );
       try {
         return await Promise.race([
-          current
-            .result()
-            .then((result): RunOutcome => ({ ...result, status: "completed", workflowId })),
+          result.then((value): RunOutcome => ({ ...value, status: "completed", workflowId })),
           detached,
         ]);
       } catch (error) {
         throw answerFailure === undefined ? error : answerFailure.error;
       } finally {
+        waitingForResult.abort();
+        // The result of a detached run is not needed.
+        result.catch(() => {});
         answering.abort();
         await answered;
         signal?.removeEventListener("abort", cancel);
@@ -265,19 +278,33 @@ const follow = async (
  * @throws When the workflow fails, for example because a script step fails.
  */
 export const runWorkflow = async (options: RunWorkflowOptions): Promise<RunOutcome> => {
-  const { address, inputs = {}, intermediate, memo, name, namespace = "default" } = options;
+  const {
+    address,
+    inputs = {},
+    intermediate,
+    memo,
+    name,
+    namespace = "default",
+    onStart = () => {},
+  } = options;
   const id = randomUUID();
   // A task queue for this run keeps other Workers from picking up its tasks.
   const taskQueue = `aitw-${id}`;
   return withConnections(address, async (clientConnection, workerConnection) => {
     const client = new Client({ connection: clientConnection, namespace });
-    return follow({ ...options, taskQueue }, { client, worker: workerConnection }, async () =>
-      client.workflow.start<typeof aitw>("aitw", {
-        args: [intermediate, inputs],
-        ...(memo === undefined ? {} : { memo: { ...memo } }),
-        taskQueue,
-        workflowId: `${name}-${id}`,
-      }),
+    return follow(
+      { ...options, taskQueue },
+      { client, connection: clientConnection, worker: workerConnection },
+      async () => {
+        const handle = await client.workflow.start<typeof aitw>("aitw", {
+          args: [intermediate, inputs],
+          ...(memo === undefined ? {} : { memo: { ...memo } }),
+          taskQueue,
+          workflowId: `${name}-${id}`,
+        });
+        onStart(handle.workflowId);
+        return handle;
+      },
     );
   });
 };
@@ -299,7 +326,7 @@ export const resumeWorkflow = async (options: ResumeWorkflowOptions): Promise<Ru
     }
     return follow(
       { ...options, cancelNow: cancel, taskQueue },
-      { client, worker: workerConnection },
+      { client, connection: clientConnection, worker: workerConnection },
       async () => handle,
     );
   });

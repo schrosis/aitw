@@ -20,3 +20,10 @@ export const projectLogDirectory = (root: string): string =>
 
 /** Key of the memo of a run that holds the hash of its project. */
 export const projectMemoKey = "aitwProject";
+
+/** Key of the memo of a run that holds the name of its workflow, such as `release/notes`. */
+export const workflowMemoKey = "aitwWorkflow";
+
+/** Returns the directory that keeps the locks of the runs of a project. */
+export const projectLockDirectory = (root: string): string =>
+  join(stateDirectory(), "locks", projectHash(root));

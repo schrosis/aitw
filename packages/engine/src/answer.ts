@@ -35,6 +35,9 @@ export interface AnswerWaitsOptions {
  * A method may ignore the signal, and the run must still be able to stop or detach.
  */
 const untilAborted = async <T>(promise: Promise<T>, signal: AbortSignal): Promise<T> => {
+  // The promise may reject after this function stops waiting, such as when the signal was
+  // aborted while the method started. Its result is not needed then.
+  promise.catch(() => {});
   signal.throwIfAborted();
   const cleanup = new AbortController();
   const aborted = new Promise<never>((_resolve, reject) => {

@@ -140,7 +140,9 @@ describe("aitw executable", () => {
 
       expect(exitCode).toBe(130);
       expect(output).toContain("■ ask: cancelled");
-      expect(output).toContain("wait-valid: cancelled\n");
+      expect(output).toContain(
+        "wait-valid: cancelled. Runs on a development server without --dev-db cannot be resumed\n",
+      );
       expect(address).toBeDefined();
       await expect(fetch(address ?? "")).rejects.toThrow();
     }, 40_000);
@@ -184,7 +186,9 @@ describe("aitw executable", () => {
       );
 
       expect(exitCode).toBe(130);
-      expect(output).toContain("run-sleep: cancelled\n");
+      expect(output).toContain(
+        "run-sleep: cancelled. Runs on a development server without --dev-db cannot be resumed\n",
+      );
       expect(address).toBeDefined();
       await expect(fetch(address ?? "")).rejects.toThrow();
     }, 40_000);

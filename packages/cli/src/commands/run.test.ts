@@ -155,18 +155,27 @@ describe("run", () => {
     );
   }, 60_000);
 
-  it("cancels the run when interrupted", async () => {
+  it("detaches when interrupted, after the running script finishes", async () => {
     const controller = new AbortController();
     // Interrupt once the script has started, because starting a Worker can take a while in CI.
-    const result = await execute("run-sleep", controller.signal, (text) => {
-      if (text.startsWith("▶ wait")) {
+    const result = await execute("run-detach", controller.signal, (text) => {
+      if (text.startsWith("▶ build")) {
         controller.abort();
       }
     });
 
-    expect(result).toMatchObject({ exitCode: 130, stderr: "run-sleep: cancelled\n" });
-    // The cancelled step may finish after the workflow reports the cancellation.
-    expect(result.stdout).toMatch(/^▶ wait\nsleep 30\n(■ wait: cancelled \(\d+\.\ds\)\n)?$/u);
+    expect(result).toMatchObject({ exitCode: 3 });
+    expect(result.stdout).toMatch(
+      /^▶ build\nsleep 2 && echo built\n\nbuilt\n✓ build \(\d+\.\ds\)\n$/u,
+    );
+    expect(result.stderr).toBe(
+      [
+        "Waiting for the running step to finish, so that the run can be resumed.",
+        "Press Ctrl+C again to exit now. The running step will fail, and the run cannot be resumed.",
+        `run-detach: detached. Run "aitw resume --address ${environment.address}" to continue`,
+        "",
+      ].join("\n"),
+    );
   }, 60_000);
 
   it("does not start an invalid workflow", async () => {

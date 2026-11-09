@@ -36,7 +36,7 @@ export interface FollowEventsOptions {
   sink: EventSink;
   /** Interval of reading new events, in milliseconds. */
   intervalMs?: number;
-  /** Receives a failure to read the log or to deliver an event. */
+  /** Receives a failure to read the log or to deliver an event. Following continues. */
   onError?: (error: unknown) => void;
 }
 
@@ -63,7 +63,12 @@ export const followEvents = ({
         const page = await log.read(runId, cursor);
         cursor = page.cursor;
         for (const event of page.events) {
-          sink.emit(event);
+          // A failing sink loses only its event, and the rest of the page is still delivered.
+          try {
+            sink.emit(event);
+          } catch (error) {
+            onError(error);
+          }
         }
       } catch (error) {
         onError(error);

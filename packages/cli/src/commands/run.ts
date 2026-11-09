@@ -162,6 +162,7 @@ export const run = async (
       inputs: read.values,
       intermediate: workflow.intermediate,
       name,
+      onWarning: (message) => context.stderr(`${name}: warning: ${message}\n`),
       plugins: createRegistry(terminal),
       scriptRunner: createLocalScriptRunner({ cwd: workflow.root }),
       signal,

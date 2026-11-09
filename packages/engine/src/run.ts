@@ -70,6 +70,11 @@ export interface RunWorkflowOptions {
   signal?: AbortSignal;
   /** Plugins whose wait methods answer the wait steps of the run. */
   plugins?: PluginRegistry;
+  /**
+   * Receives a problem that does not stop the run, such as a progress log that cannot be read.
+   * Each kind of problem is reported once per run.
+   */
+  onWarning?: (message: string) => void;
 }
 
 /**
@@ -85,6 +90,7 @@ export const runWorkflow = async ({
   intermediate,
   name,
   namespace = "default",
+  onWarning = () => {},
   plugins = createPluginRegistry(),
   scriptRunner,
   signal,
@@ -114,7 +120,21 @@ export const runWorkflow = async ({
           taskQueue,
           workflowId,
         });
-        const follower = followEvents({ log: eventLog, runId: workflowId, sink: eventSink });
+        // A log that cannot be read would hide every later event, so it is reported once.
+        let warned = false;
+        const follower = followEvents({
+          log: eventLog,
+          onError: (error) => {
+            if (!warned) {
+              warned = true;
+              onWarning(
+                `Failed to show the progress of the run: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
+          },
+          runId: workflowId,
+          sink: eventSink,
+        });
         const cancel = (): void => {
           // The result below reports the cancellation, so a failed request is not rethrown.
           handle.cancel().catch(() => {});

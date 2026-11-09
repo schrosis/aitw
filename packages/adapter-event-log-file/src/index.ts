@@ -59,13 +59,28 @@ const ensureDirectory = (path: string): void => {
  * Directories are created with `700` and files with `600`, and symbolic links are not followed.
  */
 export const createFileEventLog = ({ directory }: FileEventLogOptions): EventLog => {
-  const runDirectory = (runId: string): string => join(directory, encodeURIComponent(runId));
+  const runDirectory = (runId: string): string => {
+    // encodeURIComponent keeps dots, and these names would point outside of the directory.
+    if (runId === "" || runId === "." || runId === "..") {
+      throw new Error(`Invalid run ID for the event log: ${runId}`);
+    }
+    return join(directory, encodeURIComponent(runId));
+  };
   const eventsFile = (runId: string): string => join(runDirectory(runId), eventsFileName);
+  // Directories that were checked once are not checked again, because output arrives in many
+  // small events.
+  const checked = new Set<string>();
+  const ensureChecked = (path: string): void => {
+    if (!checked.has(path)) {
+      ensureDirectory(path);
+      checked.add(path);
+    }
+  };
 
   return {
     append: (runId, event) => {
-      ensureDirectory(directory);
-      ensureDirectory(runDirectory(runId));
+      ensureChecked(directory);
+      ensureChecked(runDirectory(runId));
       const descriptor = openSync(
         eventsFile(runId),
         constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW,

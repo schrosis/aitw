@@ -94,6 +94,13 @@ describe("createFileEventLog", () => {
     });
   });
 
+  it.each(["", ".", ".."])("rejects the run ID %j", (runId) => {
+    const log = createFileEventLog({ directory: root });
+
+    expect(() => log.append(runId, started)).toThrow("Invalid run ID");
+    return expect(log.read(runId)).rejects.toThrow("Invalid run ID");
+  });
+
   it("does not follow a symbolic link to the events file", () => {
     mkdirSync(join(root, "run"));
     writeFileSync(join(root, "target"), "");

@@ -47,6 +47,32 @@ describe("followEvents", () => {
     expect(delivered).toEqual([event("a"), event("b"), event("c"), event("d")]);
   });
 
+  it("keeps delivering the rest of a page when the sink fails", async () => {
+    const log = createMemoryEventLog();
+    const errors: unknown[] = [];
+    const delivered: WorkflowEvent[] = [];
+    const follower = followEvents({
+      log,
+      onError: (error) => errors.push(error),
+      runId: "run",
+      sink: {
+        emit: (value) => {
+          if (value.type === "stepOutput" && value.text === "a") {
+            throw new Error("sink failed");
+          }
+          delivered.push(value);
+        },
+      },
+    });
+    log.append("run", event("a"));
+    log.append("run", event("b"));
+
+    await follower.stop();
+
+    expect(errors).toEqual([new Error("sink failed")]);
+    expect(delivered).toEqual([event("b")]);
+  });
+
   it("reports a failed read and keeps following", async () => {
     let fail = true;
     const memory = createMemoryEventLog();

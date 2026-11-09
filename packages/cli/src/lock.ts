@@ -35,13 +35,16 @@ const isAlive = (pid: number): boolean => {
   }
 };
 
-/** Returns the process in a lock file, or `undefined` when the file has none. */
-const readHolder = (file: string): number | undefined => {
+/**
+ * Returns the process in a lock file, `missing` when there is no file, or `undefined` when the
+ * file has no process ID.
+ */
+const readHolder = (file: string): number | "missing" | undefined => {
   try {
     const pid = Number(readFileSync(file, "utf8").trim());
     return Number.isInteger(pid) && pid > 0 ? pid : undefined;
-  } catch {
-    return undefined;
+  } catch (error) {
+    return hasCode(error, "ENOENT") ? "missing" : undefined;
   }
 };
 
@@ -121,6 +124,10 @@ export const acquireRunLock = (directory: string, workflowId: string): RunLock =
       return { release };
     }
     const pid = readHolder(file);
+    // The process that held the lock released it in the meantime.
+    if (pid === "missing") {
+      continue;
+    }
     // A lock that cannot be read is kept, because its process may still follow the run.
     if (pid === undefined || isAlive(pid)) {
       throw new RunLockedError(workflowId, pid, file);

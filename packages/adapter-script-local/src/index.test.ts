@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -40,6 +41,32 @@ describe("createLocalScriptRunner", () => {
       { inputs: {}, run: script, timeoutMs },
       { signal },
     );
+
+  it("stops running scripts when the process exits", async () => {
+    // A separate process runs a script and exits without stopping it.
+    const program = `
+      import { createLocalScriptRunner } from ${JSON.stringify(new URL("./index.ts", import.meta.url).href)};
+      createLocalScriptRunner({ cwd: ${JSON.stringify(cwd)} }).run(
+        { inputs: {}, run: "echo $$ > pid; exec sleep 30", timeoutMs: 60_000 },
+        { signal: new AbortController().signal },
+      );
+      const wait = async () => {
+        for (;;) {
+          try {
+            if ((await import("node:fs")).readFileSync("pid", "utf8").endsWith("\\n")) return;
+          } catch {}
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+      };
+      process.chdir(${JSON.stringify(cwd)});
+      await wait();
+      process.exit(0);
+    `;
+    execFileSync(process.execPath, ["--input-type=module", "-e", program]);
+
+    const pid = Number(readFileSync(join(cwd, "pid"), "utf8"));
+    await expect(waitUntilStopped(pid)).resolves.toBe(true);
+  });
 
   it("returns the exit code and output", async () => {
     await expect(run("echo out; echo err >&2; exit 3")).resolves.toEqual({

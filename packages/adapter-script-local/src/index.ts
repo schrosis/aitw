@@ -21,7 +21,8 @@ export interface LocalScriptRunnerOptions {
  *
  * Scripts run with the permissions and environment variables of the current process.
  * Stopping a script stops its whole process group. Processes that a script leaves running
- * are stopped when the script exits.
+ * are stopped when the script exits, and running scripts are stopped when the current process
+ * exits.
  */
 export const createLocalScriptRunner = ({
   cwd,
@@ -41,6 +42,19 @@ export const createLocalScriptRunner = ({
         env: process.env,
         stdio: ["ignore", "pipe", "pipe"],
       });
+
+      // The script is in its own process group, so it would outlive a process that exits
+      // without stopping it, such as by process.exit() on a second interrupt.
+      const killOnExit = (): void => {
+        if (child.pid !== undefined) {
+          try {
+            process.kill(-child.pid, "SIGKILL");
+          } catch {
+            // The process group has already exited.
+          }
+        }
+      };
+      process.once("exit", killOnExit);
 
       let stdout = "";
       let stderr = "";
@@ -109,6 +123,7 @@ export const createLocalScriptRunner = ({
         stop();
       });
       child.on("close", () => {
+        process.off("exit", killOnExit);
         if (settled) {
           return;
         }

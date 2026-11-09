@@ -10,6 +10,11 @@ export type WorkflowEvent =
       step: string;
       /** Command line of a script step. Other steps have none. */
       run?: string | undefined;
+      /**
+       * What a wait step waits for, from the `message` option of its method, such as to list
+       * the runs that wait.
+       */
+      message?: string | undefined;
     }
   | {
       type: "stepOutput";
@@ -39,7 +44,12 @@ const stepEventBase = { step: z.string() };
 
 /** Schema of {@link WorkflowEvent}, for events that come from outside the process. */
 export const workflowEventSchema: z.ZodType<WorkflowEvent> = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("stepStarted"), ...stepEventBase, run: z.string().optional() }),
+  z.strictObject({
+    type: z.literal("stepStarted"),
+    ...stepEventBase,
+    run: z.string().optional(),
+    message: z.string().optional(),
+  }),
   z.strictObject({
     type: z.literal("stepOutput"),
     ...stepEventBase,

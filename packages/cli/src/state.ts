@@ -17,3 +17,6 @@ export const projectHash = (root: string): string =>
 /** Returns the directory that keeps the logs of the runs of a project (B10l). */
 export const projectLogDirectory = (root: string): string =>
   join(stateDirectory(), "logs", projectHash(root));
+
+/** Key of the memo of a run that holds the hash of its project. */
+export const projectMemoKey = "aitwProject";

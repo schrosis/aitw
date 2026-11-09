@@ -30,7 +30,9 @@ export type {
   ScriptRunner,
   ScriptRunOptions,
 } from "./ports/script-runner.js";
+export { workflowEventSchema } from "./ports/event-sink.js";
 export type { EventSink, StepOutcome, WorkflowEvent } from "./ports/event-sink.js";
+export type { EventLog, EventPage } from "./ports/event-log.js";
 export {
   embedValue,
   evaluateExpression,

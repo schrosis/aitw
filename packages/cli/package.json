@@ -23,6 +23,7 @@
     "typecheck": "tsc -b && tsc -p tsconfig.test.json"
   },
   "dependencies": {
+    "@aitw/adapter-event-log-file": "workspace:*",
     "@aitw/adapter-script-local": "workspace:*",
     "@aitw/adapter-wait-terminal": "workspace:*",
     "@aitw/core": "workspace:*",

@@ -134,6 +134,24 @@ describe("runWorkflow", () => {
     expect(scriptAborted).toBe(true);
   }, 60_000);
 
+  it("warns once when the progress log cannot be read", async () => {
+    const warnings: string[] = [];
+    await runWorkflow({
+      address: environment.address,
+      eventLog: {
+        append: () => {},
+        read: async () => Promise.reject(new Error("permission denied")),
+      },
+      intermediate,
+      name: "release/notes",
+      onWarning: (message) => warnings.push(message),
+      scriptRunner: { run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }) },
+      workflowsPath: fileURLToPath(new URL("./workflows/index.ts", import.meta.url)),
+    });
+
+    expect(warnings).toEqual(["Failed to show the progress of the run: permission denied"]);
+  }, 60_000);
+
   it("throws when the workflow fails", async () => {
     const { result } = await run(1);
 
@@ -213,11 +231,8 @@ describe("runWorkflow", () => {
           throw new Error("no one is here");
         }, events),
       ).rejects.toThrow("no one is here");
-      expect(events.at(-1)).toMatchObject({
-        message: "no one is here",
-        outcome: "failed",
-        step: "ask",
-      });
+      // The workflow stores the end of the step, which the cancellation interrupted.
+      expect(events.at(-1)).toMatchObject({ outcome: "cancelled", step: "ask" });
     }, 60_000);
 
     it("fails a run whose wait method cannot answer here", async () => {

@@ -7,6 +7,8 @@ export type {
   StepOutput,
 } from "./activities/index.js";
 export { configureRuntime, runWorkflow, workflowsPath } from "./run.js";
+export { createMemoryEventLog, followEvents } from "./events.js";
+export type { EventFollower, FollowEventsOptions } from "./events.js";
 export type { RunWorkflowOptions, RuntimeOptions } from "./run.js";
 export type { WorkflowResult } from "./workflows/index.js";
 export { answerUpdateName, waitingQueryName } from "./messages.js";

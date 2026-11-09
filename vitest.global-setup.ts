@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, rmSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
 import type { TestProject } from "vitest/node";
@@ -42,6 +42,12 @@ const findTemporalCli = (): string => {
   return path;
 };
 
-export default ({ provide }: TestProject): void => {
+export default ({ config, provide }: TestProject): (() => void) => {
   provide("temporalCli", findTemporalCli());
+  const state = config.env.XDG_STATE_HOME;
+  return () => {
+    if (state !== undefined) {
+      rmSync(state, { force: true, recursive: true });
+    }
+  };
 };

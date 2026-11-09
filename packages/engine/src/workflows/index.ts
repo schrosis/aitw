@@ -4,13 +4,22 @@ import {
   resolveWorkflowInput,
   validateIntermediate,
 } from "@aitw/core";
-import type { IntermediateStep, ScriptStep, WaitStep, WorkflowInput } from "@aitw/core";
+import type {
+  IntermediateStep,
+  ScriptStep,
+  StepOutcome,
+  WaitStep,
+  WorkflowInput,
+} from "@aitw/core";
 import {
   ApplicationFailure,
+  CancellationScope,
   condition,
   defineQuery,
   defineUpdate,
+  isCancellation,
   proxyActivities,
+  proxyLocalActivities,
   setHandler,
 } from "@temporalio/workflow";
 
@@ -20,6 +29,12 @@ import { answerUpdateName, waitingQueryName } from "../messages.js";
 import type { Answer, WaitingStep } from "../messages.js";
 
 const waitingQuery = defineQuery<WaitingStep | null>(waitingQueryName);
+
+// Recording an event is quick, so a local activity keeps it out of the task queue.
+const { recordEvent } = proxyLocalActivities<Activities>({
+  retry: { maximumAttempts: 3 },
+  startToCloseTimeout: "10 seconds",
+});
 const answerUpdate = defineUpdate<void, [Answer]>(answerUpdateName);
 
 /**
@@ -264,6 +279,19 @@ export const aitw = async (
         ...context,
         inputs: stepInputs,
       });
+      // The start is stored before the step can be answered, so that it is shown first.
+      await recordEvent({ step: id, type: "stepStarted" });
+      // Workflow time is deterministic, so the duration is the same when the history replays.
+      const startedAt = Date.now();
+      const waitingStep = id;
+      const finish = async (outcome: StepOutcome, message?: string): Promise<void> =>
+        recordEvent({
+          durationMs: Date.now() - startedAt,
+          message,
+          outcome,
+          step: waitingStep,
+          type: "stepFinished",
+        });
       waiting = {
         answers: step.answers,
         method: step.method,
@@ -271,13 +299,24 @@ export const aitw = async (
         step: id,
       };
       answer = undefined;
-      // Cancelling the workflow interrupts the wait.
-      await condition(() => answer !== undefined);
-      outputs[id] = evaluateWaitOutputs(id, step, {
-        ...context,
-        inputs: stepInputs,
-        result: answer,
-      });
+      try {
+        // Cancelling the workflow interrupts the wait.
+        await condition(() => answer !== undefined);
+        outputs[id] = evaluateWaitOutputs(id, step, {
+          ...context,
+          inputs: stepInputs,
+          result: answer,
+        });
+      } catch (error) {
+        waiting = null;
+        if (isCancellation(error)) {
+          await CancellationScope.nonCancellable(async () => finish("cancelled"));
+        } else {
+          await finish("failed", error instanceof Error ? error.message : String(error));
+        }
+        throw error;
+      }
+      await finish("succeeded");
     } else {
       const { executeScriptStep } = proxyActivities<Activities>({
         heartbeatTimeout: activityHeartbeatTimeoutMs,

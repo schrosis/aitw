@@ -32,6 +32,7 @@ const listenForExit = (): void => {
   }
 };
 
+/** Options of {@link createLocalScriptRunner}. */
 export interface LocalScriptRunnerOptions {
   /** Working directory of the scripts. */
   cwd: string;

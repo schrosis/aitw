@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { CommandContext } from "../commands/load.js";
 import { workflowCodeVersion } from "@aitw/engine";
 
-import { defaultAddress } from "../server.js";
+import { defaultAddress, quote } from "../server.js";
 import type { ServerOptions } from "../server.js";
 import { getDaemonStatus, requestDaemonStop } from "./client.js";
 import type { DaemonStatus } from "./client.js";
@@ -50,7 +50,8 @@ const differences = (running: DaemonStatus, version: string, requested: string[]
   }
   // The default address has no options.
   const runningOptions = running.serverOptions.trim() || `--address ${defaultAddress}`;
-  if (runningOptions !== requested.join(" ")) {
+  // The running process quotes its options for a command line, so the request is quoted too.
+  if (runningOptions !== requested.map(quote).join(" ")) {
     notes.push(`it uses the server options "${runningOptions}"`);
   }
   return notes;

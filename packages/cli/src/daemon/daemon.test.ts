@@ -131,6 +131,28 @@ describe("aitw daemon", () => {
     );
   }, 60_000);
 
+  it("does not warn when the running process uses the same options", async () => {
+    const options = [
+      "daemon",
+      "start",
+      "--dev",
+      // A path that needs quotes on a command line.
+      "--dev-db",
+      join(state, "temporal db.sqlite"),
+      "--temporal-bin",
+      inject("temporalCli"),
+    ];
+    await execute(options);
+
+    await expect(execute(options)).resolves.toMatchObject({ exitCode: 0, stderr: "" });
+    await execute(["daemon", "stop"]);
+    try {
+      execFileSync("pkill", ["-f", "--", `--db-filename ${join(state, "temporal db.sqlite")}`]);
+    } catch {
+      // No process was left.
+    }
+  }, 60_000);
+
   it("needs --dev-db with --dev", async () => {
     await expect(execute(["daemon", "start", "--dev"])).resolves.toMatchObject({
       exitCode: 1,

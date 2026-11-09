@@ -41,7 +41,7 @@ const resolveExecutable = (cwd: string, executable: string): string =>
   executable.includes("/") ? resolve(cwd, executable) : executable;
 
 /** Quotes a value for a shell command line when it needs quotes. */
-const quote = (value: string): string =>
+export const quote = (value: string): string =>
   /^[\w./:@-]+$/u.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
 
 /**

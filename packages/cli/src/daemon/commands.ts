@@ -194,7 +194,12 @@ export const showDaemonStatus = async (context: CommandContext): Promise<number>
       `log: ${paths.log}`,
       ...(status.projects.length === 0
         ? ["projects: none"]
-        : ["projects:", ...status.projects.map(({ root }) => `  ${root}`)]),
+        : [
+            "projects:",
+            ...status.projects.map(
+              ({ root, running }) => `  ${root}${running === false ? " (Worker not running)" : ""}`,
+            ),
+          ]),
       "",
     ].join("\n"),
   );

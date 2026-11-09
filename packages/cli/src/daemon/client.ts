@@ -23,6 +23,8 @@ export interface DaemonProject {
   /** Real path of the project root. */
   root: string;
   taskQueue: string;
+  /** Whether its Worker runs. A Worker that failed is started again on the next request. */
+  running?: boolean;
 }
 
 /** Sends a request to the resident process and returns its JSON response. */

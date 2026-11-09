@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
+import { workflowCodeVersion } from "@aitw/engine";
+
 /** Returns the directory that keeps the state of aitw, such as logs. */
 export const stateDirectory = (): string =>
   join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "aitw");
@@ -31,11 +33,14 @@ export const projectLockDirectory = (root: string): string =>
 /**
  * Returns the task queue that the resident process serves for a project (C12e).
  *
- * The host name keeps the projects of hosts that share a Temporal Server apart.
+ * The host name keeps the projects of hosts that share a Temporal Server apart. The workflow code
+ * version keeps runs of other versions away from this Worker, because replaying them with this
+ * code can fail (C12a). A run of another version stays on its task queue until a matching aitw,
+ * or `aitw resume --force`, continues it.
  */
 export const projectTaskQueue = (root: string): string => {
   const host = hostname()
     .toLowerCase()
     .replaceAll(/[^a-z0-9-]/gu, "-");
-  return `aitw-${host}-${projectHash(root)}`;
+  return `aitw-${host}-${projectHash(root)}-v${workflowCodeVersion}`;
 };

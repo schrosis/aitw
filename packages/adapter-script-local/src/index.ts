@@ -3,6 +3,35 @@ import { spawn } from "node:child_process";
 import { ScriptTimeoutError } from "@aitw/core";
 import type { ScriptResult, ScriptRunner } from "@aitw/core";
 
+/** Process groups of the scripts that run now, in every runner of this process. */
+const runningGroups = new Set<number>();
+
+/**
+ * Stops the running scripts when the process exits.
+ *
+ * Scripts are in their own process groups, so they would outlive a process that exits without
+ * stopping them, such as by process.exit() on a second interrupt.
+ */
+const killRunningGroups = (): void => {
+  for (const pid of runningGroups) {
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      // The process group has already exited.
+    }
+  }
+};
+
+let listening = false;
+
+/** Registers {@link killRunningGroups} once, so that one listener serves every script. */
+const listenForExit = (): void => {
+  if (!listening) {
+    process.on("exit", killRunningGroups);
+    listening = true;
+  }
+};
+
 /** Options of {@link createLocalScriptRunner}. */
 export interface LocalScriptRunnerOptions {
   /** Working directory of the scripts. */
@@ -21,7 +50,8 @@ export interface LocalScriptRunnerOptions {
  *
  * Scripts run with the permissions and environment variables of the current process.
  * Stopping a script stops its whole process group. Processes that a script leaves running
- * are stopped when the script exits.
+ * are stopped when the script exits, and running scripts are stopped when the current process
+ * exits.
  */
 export const createLocalScriptRunner = ({
   cwd,
@@ -41,6 +71,11 @@ export const createLocalScriptRunner = ({
         env: process.env,
         stdio: ["ignore", "pipe", "pipe"],
       });
+
+      if (child.pid !== undefined) {
+        runningGroups.add(child.pid);
+        listenForExit();
+      }
 
       let stdout = "";
       let stderr = "";
@@ -109,6 +144,9 @@ export const createLocalScriptRunner = ({
         stop();
       });
       child.on("close", () => {
+        if (child.pid !== undefined) {
+          runningGroups.delete(child.pid);
+        }
         if (settled) {
           return;
         }

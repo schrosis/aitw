@@ -11,7 +11,7 @@ import { readWorkflowInput } from "../input.js";
 import { createLineReader } from "../lines.js";
 import type { LineReader } from "../lines.js";
 import { createRegistry } from "../plugins.js";
-import { projectLogDirectory } from "../state.js";
+import { projectHash, projectLogDirectory, projectMemoKey } from "../state.js";
 import { ensureTemporalCli, startDevServer } from "../temporal-cli/index.js";
 import type { DevServer } from "../temporal-cli/index.js";
 import { loadWorkflow } from "./load.js";
@@ -19,6 +19,13 @@ import type { CommandContext } from "./load.js";
 
 /** Exit code of a run that was cancelled, following the shell convention for SIGINT. */
 const cancelledExitCode = 130;
+
+/**
+ * Exit code of a run that was left running to be resumed later.
+ *
+ * It is not zero, so that a script that runs aitw does not take the run as completed.
+ */
+export const detachedExitCode = 3;
 
 /** Temporal Server that a run uses. */
 export type ServerOptions =
@@ -153,21 +160,26 @@ export const run = async (
     }
 
     prepareEngine?.();
-    const { executedSteps } = await runWorkflow({
+    const root = await realpath(workflow.root);
+    const outcome = await runWorkflow({
       address,
-      eventLog: createFileEventLog({
-        directory: projectLogDirectory(await realpath(workflow.root)),
-      }),
+      eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
       eventSink: createProgressPrinter(context),
       inputs: read.values,
       intermediate: workflow.intermediate,
+      // The project marks the run, so that aitw resume can find the runs of a project.
+      memo: { [projectMemoKey]: projectHash(root) },
       name,
       onWarning: (message) => context.stderr(`${name}: warning: ${message}\n`),
       plugins: createRegistry(terminal),
       scriptRunner: createLocalScriptRunner({ cwd: workflow.root }),
       signal,
     });
-    context.stdout(`${name}: completed (${executedSteps.join(", ")})\n`);
+    if (outcome.status === "detached") {
+      context.stderr(`${name}: detached. Run "aitw resume" to continue\n`);
+      return detachedExitCode;
+    }
+    context.stdout(`${name}: completed (${outcome.executedSteps.join(", ")})\n`);
     return 0;
   } catch (error) {
     // An interrupt while the server starts aborts the download or the wait for the server.

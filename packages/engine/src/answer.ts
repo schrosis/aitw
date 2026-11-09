@@ -29,6 +29,27 @@ export interface AnswerWaitsOptions {
   signal: AbortSignal;
 }
 
+/**
+ * Waits for a promise, but stops waiting when the signal is aborted.
+ *
+ * A method may ignore the signal, and the run must still be able to stop or detach.
+ */
+const untilAborted = async <T>(promise: Promise<T>, signal: AbortSignal): Promise<T> => {
+  signal.throwIfAborted();
+  const cleanup = new AbortController();
+  const aborted = new Promise<never>((_resolve, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), {
+      once: true,
+      signal: cleanup.signal,
+    });
+  });
+  try {
+    return await Promise.race([promise, aborted]);
+  } finally {
+    cleanup.abort();
+  }
+};
+
 const formatPrefixedErrors = (prefix: string, errors: { path: unknown[]; message: string }[]) =>
   errors.map(({ message, path }) => `${[prefix, ...path].join(".")}: ${message}`).join("\n");
 
@@ -50,7 +71,10 @@ const answerStep = async (
   // questions of the method.
   await flush();
   for (;;) {
-    const values = await method.respond({ answers, options: validated.value, signal, step });
+    const values = await untilAborted(
+      method.respond({ answers, options: validated.value, signal, step }),
+      signal,
+    );
     try {
       const answer: Answer = { step, values };
       await handle.executeUpdate(answerUpdateName, { args: [answer] });
@@ -59,6 +83,11 @@ const answerStep = async (
       // The workflow rejected the answer, so the method asks again.
       if (!(error instanceof WorkflowUpdateFailedError)) {
         throw error;
+      }
+      // Another process may have answered the step in the meantime.
+      const waiting = await handle.query<WaitingStep | null>(waitingQueryName).catch(() => null);
+      if (waiting?.step !== step) {
+        return;
       }
       const reason = error.cause instanceof Error ? error.cause.message : error.message;
       await report({ step, stream: "stderr", text: `${reason}\n`, type: "stepOutput" });

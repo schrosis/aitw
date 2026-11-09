@@ -1,12 +1,21 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { createPluginRegistry, definePlugin, intermediateVersion } from "@aitw/core";
-import type { Intermediate, ScriptRequest, WaitMethod, WorkflowEvent } from "@aitw/core";
+import type {
+  Intermediate,
+  ScriptRequest,
+  ScriptStep,
+  WaitMethod,
+  WorkflowEvent,
+} from "@aitw/core";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 
-import { runWorkflow } from "./run.ts";
+import { createMemoryEventLog } from "./events.ts";
+import { listRunningWorkflows, resumeWorkflow, runWorkflow } from "./run.ts";
+import type { RunOutcome } from "./run.ts";
 
 const intermediate: Intermediate = {
   start: "fetch",
@@ -73,7 +82,11 @@ describe("runWorkflow", () => {
   it("runs a workflow until it completes", async () => {
     const { requests, result } = await run(0);
 
-    await expect(result).resolves.toEqual({ executedSteps: ["fetch"] });
+    await expect(result).resolves.toEqual({
+      executedSteps: ["fetch"],
+      status: "completed",
+      workflowId: expect.stringMatching(/^release\/notes-[0-9a-f-]{36}$/u) as unknown,
+    });
     expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh"]);
   }, 60_000);
 
@@ -197,7 +210,7 @@ describe("runWorkflow", () => {
           contexts.push({ answers: context.answers, options: context.options, step: context.step });
           return answers.shift() ?? {};
         }, events),
-      ).resolves.toEqual({ executedSteps: ["ask", "fetch"] });
+      ).resolves.toMatchObject({ executedSteps: ["ask", "fetch"], status: "completed" });
 
       expect(contexts).toEqual([
         {
@@ -212,7 +225,7 @@ describe("runWorkflow", () => {
         },
       ]);
       expect(events.filter(({ step }) => step === "ask")).toEqual([
-        { step: "ask", type: "stepStarted" },
+        { message: "Name?", step: "ask", type: "stepStarted" },
         { step: "ask", stream: "stderr", text: "ask.name: Required\n", type: "stepOutput" },
         {
           durationMs: expect.any(Number) as unknown,
@@ -239,6 +252,198 @@ describe("runWorkflow", () => {
       await expect(runWaiting(undefined)).rejects.toThrow(
         "steps.ask: Wait method ask cannot answer in this process",
       );
+    }, 60_000);
+  });
+
+  describe("detaching and resuming", () => {
+    const waiting: Intermediate = {
+      ...intermediate,
+      start: "ask",
+      steps: {
+        ...intermediate.steps,
+        ask: {
+          answers: { name: { required: true, type: "string" } },
+          inputs: {},
+          method: "ask",
+          next: { step: "fetch", type: "step" },
+          outputs: {},
+          type: "wait",
+          with: { message: "Name?" },
+        },
+      },
+    };
+    const workflows = fileURLToPath(new URL("./workflows/index.ts", import.meta.url));
+    const succeed = { run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }) };
+    const scriptStep: ScriptStep = {
+      inputs: {},
+      next: { type: "end" },
+      outputs: {},
+      run: "./fetch.sh",
+      timeoutMs: 5000,
+      type: "script",
+    };
+
+    it("leaves a waiting run, then resumes it with the earlier events", async () => {
+      const eventLog = createMemoryEventLog();
+      const detach = new AbortController();
+      const first = await runWorkflow({
+        address: environment.address,
+        eventLog,
+        intermediate: waiting,
+        memo: { project: "detach-test" },
+        name: "ask",
+        plugins: pluginsWith(async () => {
+          detach.abort();
+          return new Promise(() => {});
+        }),
+        scriptRunner: succeed,
+        detach: detach.signal,
+        workflowsPath: workflows,
+      });
+      expect(first).toEqual({ status: "detached", workflowId: expect.any(String) as unknown });
+
+      await expect(
+        listRunningWorkflows({ address: environment.address, memo: { project: "detach-test" } }),
+      ).resolves.toEqual([
+        {
+          memo: { project: "detach-test" },
+          startTime: expect.any(Date) as unknown,
+          workflowId: first.workflowId,
+        },
+      ]);
+
+      const events: WorkflowEvent[] = [];
+      const resumed = await resumeWorkflow({
+        address: environment.address,
+        eventLog,
+        eventSink: { emit: (event) => events.push(event) },
+        plugins: pluginsWith(async () => ({ name: "aitw" })),
+        scriptRunner: succeed,
+        workflowId: first.workflowId,
+        workflowsPath: workflows,
+      });
+
+      expect(resumed).toEqual({
+        executedSteps: ["ask", "fetch"],
+        status: "completed",
+        workflowId: first.workflowId,
+      });
+      // The resumed run shows the events from the start, including those before it detached.
+      expect(events.map(({ step, type }) => `${type} ${step}`)).toEqual([
+        "stepStarted ask",
+        "stepFinished ask",
+        "stepStarted fetch",
+        "stepFinished fetch",
+      ]);
+    }, 60_000);
+
+    it("waits for a running script before it detaches", async () => {
+      const detach = new AbortController();
+      const outcome = runWorkflow({
+        address: environment.address,
+        detach: detach.signal,
+        intermediate: {
+          ...intermediate,
+          steps: {
+            fetch: { ...scriptStep, next: { step: "report", type: "step" } },
+            report: scriptStep,
+          },
+        },
+        name: "slow",
+        scriptRunner: {
+          run: async (request) => {
+            if (request.run === "./fetch.sh" && !detach.signal.aborted) {
+              detach.abort();
+              // The script keeps running for a while after the run detaches.
+              await sleep(500);
+            }
+            return { exitCode: 0, signal: null, stderr: "", stdout: "" };
+          },
+        },
+        workflowsPath: workflows,
+      });
+
+      const result = await outcome;
+      // The script finished, and the run waits for a Worker to run the next step.
+      expect(result.status).toBe("detached");
+      const resumed = await resumeWorkflow({
+        address: environment.address,
+        scriptRunner: succeed,
+        workflowId: result.workflowId,
+        workflowsPath: workflows,
+      });
+      expect(resumed).toMatchObject({ executedSteps: ["fetch", "report"], status: "completed" });
+    }, 60_000);
+
+    it("reports a script that failed while the run detached when it is resumed", async () => {
+      const detach = new AbortController();
+      let detached: RunOutcome;
+      try {
+        detached = await runWorkflow({
+          address: environment.address,
+          detach: detach.signal,
+          intermediate,
+          name: "failing",
+          scriptRunner: {
+            run: async () => {
+              detach.abort();
+              await sleep(200);
+              return { exitCode: 2, signal: null, stderr: "", stdout: "" };
+            },
+          },
+          workflowsPath: workflows,
+        });
+      } catch (error) {
+        // The workflow learned of the failure before the Worker stopped.
+        expect(error).toMatchObject({ cause: { cause: { type: "ScriptFailed" } } });
+        return;
+      }
+
+      // The Worker stopped before the workflow learned of the failure, so the run waits to be
+      // resumed, and it fails then.
+      expect(detached).toMatchObject({ status: "detached" });
+      await expect(
+        resumeWorkflow({
+          address: environment.address,
+          scriptRunner: succeed,
+          workflowId: detached.workflowId,
+          workflowsPath: workflows,
+        }),
+      ).rejects.toMatchObject({ cause: { cause: { type: "ScriptFailed" } } });
+    }, 60_000);
+
+    it("cancels a run that it resumes", async () => {
+      const detach = new AbortController();
+      const first = await runWorkflow({
+        address: environment.address,
+        detach: detach.signal,
+        intermediate: waiting,
+        name: "ask",
+        plugins: pluginsWith(async () => {
+          detach.abort();
+          return new Promise(() => {});
+        }),
+        scriptRunner: succeed,
+        workflowsPath: workflows,
+      });
+
+      await expect(
+        resumeWorkflow({
+          address: environment.address,
+          cancel: true,
+          scriptRunner: succeed,
+          workflowId: first.workflowId,
+          workflowsPath: workflows,
+        }),
+      ).rejects.toMatchObject({ cause: { name: "CancelledFailure" } });
+      await expect(
+        resumeWorkflow({
+          address: environment.address,
+          scriptRunner: succeed,
+          workflowId: first.workflowId,
+          workflowsPath: workflows,
+        }),
+      ).rejects.toThrow("is not running: cancelled");
     }, 60_000);
   });
 });

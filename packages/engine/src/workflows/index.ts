@@ -280,7 +280,14 @@ export const aitw = async (
         inputs: stepInputs,
       });
       // The start is stored before the step can be answered, so that it is shown first.
-      await recordEvent({ step: id, type: "stepStarted" });
+      const waitMessage =
+        typeof options === "object" &&
+        options !== null &&
+        "message" in options &&
+        typeof options.message === "string"
+          ? options.message
+          : undefined;
+      await recordEvent({ message: waitMessage, step: id, type: "stepStarted" });
       // Workflow time is deterministic, so the duration is the same when the history replays.
       const startedAt = Date.now();
       const waitingStep = id;

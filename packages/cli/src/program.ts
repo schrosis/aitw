@@ -99,6 +99,8 @@ const processContext = (): ProgramContext => ({
 });
 
 const devDbDescription = "keep the state of the development server in a SQLite file";
+const devUiDescription =
+  "also start the Web UI, which web pages that you open could use to run commands on this machine";
 const temporalBinDescription =
   "Temporal CLI to start the development server with, as a path or a name in PATH";
 const daemonHelp = `
@@ -121,20 +123,22 @@ const toServerOptions = (
     address,
     dev,
     devDb,
+    devUi,
     temporalBin,
   }: {
     address: string;
     dev?: true | undefined;
     devDb?: string | undefined;
+    devUi?: true | undefined;
     temporalBin?: string | undefined;
   },
   command: { error: (message: string) => never },
 ): ServerOptions => {
-  if (dev !== true && (devDb !== undefined || temporalBin !== undefined)) {
-    command.error("error: --dev-db and --temporal-bin require --dev");
+  if (dev !== true && (devDb !== undefined || devUi !== undefined || temporalBin !== undefined)) {
+    command.error("error: --dev-db, --dev-ui, and --temporal-bin require --dev");
   }
   return dev === true
-    ? { dbFilename: devDb, temporalBin, type: "dev" }
+    ? { dbFilename: devDb, temporalBin, type: "dev", ui: devUi }
     : { address, type: "address" };
 };
 
@@ -174,6 +178,7 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .option("--dev", "start a temporary Temporal development server for this run")
     .option("--dev-db <path>", devDbDescription)
     .option("--temporal-bin <path>", temporalBinDescription)
+    .option("--dev-ui", devUiDescription)
     .addHelpText(
       "after",
       `${interruptHelp}
@@ -205,6 +210,7 @@ ${daemonHelp}`,
     .option("--dev", "start a Temporal development server from --dev-db")
     .option("--dev-db <path>", devDbDescription)
     .option("--temporal-bin <path>", temporalBinDescription)
+    .option("--dev-ui", devUiDescription)
     .option("--force", "resume a run that another version of aitw started, which can fail")
     .addHelpText(
       "after",
@@ -237,6 +243,7 @@ ${daemonHelp}`,
     .option("--dev", "start a Temporal development server from --dev-db")
     .option("--dev-db <path>", devDbDescription)
     .option("--temporal-bin <path>", temporalBinDescription)
+    .option("--dev-ui", devUiDescription)
     .action(async (workflowId, options, command) => {
       const server = toServerOptions(options, command);
       const signal = context.interruptSignal();
@@ -274,6 +281,7 @@ with env and dotenv in the definition.`,
     .option("--dev", "start a Temporal development server, which needs --dev-db")
     .option("--dev-db <path>", devDbDescription)
     .option("--temporal-bin <path>", temporalBinDescription)
+    .option("--dev-ui", devUiDescription)
     .action(async (options, command) => {
       const server = toServerOptions(options, command);
       context.setExitCode(
@@ -302,6 +310,7 @@ with env and dotenv in the definition.`,
     .option("--dev")
     .option("--dev-db <path>")
     .option("--temporal-bin <path>")
+    .option("--dev-ui")
     .action(async (options, command) => {
       const server = toServerOptions(options, command);
       const signal = (context.stopSignal ?? context.interruptSignal)();

@@ -39,6 +39,7 @@ const serverArguments = (server: ServerOptions, cwd: string): string[] => {
           "--temporal-bin",
           server.temporalBin.includes("/") ? resolve(cwd, server.temporalBin) : server.temporalBin,
         ]),
+    ...(server.ui === true ? ["--dev-ui"] : []),
   ];
 };
 

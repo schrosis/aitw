@@ -18,6 +18,8 @@ export type ServerOptions =
        * used when it is omitted.
        */
       temporalBin?: string | undefined;
+      /** Whether to start the Web UI of the server. */
+      ui?: boolean | undefined;
     };
 
 /** A Temporal Server that a command connected to or started. */
@@ -75,12 +77,16 @@ export const openServer = async (
       server.dbFilename === undefined ? undefined : resolve(context.cwd, server.dbFilename),
     executable,
     signal,
+    ui: server.ui,
   });
-  context.stderr(`Temporal Web UI: ${devServer.uiUrl}\n`);
+  if (devServer.uiUrl !== undefined) {
+    context.stderr(`Temporal Web UI: ${devServer.uiUrl}\n`);
+  }
   const options = [
     " --dev",
     ...(server.dbFilename === undefined ? [] : [` --dev-db ${quote(server.dbFilename)}`]),
     ...(server.temporalBin === undefined ? [] : [` --temporal-bin ${quote(server.temporalBin)}`]),
+    ...(server.ui === true ? [" --dev-ui"] : []),
   ].join("");
   return {
     address: devServer.address,

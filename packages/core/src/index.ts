@@ -46,7 +46,13 @@ export type {
   Template,
   TemplatePart,
 } from "./expression/index.js";
-export { identifierPattern, identifierSource } from "./identifier.js";
+export {
+  checkDotenvPath,
+  envNameMessage,
+  envNamePattern,
+  identifierPattern,
+  identifierSource,
+} from "./identifier.js";
 export {
   createPluginRegistry,
   definePlugin,

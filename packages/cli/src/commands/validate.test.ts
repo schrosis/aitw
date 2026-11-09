@@ -83,6 +83,18 @@ describe("validate", () => {
     });
   });
 
+  it("reports invalid references in env", async () => {
+    await expect(run("env-error")).resolves.toEqual({
+      exitCode: 1,
+      stderr: [
+        ".aitw/workflows/env-error.yaml:3:14 env.FROM_STEP: The environment of the workflow can reference only workflow.inputs.<name>: ${{ steps.fetch.outputs.title }}",
+        ".aitw/workflows/env-error.yaml:9:16 steps.fetch.env.MISSING: Step fetch does not declare the input nothing: ${{ inputs.nothing }}",
+        "",
+      ].join("\n"),
+      stdout: "",
+    });
+  });
+
   it("reports a workflow that cannot be resolved", async () => {
     await expect(run("missing")).resolves.toEqual({
       exitCode: 1,

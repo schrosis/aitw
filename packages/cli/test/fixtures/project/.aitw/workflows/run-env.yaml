@@ -1,0 +1,24 @@
+version: v0.1
+dotenv: .aitw/env.fixture
+inputs:
+  level:
+    type: string
+    default: info
+env:
+  LEVEL: ${{ workflow.inputs.level }}
+  OVERRIDDEN: from-workflow
+start: fetch
+steps:
+  fetch:
+    type: script
+    run: printf "%s" "'; echo injected; echo '"
+    outputs:
+      title: ${{ result.stdout }}
+    next: report
+  report:
+    type: script
+    env:
+      TITLE: ${{ steps.fetch.outputs.title }}
+      PORT: 3000
+    run: echo "title=[$TITLE] level=$LEVEL port=$PORT dotenv=$FROM_DOTENV overridden=$OVERRIDDEN home-kept=$([ "$HOME" != from-dotenv ] && echo yes)"
+    next: end

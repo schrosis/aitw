@@ -1,4 +1,5 @@
 import {
+  embedValue,
   evaluateExpression,
   pickReferences,
   resolveWorkflowInput,
@@ -94,16 +95,21 @@ const evaluateInput = (
  * The step receives only the shared values that its `run` and `outputs` reference, so that the
  * history does not store every value of the workflow again for each step.
  */
-const prepareStep = (id: string, step: ScriptStep, context: SharedContext) => {
+const prepareStep = (
+  id: string,
+  step: ScriptStep,
+  context: SharedContext,
+  workflowEnv: Readonly<Record<string, string>>,
+) => {
   const inputs = evaluateInput(id, step.inputs, context);
   const references = pickReferences(
-    [step.run, ...Object.values(step.outputs)],
+    [step.run, ...Object.values(step.outputs), ...Object.values(step.env ?? {})],
     context,
     sharedRoots,
   );
 
   // The values can combine the output of several steps, so they are limited separately.
-  const bytes = jsonBytes({ inputs, references });
+  const bytes = jsonBytes({ inputs, references, workflowEnv });
   if (bytes > maxValueBytes) {
     throw ApplicationFailure.nonRetryable(
       `The values for steps.${id} are ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
@@ -249,7 +255,16 @@ export const aitw = async (
     },
   );
 
-  const { start, steps } = validation.intermediate;
+  const { dotenv, start, steps } = validation.intermediate;
+  // The environment of the workflow reads only its input, so it is the same for every step.
+  const workflowEnv: Record<string, string> = {};
+  for (const [name, expression] of Object.entries(validation.intermediate.env ?? {})) {
+    const evaluated = evaluateExpression(expression, { workflow: { inputs: resolved.inputs } });
+    if (!evaluated.ok) {
+      throw invalidExpression(`env.${name}`, evaluated.message);
+    }
+    workflowEnv[name] = embedValue(evaluated.value);
+  }
   const executedSteps: string[] = [];
   // The latest output of each step. Loops will keep every visit (B10b).
   const outputs: Record<string, StepOutput> = {};
@@ -331,11 +346,14 @@ export const aitw = async (
         startToCloseTimeout: step.timeoutMs + activityTimeoutGraceMs,
       });
       outputs[id] = await executeScriptStep({
-        ...prepareStep(id, step, context),
+        ...prepareStep(id, step, context, workflowEnv),
+        dotenv,
         outputs: step.outputs,
         run: step.run,
         step: id,
+        stepEnv: step.env,
         timeoutMs: step.timeoutMs,
+        workflowEnv,
       });
     }
     executedSteps.push(id);

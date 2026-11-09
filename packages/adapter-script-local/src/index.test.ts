@@ -1,5 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -24,6 +32,16 @@ const waitUntilStopped = async (pid: number): Promise<boolean> => {
   }
   return !isRunning(pid);
 };
+
+const runWithEnv = async (
+  cwd: string,
+  request: { env?: Record<string, string>; dotenv?: string },
+  script: string,
+) =>
+  createLocalScriptRunner({ cwd }).run(
+    { inputs: {}, run: script, timeoutMs: 10_000, ...request },
+    { signal: new AbortController().signal },
+  );
 
 describe("createLocalScriptRunner", () => {
   let cwd: string;
@@ -81,6 +99,64 @@ describe("createLocalScriptRunner", () => {
     );
 
     expect(process.listenerCount("exit") - before).toBeLessThanOrEqual(1);
+  });
+
+  describe("environment", () => {
+    it("sets the variables of the definition over the inherited ones, and dotenv under them", async () => {
+      writeFileSync(join(cwd, ".env"), "FROM_DOTENV=dotenv\nHOME=from-dotenv\nSET=from-dotenv\n");
+
+      const result = await runWithEnv(
+        cwd,
+        { dotenv: ".env", env: { HOME: "from-env", SET: "from-env" } },
+        'printf "%s %s %s %s" "$FROM_DOTENV" "$SET" "$HOME" "$PATH"',
+      );
+
+      const [fromDotenv, set, home, path] = result.stdout.split(" ");
+      expect(fromDotenv).toBe("dotenv");
+      expect(set).toBe("from-env");
+      expect(home).toBe("from-env");
+      // An inherited variable is kept over dotenv.
+      expect(path).toBe(process.env.PATH);
+    });
+
+    it("does not let dotenv replace an inherited variable", async () => {
+      writeFileSync(join(cwd, ".env"), "HOME=from-dotenv\n");
+
+      const result = await runWithEnv(cwd, { dotenv: ".env" }, 'printf "%s" "$HOME"');
+
+      expect(result.stdout).toBe(process.env.HOME);
+    });
+
+    it("passes a value without running it", async () => {
+      const result = await runWithEnv(
+        cwd,
+        { env: { TITLE: "'; echo injected; echo '" } },
+        'printf "%s" "$TITLE"',
+      );
+
+      expect(result.stdout).toBe("'; echo injected; echo '");
+    });
+
+    it("fails without running the script when the dotenv file is missing", async () => {
+      await expect(runWithEnv(cwd, { dotenv: "missing.env" }, "touch ran")).rejects.toThrow(
+        "Failed to read the dotenv file missing.env",
+      );
+      expect(existsSync(join(cwd, "ran"))).toBe(false);
+    });
+
+    it("does not read a dotenv file outside of the working directory through a link", async () => {
+      const outside = mkdtempSync(join(tmpdir(), "aitw-outside-"));
+      try {
+        writeFileSync(join(outside, "secrets.env"), "SECRET=x\n");
+        symlinkSync(join(outside, "secrets.env"), join(cwd, ".env"));
+
+        await expect(runWithEnv(cwd, { dotenv: ".env" }, "true")).rejects.toThrow(
+          "it is outside of the project root",
+        );
+      } finally {
+        rmSync(outside, { force: true, recursive: true });
+      }
+    });
   });
 
   it("returns the exit code and output", async () => {

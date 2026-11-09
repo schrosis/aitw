@@ -72,14 +72,31 @@ const describeScope = ({ inputs, result }: Scope): string => {
 /**
  * Validates the `${{ }}` references of every step.
  *
- * Every field can read the declared output of a step that runs before it, and the declared
+ * The environment of the workflow can read only the declared input of the workflow.
+ *
+ * Every field of a step can read the declared output of a step that runs before it, and the declared
  * input of the workflow. In addition, `run`, the strings of `with`, and `outputs` can read the
- * declared inputs of their own step. `outputs` can read the result: `exitCode`, `stdout`, and
+ * declared inputs of their own step, and so can the environment of a script step. `outputs` can read the result: `exitCode`, `stdout`, and
  * `stderr` of a script, or the declared answers of a wait step.
  */
 export const validateExpressions = (intermediate: Intermediate): ValidationError[] => {
   const order = executionOrder(intermediate);
   const errors: ValidationError[] = [];
+
+  // The environment of the workflow is evaluated once when it starts, before any step runs.
+  for (const [name, expression] of Object.entries(intermediate.env ?? {})) {
+    errors.push(
+      ...checkExpression(expression, ["env", name], ([root, first, second, ...rest]) => {
+        if (root !== "workflow" || first !== "inputs" || second === undefined) {
+          return "The environment of the workflow can reference only workflow.inputs.<name>";
+        }
+        if (!Object.hasOwn(intermediate.inputs, second)) {
+          return `The workflow does not declare the input ${second}`;
+        }
+        return rest.length > 0 ? "Cannot reference a field of a workflow input value" : undefined;
+      }),
+    );
+  }
 
   // Steps that run before the current step. It grows as the loop moves forward.
   const earlier = new Set<string>();
@@ -141,6 +158,11 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
     }
     if (step.type === "script") {
       errors.push(...checkExpression(step.run, ["steps", id, "run"], check({ inputs: true })));
+      for (const [name, expression] of Object.entries(step.env ?? {})) {
+        errors.push(
+          ...checkExpression(expression, ["steps", id, "env", name], check({ inputs: true })),
+        );
+      }
     } else {
       for (const { path, text } of stringLeaves(step.with, ["steps", id, "with"])) {
         errors.push(...checkExpression(text, path, check({ inputs: true })));

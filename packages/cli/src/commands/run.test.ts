@@ -143,6 +143,16 @@ describe("run", () => {
     });
   }, 60_000);
 
+  it("passes values through env and dotenv without running them", async () => {
+    const result = await execute("run-env");
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(result.stdout).toContain(
+      "title=['; echo injected; echo '] level=info port=3000 dotenv=dotenv overridden=from-workflow home-kept=yes\n",
+    );
+    expect(result.stdout).not.toMatch(/^injected$/mu);
+  }, 60_000);
+
   it("reports a failed script", async () => {
     const result = await execute("run-failure");
 

@@ -153,7 +153,11 @@ const convertIssue = (
   }
 
   const offset = findOffset(document, path, issue.code === "invalid_key");
-  return [createError(lineCounter, offset, path, issue.message)];
+  // An invalid key of a record explains itself in its first nested issue, such as the pattern
+  // that a name must match.
+  const message =
+    issue.code === "invalid_key" ? (issue.issues[0]?.message ?? issue.message) : issue.message;
+  return [createError(lineCounter, offset, path, message)];
 };
 
 /**

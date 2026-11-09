@@ -212,7 +212,7 @@ describe("aitw executable", () => {
 
 describe("aitw with an unsafe state directory", () => {
   it("explains the problem without a stack trace", async () => {
-    const base = mkdtempSync(join(tmpdir(), "aitw-state-"));
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "aitw-state-")));
     try {
       mkdirSync(join(base, "aitw"), { mode: 0o755 });
       chmodSync(join(base, "aitw"), 0o755);

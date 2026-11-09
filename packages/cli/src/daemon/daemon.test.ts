@@ -108,7 +108,9 @@ describe("aitw daemon", () => {
     const status = await execute(["daemon", "status"]);
     expect(status).toMatchObject({ exitCode: 0 });
     expect(status.stdout).toContain("aitw daemon: running (pid ");
-    expect(status.stdout).toContain(`log: ${join(state, "aitw", "daemon", "daemon.log")}\n`);
+    expect(status.stdout).toContain(
+      `log: ${join(realpathSync(state), "aitw", "daemon", "daemon.log")}\n`,
+    );
 
     await expect(execute(["daemon", "stop"])).resolves.toEqual({
       exitCode: 0,

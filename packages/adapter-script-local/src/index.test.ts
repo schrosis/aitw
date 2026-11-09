@@ -119,6 +119,14 @@ describe("createLocalScriptRunner", () => {
       expect(path).toBe(process.env.PATH);
     });
 
+    it("reads a file in the root whose name starts with two dots", async () => {
+      writeFileSync(join(cwd, "..env"), "DOTS=yes\n");
+
+      const result = await runWithEnv(cwd, { dotenv: "..env" }, 'printf "%s" "$DOTS"');
+
+      expect(result.stdout).toBe("yes");
+    });
+
     it("does not let dotenv replace an inherited variable", async () => {
       writeFileSync(join(cwd, ".env"), "HOME=from-dotenv\n");
 

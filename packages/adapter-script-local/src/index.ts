@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
-import { isAbsolute, relative, resolve as resolvePath } from "node:path";
+import { isAbsolute, relative, resolve as resolvePath, sep } from "node:path";
 import { parseEnv } from "node:util";
 
 import { ScriptTimeoutError } from "@aitw/core";
@@ -53,7 +53,8 @@ const readDotenv = (cwd: string, path: string): DotenvResult => {
     const root = realpathSync(cwd);
     file = realpathSync(resolvePath(cwd, path));
     const inside = relative(root, file);
-    if (inside === "" || inside.startsWith("..") || isAbsolute(inside)) {
+    // Segments are compared, so that a file such as ..env in the root is inside.
+    if (inside === "" || inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
       return failure("it is outside of the project root");
     }
     return { ok: true, values: parseEnv(readFileSync(file, "utf8")) };

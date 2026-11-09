@@ -96,7 +96,7 @@ describe("validateIntermediate env", () => {
 });
 
 describe("checkDotenvPath", () => {
-  it.each([".env", "config/.env", "./.env.local"])("accepts %s", (path) => {
+  it.each([".env", "config/.env", "./.env.local", "..env"])("accepts %s", (path) => {
     expect(checkDotenvPath(path)).toBeUndefined();
   });
 

@@ -1,45 +1,17 @@
-import { createFileEventLog } from "@aitw/adapter-event-log-file";
-import { createLocalScriptRunner } from "@aitw/adapter-script-local";
 import { resolveWorkflowInput } from "@aitw/core";
 import { jsonBytes, maxValueBytes, runWorkflow } from "@aitw/engine";
 
 import { realpath } from "node:fs/promises";
-import { resolve } from "node:path";
 
-import { createProgressPrinter } from "../progress.js";
+import { cancelledExitCode, followRun, rootMessage } from "../follow.js";
 import { readWorkflowInput } from "../input.js";
-import { createLineReader } from "../lines.js";
-import type { LineReader } from "../lines.js";
-import { createRegistry } from "../plugins.js";
-import { projectHash, projectLogDirectory, projectMemoKey } from "../state.js";
-import { ensureTemporalCli, startDevServer } from "../temporal-cli/index.js";
-import type { DevServer } from "../temporal-cli/index.js";
+import { acquireRunLock } from "../lock.js";
+import type { RunLock } from "../lock.js";
+import { openServer } from "../server.js";
+import type { OpenedServer, ServerOptions } from "../server.js";
+import { projectHash, projectLockDirectory, projectMemoKey, workflowMemoKey } from "../state.js";
 import { loadWorkflow } from "./load.js";
 import type { CommandContext } from "./load.js";
-
-/** Exit code of a run that was cancelled, following the shell convention for SIGINT. */
-const cancelledExitCode = 130;
-
-/**
- * Exit code of a run that was left running to be resumed later.
- *
- * It is not zero, so that a script that runs aitw does not take the run as completed.
- */
-export const detachedExitCode = 3;
-
-/** Temporal Server that a run uses. */
-export type ServerOptions =
-  | { type: "address"; address: string }
-  | {
-      type: "dev";
-      /** SQLite file that keeps the server state, relative to the current directory. */
-      dbFilename?: string | undefined;
-      /**
-       * Temporal CLI to start the server with, as a path or a name in PATH. The pinned release is
-       * used when it is omitted.
-       */
-      temporalBin?: string | undefined;
-    };
 
 /** Options of {@link run}. */
 export interface RunOptions {
@@ -47,27 +19,14 @@ export interface RunOptions {
   input?: string | undefined;
   /** Temporal Server that runs the workflow. */
   server: ServerOptions;
-  /** Cancels the run when aborted. */
+  /**
+   * Aborted when the user interrupts. It detaches the run, or cancels it on a server that does
+   * not keep its runs.
+   */
   signal: AbortSignal;
   /** Called after the workflow is validated and before it starts. */
   prepareEngine?: () => void;
 }
-
-const isCancelled = (error: unknown): boolean =>
-  error instanceof Error && error.cause instanceof Error && error.cause.name === "CancelledFailure";
-
-/** Resolves an executable like a shell: a name without a slash is looked up in PATH. */
-const resolveExecutable = (cwd: string, executable: string): string =>
-  executable.includes("/") ? resolve(cwd, executable) : executable;
-
-/** Returns the message of the innermost cause, which describes the actual failure. */
-const rootMessage = (error: unknown): string => {
-  let current = error;
-  while (current instanceof Error && current.cause instanceof Error) {
-    current = current.cause;
-  }
-  return current instanceof Error ? current.message : String(current);
-};
 
 /**
  * Runs a workflow and waits for it to finish.
@@ -110,50 +69,9 @@ export const run = async (
     return 1;
   }
 
-  let devServer: DevServer | undefined;
-  // Standard input is opened only when a wait step asks, so that other runs never read it.
-  let lines: LineReader | undefined;
-  let echo = false;
-  const terminal = {
-    readLine: async (abort: AbortSignal): Promise<string | null> => {
-      if (context.stdin === undefined) {
-        return null;
-      }
-      if (lines === undefined) {
-        const input = context.stdin();
-        // A terminal shows what is typed. Piped answers are shown here instead.
-        echo = !("isTTY" in input && input.isTTY === true);
-        lines = createLineReader(input);
-      }
-      const line = await lines.readLine(abort);
-      if (echo && line !== null) {
-        context.stdout(`${line}\n`);
-      }
-      return line;
-    },
-    write: context.stdout,
-  };
+  let opened: OpenedServer | undefined;
   try {
-    let address: string;
-    if (server.type === "dev") {
-      const executable =
-        server.temporalBin === undefined
-          ? await ensureTemporalCli({
-              onDownload: (version) => context.stderr(`Downloading Temporal CLI ${version}\n`),
-              signal,
-            })
-          : resolveExecutable(context.cwd, server.temporalBin);
-      devServer = await startDevServer({
-        dbFilename:
-          server.dbFilename === undefined ? undefined : resolve(context.cwd, server.dbFilename),
-        executable,
-        signal,
-      });
-      address = devServer.address;
-      context.stderr(`Temporal Web UI: ${devServer.uiUrl}\n`);
-    } else {
-      address = server.address;
-    }
+    opened = await openServer(server, context, signal);
     if (signal.aborted) {
       context.stderr(`${name}: cancelled\n`);
       return cancelledExitCode;
@@ -161,36 +79,42 @@ export const run = async (
 
     prepareEngine?.();
     const root = await realpath(workflow.root);
-    const outcome = await runWorkflow({
-      address,
-      eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
-      eventSink: createProgressPrinter(context),
-      inputs: read.values,
-      intermediate: workflow.intermediate,
-      // The project marks the run, so that aitw resume can find the runs of a project.
-      memo: { [projectMemoKey]: projectHash(root) },
-      name,
-      onWarning: (message) => context.stderr(`${name}: warning: ${message}\n`),
-      plugins: createRegistry(terminal),
-      scriptRunner: createLocalScriptRunner({ cwd: workflow.root }),
-      signal,
-    });
-    if (outcome.status === "detached") {
-      context.stderr(`${name}: detached. Run "aitw resume" to continue\n`);
-      return detachedExitCode;
+    let lock: RunLock | undefined;
+    try {
+      return await followRun(
+        {
+          follow: async (options) =>
+            runWorkflow({
+              ...options,
+              inputs: read.values,
+              intermediate: workflow.intermediate,
+              // The memo marks the run, so that aitw resume can find the runs of a project.
+              memo: { [projectMemoKey]: projectHash(root), [workflowMemoKey]: name },
+              name,
+              // aitw resume does not follow a run that this process follows.
+              onStart: (workflowId) => {
+                lock = acquireRunLock(projectLockDirectory(root), workflowId);
+              },
+            }),
+          interrupt: signal,
+          name,
+          root,
+          server: opened,
+        },
+        context,
+      );
+    } finally {
+      lock?.release();
     }
-    context.stdout(`${name}: completed (${outcome.executedSteps.join(", ")})\n`);
-    return 0;
   } catch (error) {
     // An interrupt while the server starts aborts the download or the wait for the server.
-    if (isCancelled(error) || signal.aborted) {
+    if (signal.aborted) {
       context.stderr(`${name}: cancelled\n`);
       return cancelledExitCode;
     }
     context.stderr(`${name}: failed: ${rootMessage(error)}\n`);
     return 1;
   } finally {
-    lines?.close();
-    await devServer?.stop();
+    await opened?.stop();
   }
 };

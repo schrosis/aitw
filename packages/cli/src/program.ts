@@ -4,8 +4,10 @@ import { configureRuntime } from "@aitw/engine";
 import { Command, Option } from "@commander-js/extra-typings";
 
 import type { CommandContext } from "./commands/load.js";
+import { cancel, resume } from "./commands/resume.js";
 import { run } from "./commands/run.js";
-import type { ServerOptions } from "./commands/run.js";
+import { defaultAddress } from "./server.js";
+import type { ServerOptions } from "./server.js";
 import { validate } from "./commands/validate.js";
 
 const readVersion = (): string => {
@@ -80,6 +82,43 @@ const processContext = (): ProgramContext => ({
   stdout: (text) => process.stdout.write(text),
 });
 
+const devDbDescription = "keep the state of the development server in a SQLite file";
+const temporalBinDescription =
+  "Temporal CLI to start the development server with, as a path or a name in PATH";
+const interruptHelp = `
+Press Ctrl+C to detach: the run waits in Temporal, and "aitw resume" continues it.
+A running script finishes first. Press Ctrl+C again to exit now, which fails the running
+step so that the run cannot be resumed. A development server without --dev-db keeps no
+runs, so Ctrl+C cancels the run there. Use "aitw cancel" to stop a run.`;
+
+const addressOption = () =>
+  new Option("--address <address>", "address of the Temporal Server")
+    .default(defaultAddress)
+    .conflicts("dev");
+
+/** Builds the server options of a command, and rejects options that need --dev. */
+const toServerOptions = (
+  {
+    address,
+    dev,
+    devDb,
+    temporalBin,
+  }: {
+    address: string;
+    dev?: true | undefined;
+    devDb?: string | undefined;
+    temporalBin?: string | undefined;
+  },
+  command: { error: (message: string) => never },
+): ServerOptions => {
+  if (dev !== true && (devDb !== undefined || temporalBin !== undefined)) {
+    command.error("error: --dev-db and --temporal-bin require --dev");
+  }
+  return dev === true
+    ? { dbFilename: devDb, temporalBin, type: "dev" }
+    : { address, type: "address" };
+};
+
 /** Creates the `aitw` command line program. */
 export const createProgram = (context: ProgramContext = processContext()) => {
   const program = new Command()
@@ -99,32 +138,54 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .command("run")
     .description("Run a workflow in .aitw/workflows and wait for it to finish")
     .argument("<workflow>", "workflow name, such as deploy or release/notes")
-    .addOption(
-      new Option("--address <address>", "address of the Temporal Server")
-        .default("localhost:7233")
-        .conflicts("dev"),
-    )
+    .addOption(addressOption())
     .option("--input <json-or-file>", "workflow input as a JSON object or the path of a .json file")
     .option("--dev", "start a temporary Temporal development server for this run")
-    .option("--dev-db <path>", "keep the state of the development server in a SQLite file")
-    .option(
-      "--temporal-bin <path>",
-      "Temporal CLI to start the development server with, as a path or a name in PATH",
-    )
-    .action(async (workflow, { address, dev, devDb, input, temporalBin }, command) => {
-      if (!dev && (devDb !== undefined || temporalBin !== undefined)) {
-        command.error("error: --dev-db and --temporal-bin require --dev");
-      }
+    .option("--dev-db <path>", devDbDescription)
+    .option("--temporal-bin <path>", temporalBinDescription)
+    .addHelpText("after", interruptHelp)
+    .action(async (workflow, { input, ...options }, command) => {
+      const server = toServerOptions(options, command);
       const signal = context.interruptSignal();
-      const server: ServerOptions = dev
-        ? { dbFilename: devDb, temporalBin, type: "dev" }
-        : { address, type: "address" };
       context.setExitCode(
         await run(
           workflow,
           { input, prepareEngine: context.prepareEngine, server, signal },
           context,
         ),
+      );
+    });
+
+  program
+    .command("resume")
+    .description("Resume a run of the project, such as one that was detached")
+    .argument("[workflow-id]", "ID of the run. Without it, the runs of the project are listed")
+    .addOption(addressOption())
+    .option("--dev", "start a Temporal development server from --dev-db")
+    .option("--dev-db <path>", devDbDescription)
+    .option("--temporal-bin <path>", temporalBinDescription)
+    .addHelpText("after", interruptHelp)
+    .action(async (workflowId, options, command) => {
+      const server = toServerOptions(options, command);
+      const signal = context.interruptSignal();
+      context.setExitCode(
+        await resume({ prepareEngine: context.prepareEngine, server, signal, workflowId }, context),
+      );
+    });
+
+  program
+    .command("cancel")
+    .description("Cancel a run of the project, stopping its wait or its running script")
+    .argument("[workflow-id]", "ID of the run. Without it, the runs of the project are listed")
+    .addOption(addressOption())
+    .option("--dev", "start a Temporal development server from --dev-db")
+    .option("--dev-db <path>", devDbDescription)
+    .option("--temporal-bin <path>", temporalBinDescription)
+    .action(async (workflowId, options, command) => {
+      const server = toServerOptions(options, command);
+      const signal = context.interruptSignal();
+      context.setExitCode(
+        await cancel({ prepareEngine: context.prepareEngine, server, signal, workflowId }, context),
       );
     });
 

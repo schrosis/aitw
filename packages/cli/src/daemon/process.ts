@@ -161,6 +161,7 @@ export const runDaemon = async (
       startedAt,
       version,
       workflowCodeVersion,
+      ...(opened?.uiUrl === undefined ? {} : { uiUrl: opened.uiUrl }),
     });
     http.on("request", (incoming: IncomingMessage, response: ServerResponse) => {
       if (incoming.method === "GET" && incoming.url === "/status") {

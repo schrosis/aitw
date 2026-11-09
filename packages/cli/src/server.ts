@@ -36,7 +36,25 @@ export interface OpenedServer {
   stop: () => Promise<void>;
   /** Process ID of the development server that the command started, if any. */
   pid?: number;
+  /** URL of the Web UI of the development server, when it was started. */
+  uiUrl?: string | undefined;
 }
+
+/**
+ * Returns the command line options that reach a server, such as `--dev --dev-db state.db`.
+ *
+ * The resident process reports its options, and a command compares them with its own, so both
+ * are built here to keep the same order.
+ */
+export const serverArguments = (server: ServerOptions): string[] =>
+  server.type === "address"
+    ? ["--address", server.address]
+    : [
+        "--dev",
+        ...(server.dbFilename === undefined ? [] : ["--dev-db", server.dbFilename]),
+        ...(server.temporalBin === undefined ? [] : ["--temporal-bin", server.temporalBin]),
+        ...(server.ui === true ? ["--dev-ui"] : []),
+      ];
 
 /** Resolves an executable like a shell: a name without a slash is looked up in PATH. */
 const resolveExecutable = (cwd: string, executable: string): string =>
@@ -60,7 +78,8 @@ export const openServer = async (
     return {
       address: server.address,
       durable: true,
-      options: server.address === defaultAddress ? "" : ` --address ${quote(server.address)}`,
+      options:
+        server.address === defaultAddress ? "" : ` ${serverArguments(server).map(quote).join(" ")}`,
       stop: async () => {},
     };
   }
@@ -82,17 +101,12 @@ export const openServer = async (
   if (devServer.uiUrl !== undefined) {
     context.stderr(`Temporal Web UI: ${devServer.uiUrl}\n`);
   }
-  const options = [
-    " --dev",
-    ...(server.dbFilename === undefined ? [] : [` --dev-db ${quote(server.dbFilename)}`]),
-    ...(server.temporalBin === undefined ? [] : [` --temporal-bin ${quote(server.temporalBin)}`]),
-    ...(server.ui === true ? [" --dev-ui"] : []),
-  ].join("");
   return {
     address: devServer.address,
     durable: server.dbFilename !== undefined,
-    options,
+    options: ` ${serverArguments(server).map(quote).join(" ")}`,
     pid: devServer.pid,
     stop: devServer.stop,
+    ...(devServer.uiUrl === undefined ? {} : { uiUrl: devServer.uiUrl }),
   };
 };

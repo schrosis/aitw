@@ -109,6 +109,8 @@ describe("aitw daemon", () => {
     expect(status).toMatchObject({ exitCode: 0 });
     expect(status.stdout).toContain("aitw daemon: running (pid ");
     expect(status.stdout).toContain(`log: ${join(state, "aitw", "daemon", "daemon.log")}\n`);
+    // The Web UI starts only with --dev-ui.
+    expect(status.stdout).not.toContain("web ui:");
 
     await expect(execute(["daemon", "stop"])).resolves.toEqual({
       exitCode: 0,
@@ -187,7 +189,7 @@ describe("aitw daemon", () => {
     );
   }, 60_000);
 
-  it("does not warn when the running process uses the same options", async () => {
+  it("warns only when the running process uses other options, including --dev-ui", async () => {
     const options = [
       "daemon",
       "start",
@@ -201,6 +203,19 @@ describe("aitw daemon", () => {
     await execute(options);
 
     await expect(execute(options)).resolves.toMatchObject({ exitCode: 0, stderr: "" });
+    await execute(["daemon", "stop"]);
+
+    // --dev-ui reaches the resident process, and is compared with the request.
+    await execute([...options, "--dev-ui"]);
+    await expect(execute([...options, "--dev-ui"])).resolves.toMatchObject({
+      exitCode: 0,
+      stderr: "",
+    });
+    const status = await execute(["daemon", "status"]);
+    expect(status.stdout).toMatch(/^web ui: http:\/\/127\.0\.0\.1:\d+$/mu);
+    await expect(execute(options)).resolves.toMatchObject({
+      stderr: expect.stringContaining('--dev-ui". Run "aitw daemon stop"') as unknown,
+    });
     await execute(["daemon", "stop"]);
     try {
       execFileSync("pkill", ["-f", "--", `--db-filename ${join(state, "temporal db.sqlite")}`]);

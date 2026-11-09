@@ -2,6 +2,7 @@ import { createFileEventLog } from "@aitw/adapter-event-log-file";
 import type { TerminalIO } from "@aitw/adapter-wait-terminal";
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
 import type { EventSink } from "@aitw/core";
+import { IncompatibleRunError } from "@aitw/engine";
 import type { FollowOptions, RunOutcome } from "@aitw/engine";
 
 import type { CommandContext } from "./commands/load.js";
@@ -143,6 +144,12 @@ export const followRun = async (
         : ". Runs on a development server without --dev-db cannot be resumed";
       context.stderr(`${name}: cancelled${note}\n`);
       return cancelledExitCode;
+    }
+    if (error instanceof IncompatibleRunError) {
+      context.stderr(
+        `${name}: ${error.message}. Resume it with the version of aitw that started it, or pass --force to try anyway\n`,
+      );
+      return 1;
     }
     context.stderr(`${name}: failed: ${rootMessage(error)}\n`);
     return 1;

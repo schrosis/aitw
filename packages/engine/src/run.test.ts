@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
@@ -15,6 +16,11 @@ import { z } from "zod";
 
 import { createMemoryEventLog } from "./events.ts";
 import { listRunningWorkflows, resumeWorkflow, runWorkflow } from "./run.ts";
+import {
+  IncompatibleRunError,
+  workflowCodeVersion,
+  workflowCodeVersionMemoKey,
+} from "./version.ts";
 import type { RunOutcome } from "./run.ts";
 
 const intermediate: Intermediate = {
@@ -306,7 +312,11 @@ describe("runWorkflow", () => {
         listRunningWorkflows({ address: environment.address, memo: { project: "detach-test" } }),
       ).resolves.toEqual([
         {
-          memo: { project: "detach-test" },
+          // The run also records the workflow code version that started it.
+          memo: {
+            [workflowCodeVersionMemoKey]: String(workflowCodeVersion),
+            project: "detach-test",
+          },
           startTime: expect.any(Date) as unknown,
           workflowId: first.workflowId,
         },
@@ -410,6 +420,31 @@ describe("runWorkflow", () => {
           workflowsPath: workflows,
         }),
       ).rejects.toMatchObject({ cause: { cause: { type: "ScriptFailed" } } });
+    }, 60_000);
+
+    it("does not resume a run of another workflow code version without force", async () => {
+      const handle = await environment.client.workflow.start("aitw", {
+        args: [waiting, {}],
+        memo: { [workflowCodeVersionMemoKey]: "0" },
+        taskQueue: `aitw-${randomUUID()}`,
+        workflowId: `old-${randomUUID()}`,
+      });
+      const options = {
+        address: environment.address,
+        scriptRunner: succeed,
+        workflowId: handle.workflowId,
+        workflowsPath: workflows,
+      };
+
+      await expect(resumeWorkflow(options)).rejects.toThrow(IncompatibleRunError);
+      await expect(resumeWorkflow(options)).rejects.toThrow(
+        `was started by workflow code version 0, and this aitw has version ${workflowCodeVersion}`,
+      );
+      await expect(resumeWorkflow({ ...options, cancel: true, force: true })).rejects.toMatchObject(
+        {
+          cause: { name: "CancelledFailure" },
+        },
+      );
     }, 60_000);
 
     it("cancels a run that it resumes", async () => {

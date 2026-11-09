@@ -27,6 +27,7 @@
     "@temporalio/workflow": "catalog:"
   },
   "devDependencies": {
+    "@temporalio/common": "catalog:",
     "@temporalio/testing": "catalog:",
     "vitest": "^5.1.0",
     "zod": "catalog:"

@@ -24,6 +24,7 @@ aitw は、AI、人間、スクリプトのステップを Temporal Workflow で
 - Adapter のインターフェースは Port と呼ぶ
 - 関数はアロー関数で書く。`function` はジェネレーターなど、必要な場合だけ使う
 - Workflow のコードは `packages/engine/src/workflows` に置き、Node API と副作用を持ち込まない
+- Workflow のコードは、記録した履歴をリプレイできるように変更する（`packages/engine/src/workflows/replay.test.ts`）。互換性を保てない場合は `workflowCodeVersion` を上げ、`AITW_RECORD_HISTORIES=1 pnpm --filter @aitw/engine test` で履歴を記録し直す
 - 副作用は Activity で実行する
 - コミットメッセージは Conventional Commits に従う
 

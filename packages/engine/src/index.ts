@@ -11,8 +11,15 @@ export {
   listRunningWorkflows,
   resumeWorkflow,
   runWorkflow,
+  terminateWorkflow,
   workflowsPath,
 } from "./run.js";
+export {
+  IncompatibleRunError,
+  isCompatibleMemo,
+  workflowCodeVersion,
+  workflowCodeVersionMemoKey,
+} from "./version.js";
 export { createMemoryEventLog, followEvents } from "./events.js";
 export type { EventFollower, FollowEventsOptions } from "./events.js";
 export type {
@@ -23,6 +30,7 @@ export type {
   RunOutcome,
   RunWorkflowOptions,
   RuntimeOptions,
+  TerminateWorkflowOptions,
 } from "./run.js";
 export type { WorkflowResult } from "./workflows/index.js";
 export { answerUpdateName, waitingQueryName } from "./messages.js";

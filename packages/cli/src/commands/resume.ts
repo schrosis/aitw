@@ -2,7 +2,7 @@ import { realpath } from "node:fs/promises";
 
 import { createFileEventLog } from "@aitw/adapter-event-log-file";
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
-import { resumeWorkflow } from "@aitw/engine";
+import { resumeWorkflow, terminateWorkflow } from "@aitw/engine";
 
 import {
   cancelledExitCode,
@@ -30,6 +30,8 @@ export interface ResumeOptions {
   signal: AbortSignal;
   /** Called before the command runs a Worker. */
   prepareEngine?: () => void;
+  /** Resumes a run that another version of aitw started, which can fail. */
+  force?: boolean | undefined;
 }
 
 type Selected = { ok: true; run: ProjectRun } | { ok: false; exitCode: number };
@@ -128,7 +130,11 @@ export const resume = async (options: ResumeOptions, context: CommandContext): P
       return await followRun(
         {
           follow: async (followOptions) =>
-            resumeWorkflow({ ...followOptions, workflowId: run.workflowId }),
+            resumeWorkflow({
+              ...followOptions,
+              force: options.force === true,
+              workflowId: run.workflowId,
+            }),
           interrupt: signal,
           name: run.name,
           root,
@@ -180,6 +186,17 @@ export const cancel = async (options: ResumeOptions, context: CommandContext): P
     }
     const { run } = selected;
     prepareEngine?.();
+    // Workflow code of another version could not replay the run to cancel it, so the run is
+    // terminated without running its code.
+    if (!run.compatible) {
+      await terminateWorkflow({
+        address: server.address,
+        reason: "Cancelled by aitw cancel. Another version of aitw started the run",
+        workflowId: run.workflowId,
+      });
+      context.stdout(`${run.name}: terminated, because another version of aitw started it\n`);
+      return 0;
+    }
     // A Worker runs the cancellation, in case no other process follows the run.
     const outcome = await resumeWorkflow({
       address: server.address,

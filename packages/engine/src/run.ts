@@ -11,6 +11,12 @@ import type { LogLevel } from "@temporalio/worker";
 import { createActivities } from "./activities/index.js";
 import { answerWaits } from "./answer.js";
 import { createMemoryEventLog, followEvents } from "./events.js";
+import {
+  IncompatibleRunError,
+  isCompatibleMemo,
+  workflowCodeVersion,
+  workflowCodeVersionMemoKey,
+} from "./version.js";
 import type { EventFollower } from "./events.js";
 import type { aitw } from "./workflows/index.js";
 
@@ -106,6 +112,8 @@ export interface ResumeWorkflowOptions extends FollowOptions {
   workflowId: string;
   /** Cancels the workflow as soon as it is resumed, such as for `aitw cancel`. */
   cancel?: boolean;
+  /** Resumes a run that workflow code of another version started, which can fail. */
+  force?: boolean;
 }
 
 /**
@@ -298,7 +306,8 @@ export const runWorkflow = async (options: RunWorkflowOptions): Promise<RunOutco
       async () => {
         const handle = await client.workflow.start<typeof aitw>("aitw", {
           args: [intermediate, inputs],
-          ...(memo === undefined ? {} : { memo: { ...memo } }),
+          // The version lets a later process tell whether it can continue the run.
+          memo: { ...memo, [workflowCodeVersionMemoKey]: String(workflowCodeVersion) },
           taskQueue,
           workflowId: `${name}-${id}`,
         });
@@ -316,13 +325,17 @@ export const runWorkflow = async (options: RunWorkflowOptions): Promise<RunOutco
  * @throws When the workflow is not running, or when it fails.
  */
 export const resumeWorkflow = async (options: ResumeWorkflowOptions): Promise<RunOutcome> => {
-  const { address, cancel = false, namespace = "default", workflowId } = options;
+  const { address, cancel = false, force = false, namespace = "default", workflowId } = options;
   return withConnections(address, async (clientConnection, workerConnection) => {
     const client = new Client({ connection: clientConnection, namespace });
     const handle = client.workflow.getHandle<typeof aitw>(workflowId);
-    const { status, taskQueue } = await handle.describe();
+    const { memo, status, taskQueue } = await handle.describe();
     if (status.name !== "RUNNING") {
       throw new Error(`Workflow ${workflowId} is not running: ${status.name.toLowerCase()}`);
+    }
+    if (!force && !isCompatibleMemo(memo)) {
+      const version = memo?.[workflowCodeVersionMemoKey];
+      throw new IncompatibleRunError(workflowId, typeof version === "string" ? version : undefined);
     }
     return follow(
       { ...options, cancelNow: cancel, taskQueue },
@@ -330,6 +343,33 @@ export const resumeWorkflow = async (options: ResumeWorkflowOptions): Promise<Ru
       async () => handle,
     );
   });
+};
+
+/** Options of {@link terminateWorkflow}. */
+export interface TerminateWorkflowOptions {
+  address: string;
+  namespace?: string;
+  workflowId: string;
+  /** Why the run is terminated, which Temporal records. */
+  reason: string;
+}
+
+/**
+ * Terminates a running workflow without running its code, such as a run that workflow code of
+ * another version started, which could not be cancelled.
+ */
+export const terminateWorkflow = async ({
+  address,
+  namespace = "default",
+  reason,
+  workflowId,
+}: TerminateWorkflowOptions): Promise<void> => {
+  const connection = await Connection.connect({ address });
+  try {
+    await new Client({ connection, namespace }).workflow.getHandle(workflowId).terminate(reason);
+  } finally {
+    await connection.close();
+  }
 };
 
 /** A running workflow that {@link listRunningWorkflows} returns. */

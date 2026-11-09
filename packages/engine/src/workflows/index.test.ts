@@ -92,6 +92,32 @@ describe("aitw", () => {
     return { requests, result, stepRequests };
   };
 
+  it("passes the environment of the workflow and of the step", async () => {
+    const { requests, result } = await run(
+      {
+        ...intermediate,
+        dotenv: ".env",
+        env: { LEVEL: "${{ workflow.inputs.level }}" },
+        inputs: { level: { default: "info", required: false, type: "string" } },
+        steps: {
+          fetch: { ...step("./fetch.sh", "report"), outputs: { title: "${{ result.stdout }}" } },
+          report: {
+            ...step("./report.sh", null),
+            env: { TITLE: "${{ steps.fetch.outputs.title }}" },
+          },
+        },
+      },
+      {},
+      { "./fetch.sh": "hello\n" },
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(requests.map(({ dotenv, env }) => ({ dotenv, env }))).toEqual([
+      { dotenv: ".env", env: { LEVEL: "info" } },
+      { dotenv: ".env", env: { LEVEL: "info", TITLE: "hello" } },
+    ]);
+  }, 60_000);
+
   it("runs the steps in order", async () => {
     const { requests, result } = await run(intermediate);
 

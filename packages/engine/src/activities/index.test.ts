@@ -169,6 +169,45 @@ describe("executeScriptStep", () => {
     expect(events.map(({ type }) => type)).toEqual(["stepStarted", "stepOutput", "stepFinished"]);
   });
 
+  it("combines the environment of the workflow and the evaluated environment of the step", async () => {
+    const requests: ScriptRequest[] = [];
+    await runStep(
+      {
+        dotenv: ".env",
+        inputs: { title: "hello", missing: null },
+        references: { steps: { fetch: { outputs: { count: 3 } } } },
+        stepEnv: {
+          COUNT: "${{ steps.fetch.outputs.count }}",
+          LEVEL: "debug",
+          MISSING: "${{ inputs.missing }}",
+          TITLE: "${{ inputs.title }}",
+        },
+        workflowEnv: { LEVEL: "info", NODE_ENV: "test" },
+      },
+      {},
+      requests,
+    );
+
+    expect(requests).toEqual([
+      {
+        dotenv: ".env",
+        // The step replaces the workflow, and null becomes an empty string.
+        env: { COUNT: "3", LEVEL: "debug", MISSING: "", NODE_ENV: "test", TITLE: "hello" },
+        inputs: { missing: null, title: "hello" },
+        run: "./run.sh",
+        timeoutMs: 1000,
+      },
+    ]);
+  });
+
+  it("fails without retrying on an invalid expression in the environment", async () => {
+    await expect(runStep({ stepEnv: { TITLE: "${{ inputs.missing }}" } })).rejects.toMatchObject({
+      message: "env.TITLE: Unknown reference: ${{ inputs.missing }}",
+      nonRetryable: true,
+      type: "InvalidExpression",
+    });
+  });
+
   it("expands input references in run", async () => {
     const requests: ScriptRequest[] = [];
     await runStep(

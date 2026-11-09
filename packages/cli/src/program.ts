@@ -263,6 +263,13 @@ ${daemonHelp}`,
   daemon
     .command("start")
     .description("Start the resident process in the background")
+    .addHelpText(
+      "after",
+      `
+Scripts that the resident process runs inherit its environment variables as they were when it
+started, not those of the terminal that runs "aitw run". Pass the values that a workflow needs
+with env and dotenv in the definition.`,
+    )
     .addOption(addressOption())
     .option("--dev", "start a Temporal development server, which needs --dev-db")
     .option("--dev-db <path>", devDbDescription)

@@ -27,9 +27,13 @@ export interface ActivityDependencies {
 }
 
 /** Input of {@link Activities.executeScriptStep}. */
-export interface ScriptStepRequest extends ScriptRequest {
+export interface ScriptStepRequest extends Omit<ScriptRequest, "env"> {
   /** ID of the step in the workflow definition. */
   step: string;
+  /** Environment variables of the step, keyed by name. Values may contain expressions. */
+  stepEnv?: Readonly<Record<string, string>> | undefined;
+  /** Environment variables of the workflow, after their expressions are evaluated. */
+  workflowEnv?: Readonly<Record<string, string>> | undefined;
   /** Expressions of the values that the step publishes, keyed by name. */
   outputs: Readonly<Record<string, string>>;
   /**
@@ -52,6 +56,28 @@ const trimTrailingNewline = (text: string): string => {
 
 const invalidExpression = (location: string, message: string): ApplicationFailure =>
   ApplicationFailure.nonRetryable(`${location}: ${message}`, "InvalidExpression");
+
+/**
+ * Evaluates the environment variables of a step, and combines them with those of the workflow.
+ *
+ * Values are embedded as text, so that `null` becomes an empty string and objects become JSON.
+ */
+const evaluateEnv = (
+  stepEnv: Readonly<Record<string, string>> | undefined,
+  workflowEnv: Readonly<Record<string, string>> | undefined,
+  values: Readonly<Record<string, unknown>>,
+): { ok: true; value: Record<string, string> } | { ok: false; error: ApplicationFailure } => {
+  // Variables of the step replace those of the workflow.
+  const env: Record<string, string> = { ...workflowEnv };
+  for (const [name, expression] of Object.entries(stepEnv ?? {})) {
+    const evaluated = evaluateExpression(expression, values);
+    if (!evaluated.ok) {
+      return { error: invalidExpression(`env.${name}`, evaluated.message), ok: false };
+    }
+    env[name] = embedValue(evaluated.value);
+  }
+  return { ok: true, value: env };
+};
 
 /** Evaluates the declared output values from the result of a script. */
 const evaluateOutput = (
@@ -165,12 +191,15 @@ export const createActivities = ({
    * values are returned, because the workflow history stores the result.
    */
   executeScriptStep: async ({
+    dotenv,
     inputs,
     outputs: outputExpressions,
     references,
     run: runTemplate,
     step,
+    stepEnv,
     timeoutMs,
+    workflowEnv,
   }: ScriptStepRequest): Promise<StepOutput> => {
     const context = Context.current();
     // Progress is only observed, so a failing log must not change the result of the step.
@@ -191,18 +220,29 @@ export const createActivities = ({
     let settled = false;
     // The step inputs are added last, so that references cannot replace them.
     const values = { ...references, inputs };
+    const env = evaluateEnv(stepEnv, workflowEnv, values);
     const expanded = evaluateExpression(runTemplate, values);
     const run = expanded.ok ? embedValue(expanded.value) : runTemplate;
     emit({ run, step, type: "stepStarted" });
     const heartbeat = setInterval(() => context.heartbeat(), heartbeatIntervalMs);
 
     try {
+      if (!env.ok) {
+        throw env.error;
+      }
       if (!expanded.ok) {
         throw invalidExpression("run", expanded.message);
       }
       const result = await runScript(
         scriptRunner,
-        { inputs, run, timeoutMs },
+        {
+          // A step without variables sends none, as before they existed.
+          ...(dotenv === undefined ? {} : { dotenv }),
+          ...(env.ok && Object.keys(env.value).length > 0 ? { env: env.value } : {}),
+          inputs,
+          run,
+          timeoutMs,
+        },
         {
           onOutput: (output) => {
             if (!settled) {

@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { identifierPattern } from "../identifier.js";
+import {
+  checkDotenvPath,
+  envNameMessage,
+  envNamePattern,
+  identifierPattern,
+} from "../identifier.js";
 import { inputDeclarationSchema } from "./declarations.js";
 
 /** Version of the intermediate representation format. */
@@ -10,6 +15,13 @@ const stepIdSchema = z.string().min(1);
 // References read names by identifier, so names that are not identifiers could not be read.
 const inputNameSchema = z.string().regex(identifierPattern, "Must be a valid name");
 const expressionMapSchema = z.record(z.string().min(1), z.string().min(1));
+
+/**
+ * Environment variables to set, keyed by name. Values may contain expressions.
+ *
+ * It is optional, so that the histories of runs from before it existed still replay.
+ */
+const envSchema = z.record(z.string().regex(envNamePattern, envNameMessage), z.string()).optional();
 
 const transitionSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("step"), step: stepIdSchema }),
@@ -23,6 +35,7 @@ const scriptStepSchema = z.strictObject({
   timeoutMs: z.int().positive(),
   inputs: expressionMapSchema,
   outputs: expressionMapSchema,
+  env: envSchema,
 });
 
 const waitStepSchema = z.strictObject({
@@ -44,6 +57,19 @@ const waitStepSchema = z.strictObject({
 export const intermediateSchema = z.strictObject({
   version: z.literal(intermediateVersion),
   inputs: z.record(inputNameSchema, inputDeclarationSchema),
+  /** Environment variables of every script step. Values can reference only `workflow.inputs`. */
+  env: envSchema,
+  /** Path of a dotenv file, relative to the project root, that script steps read. */
+  dotenv: z
+    .string()
+    .min(1)
+    .superRefine((path, context) => {
+      const message = checkDotenvPath(path);
+      if (message !== undefined) {
+        context.addIssue({ code: "custom", message });
+      }
+    })
+    .optional(),
   start: stepIdSchema,
   steps: z.record(stepIdSchema, z.discriminatedUnion("type", [scriptStepSchema, waitStepSchema])),
 });

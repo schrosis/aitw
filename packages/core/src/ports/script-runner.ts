@@ -5,6 +5,17 @@ export interface ScriptRequest {
   /** Evaluated input values of the step. */
   inputs: Readonly<Record<string, unknown>>;
   /**
+   * Environment variables that the definition sets, keyed by name, after their expressions are
+   * evaluated. They take precedence over the environment that the runner inherits.
+   */
+  env?: Readonly<Record<string, string>> | undefined;
+  /**
+   * Path of a dotenv file, relative to the working directory, that the runner reads each time it
+   * runs the script. Its values do not replace variables that are already set. The runner fails
+   * the script when the file cannot be read.
+   */
+  dotenv?: string | undefined;
+  /**
    * Maximum duration of the script in milliseconds.
    *
    * The runner must stop the script and throw {@link ScriptTimeoutError} when it is exceeded.

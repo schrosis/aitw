@@ -1,0 +1,11 @@
+version: v0.1
+env:
+  FROM_STEP: ${{ steps.fetch.outputs.title }}
+start: fetch
+steps:
+  fetch:
+    type: script
+    env:
+      MISSING: ${{ inputs.nothing }}
+    run: "true"
+    next: end

@@ -71,3 +71,21 @@ describe("toDefinitionPath", () => {
     ]);
   });
 });
+
+describe("buildIntermediate env", () => {
+  it("writes env values as text and keeps dotenv", () => {
+    const definition = definitionSchema.parse({
+      dotenv: ".env",
+      env: { DEBUG: true, LEVEL: "info" },
+      start: "a",
+      steps: { a: { env: { PORT: 3000 }, next: "end", run: "./a.sh", type: "script" } },
+      version: definitionVersion,
+    });
+
+    expect(buildIntermediate(definition)).toMatchObject({
+      dotenv: ".env",
+      env: { DEBUG: "true", LEVEL: "info" },
+      steps: { a: { env: { PORT: "3000" } } },
+    });
+  });
+});

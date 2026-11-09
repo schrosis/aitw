@@ -31,7 +31,13 @@ const buildStep = (
     outputs: step.outputs ?? {},
   };
   if (step.type === "script") {
-    return { ...common, run: step.run, timeoutMs: toMilliseconds(step.timeout), type: "script" };
+    return {
+      ...common,
+      ...(step.env === undefined ? {} : { env: step.env }),
+      run: step.run,
+      timeoutMs: toMilliseconds(step.timeout),
+      type: "script",
+    };
   }
   const stepAnswers = answers[id];
   return {
@@ -53,6 +59,8 @@ export const buildIntermediate = (
   answers: WaitAnswers = {},
 ): Intermediate => ({
   inputs: definition.inputs ?? {},
+  ...(definition.env === undefined ? {} : { env: definition.env }),
+  ...(definition.dotenv === undefined ? {} : { dotenv: definition.dotenv }),
   start: definition.start,
   steps: Object.fromEntries(
     Object.entries(definition.steps).map(([id, step]) => [id, buildStep(id, step, answers)]),

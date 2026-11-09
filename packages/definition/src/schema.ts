@@ -1,4 +1,11 @@
-import { identifierPattern, identifierSource, inputDeclarationDefinitionSchema } from "@aitw/core";
+import {
+  checkDotenvPath,
+  envNameMessage,
+  envNamePattern,
+  identifierPattern,
+  identifierSource,
+  inputDeclarationDefinitionSchema,
+} from "@aitw/core";
 import { z } from "zod";
 
 const stepIdPattern = new RegExp(`^(?!end$)${identifierSource}$`, "u");
@@ -23,6 +30,17 @@ const stepIdSchema = z
 
 const expressionMapSchema = z.record(identifierSchema, z.string().min(1));
 
+/**
+ * Environment variables to set, keyed by name. Numbers and booleans are written as text, as
+ * YAML reads `PORT: 3000` as a number.
+ */
+const envSchema = z
+  .record(
+    z.string().regex(envNamePattern, envNameMessage),
+    z.union([z.string(), z.number(), z.boolean()]).transform(String),
+  )
+  .optional();
+
 const scriptStepSchema = z.strictObject({
   type: z.literal("script"),
   run: z.string().min(1),
@@ -34,6 +52,7 @@ const scriptStepSchema = z.strictObject({
     .describe("Maximum duration of the step"),
   inputs: expressionMapSchema.optional(),
   outputs: expressionMapSchema.optional(),
+  env: envSchema.describe("Environment variables of the script. Values may contain expressions"),
 });
 
 const waitStepSchema = z.strictObject({
@@ -57,6 +76,20 @@ export const definitionSchema = z.strictObject({
     .record(identifierSchema, inputDeclarationDefinitionSchema)
     .optional()
     .describe("Values that the workflow receives when it starts"),
+  env: envSchema.describe(
+    "Environment variables of every script step. Values can reference workflow.inputs",
+  ),
+  dotenv: z
+    .string()
+    .min(1)
+    .superRefine((path, context) => {
+      const message = checkDotenvPath(path);
+      if (message !== undefined) {
+        context.addIssue({ code: "custom", message });
+      }
+    })
+    .optional()
+    .describe("Path of a dotenv file, relative to the project root, that script steps read"),
   start: stepIdSchema,
   steps: z.record(stepIdSchema, stepSchema),
 });

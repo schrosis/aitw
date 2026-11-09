@@ -206,3 +206,20 @@ steps:
     });
   });
 });
+
+describe("parseDefinition invalid keys", () => {
+  it("explains why a name is invalid", () => {
+    const source = validSource.replace("start: fetch", "env:\n  1BAD: x\nstart: fetch");
+
+    expect(parseDefinition(source)).toMatchObject({
+      errors: [
+        {
+          line: 3,
+          message: "Must start with a letter or _ and contain only letters, digits, or _",
+          path: ["env", "1BAD"],
+        },
+      ],
+      ok: false,
+    });
+  });
+});

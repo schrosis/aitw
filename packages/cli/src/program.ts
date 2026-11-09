@@ -6,6 +6,8 @@ import { Command, Option } from "@commander-js/extra-typings";
 import type { CommandContext } from "./commands/load.js";
 import { cancel, resume } from "./commands/resume.js";
 import { run } from "./commands/run.js";
+import { showDaemonStatus, startDaemon, stopDaemon } from "./daemon/commands.js";
+import { runDaemon } from "./daemon/process.js";
 import { defaultAddress } from "./server.js";
 import type { ServerOptions } from "./server.js";
 import { validate } from "./commands/validate.js";
@@ -35,6 +37,10 @@ export interface ProgramContext extends CommandContext {
   interruptSignal: () => AbortSignal;
   /** Prepares the workflow engine before a command runs a workflow. */
   prepareEngine: () => void;
+  /** Returns a signal that is aborted on SIGTERM or SIGINT, for the resident process. */
+  stopSignal?: () => AbortSignal;
+  /** Path of the aitw executable, which `aitw daemon start` runs in the background. */
+  executable?: string;
 }
 
 /** Exit code of an interrupted program, following the shell convention for SIGINT. */
@@ -70,9 +76,19 @@ const prepareEngine = (() => {
   };
 })();
 
+const stopSignal = (): AbortSignal => {
+  const controller = new AbortController();
+  const stop = (): void => controller.abort();
+  process.once("SIGTERM", stop);
+  process.once("SIGINT", stop);
+  return controller.signal;
+};
+
 const processContext = (): ProgramContext => ({
   cwd: process.cwd(),
+  executable: process.argv[1] ?? "aitw",
   interruptSignal,
+  stopSignal,
   prepareEngine,
   setExitCode: (code) => {
     process.exitCode = code;
@@ -121,10 +137,11 @@ const toServerOptions = (
 
 /** Creates the `aitw` command line program. */
 export const createProgram = (context: ProgramContext = processContext()) => {
+  const version = readVersion();
   const program = new Command()
     .name("aitw")
     .description("Run workflows that combine AI, people, and scripts")
-    .version(readVersion());
+    .version(version);
 
   program
     .command("validate")
@@ -191,6 +208,53 @@ export const createProgram = (context: ProgramContext = processContext()) => {
       context.setExitCode(
         await cancel({ prepareEngine: context.prepareEngine, server, signal, workflowId }, context),
       );
+    });
+
+  const daemon = program
+    .command("daemon")
+    .description(
+      "Manage the resident process of this host, which keeps runs going in the background",
+    );
+
+  daemon
+    .command("start")
+    .description("Start the resident process in the background")
+    .addOption(addressOption())
+    .option("--dev", "start a Temporal development server, which needs --dev-db")
+    .option("--dev-db <path>", devDbDescription)
+    .option("--temporal-bin <path>", temporalBinDescription)
+    .action(async (options, command) => {
+      const server = toServerOptions(options, command);
+      context.setExitCode(
+        await startDaemon({ executable: context.executable ?? "aitw", server, version }, context),
+      );
+    });
+
+  daemon
+    .command("stop")
+    .description("Stop the resident process")
+    .action(async () => {
+      context.setExitCode(await stopDaemon(context));
+    });
+
+  daemon
+    .command("status")
+    .description("Show the state of the resident process")
+    .action(async () => {
+      context.setExitCode(await showDaemonStatus(context));
+    });
+
+  // aitw daemon start runs this command in the background.
+  daemon
+    .command("run", { hidden: true })
+    .addOption(addressOption())
+    .option("--dev")
+    .option("--dev-db <path>")
+    .option("--temporal-bin <path>")
+    .action(async (options, command) => {
+      const server = toServerOptions(options, command);
+      const signal = (context.stopSignal ?? context.interruptSignal)();
+      context.setExitCode(await runDaemon({ server, signal, version }, context));
     });
 
   return program;

@@ -32,6 +32,8 @@ export interface OpenedServer {
   options: string;
   /** Stops the server when the command started it. */
   stop: () => Promise<void>;
+  /** Process ID of the development server that the command started, if any. */
+  pid?: number;
 }
 
 /** Resolves an executable like a shell: a name without a slash is looked up in PATH. */
@@ -39,7 +41,7 @@ const resolveExecutable = (cwd: string, executable: string): string =>
   executable.includes("/") ? resolve(cwd, executable) : executable;
 
 /** Quotes a value for a shell command line when it needs quotes. */
-const quote = (value: string): string =>
+export const quote = (value: string): string =>
   /^[\w./:@-]+$/u.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
 
 /**
@@ -84,6 +86,7 @@ export const openServer = async (
     address: devServer.address,
     durable: server.dbFilename !== undefined,
     options,
+    pid: devServer.pid,
     stop: devServer.stop,
   };
 };

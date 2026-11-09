@@ -17,6 +17,8 @@ export interface ProjectRun {
   compatible: boolean;
   /** Workflow code version that started the run, or `undefined` when the run records none. */
   version: string | undefined;
+  /** Task queue of the run, which tells which Worker can continue it. */
+  taskQueue: string;
 }
 
 /** Describes where a run is from its events. */
@@ -48,7 +50,7 @@ export const listProjectRuns = async (address: string, root: string): Promise<Pr
     memo: { [projectMemoKey]: projectHash(root) },
   });
   return Promise.all(
-    runs.map(async ({ memo, startTime, workflowId }): Promise<ProjectRun> => {
+    runs.map(async ({ memo, startTime, taskQueue, workflowId }): Promise<ProjectRun> => {
       const name = memo[workflowMemoKey];
       const { events } = await log.read(workflowId).catch(() => ({ events: [] }));
       const version = memo[workflowCodeVersionMemoKey];
@@ -58,6 +60,7 @@ export const listProjectRuns = async (address: string, root: string): Promise<Pr
         name: typeof name === "string" ? name : workflowId,
         startTime,
         status: describeEvents(events),
+        taskQueue,
         workflowId,
       };
     }),

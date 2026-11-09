@@ -1,9 +1,12 @@
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, inject, it } from "vitest";
+
+import { fixtureProject } from "../testing.ts";
 
 // These tests run the built executable, so they depend on `pnpm build`.
 const bin = fileURLToPath(new URL("../../dist/bin.js", import.meta.url));
@@ -27,6 +30,20 @@ describe("aitw daemon", () => {
         .filter((line) => line !== "");
     } catch {
       return [];
+    }
+  };
+
+  /** Returns every progress event that the runs of the test stored, as JSON Lines. */
+  const runEvents = (): string => {
+    const logs = join(state, "aitw", "logs");
+    try {
+      return readdirSync(logs, { recursive: true })
+        .map(String)
+        .filter((file) => file.endsWith("events.jsonl"))
+        .map((file) => readFileSync(join(logs, file), "utf8"))
+        .join("");
+    } catch {
+      return "";
     }
   };
 
@@ -118,6 +135,45 @@ describe("aitw daemon", () => {
     expect(readFileSync(join(state, "aitw", "daemon", "daemon.log"), "utf8")).toContain(
       "stopping the development server that was left running",
     );
+  }, 60_000);
+
+  it("runs the steps of a run that aitw run detached", async () => {
+    await start();
+    const run = await new Promise<{ exitCode: number | null; output: string }>((resolve) => {
+      const child = spawn(process.execPath, [bin, "run", "run-detach"], {
+        cwd: fixtureProject,
+        env: { ...process.env, XDG_STATE_HOME: state },
+      });
+      let output = "";
+      let interrupted = false;
+      const collect = (chunk: Buffer): void => {
+        output += chunk.toString();
+        // Interrupt once the script runs, which the resident process runs. A second interrupt
+        // would exit at once.
+        if (!interrupted && output.includes("sleep 2 && echo built\n")) {
+          interrupted = true;
+          child.kill("SIGINT");
+        }
+      };
+      child.stdout.on("data", collect);
+      child.stderr.on("data", collect);
+      child.on("exit", (exitCode) => resolve({ exitCode, output }));
+    });
+
+    // aitw run detached at once, because the resident process runs the script.
+    expect(run.exitCode).toBe(3);
+    expect(run.output).not.toContain("Waiting for the running step");
+    expect(run.output).toContain('run-detach: detached. Run "aitw resume" to continue\n');
+
+    // The resident process finishes the run in the background.
+    const finished = '"outcome":"succeeded","step":"report","type":"stepFinished"';
+    for (let attempt = 0; attempt < 100 && !runEvents().includes(finished); attempt += 1) {
+      await sleep(100);
+    }
+    expect(runEvents()).toContain(finished);
+
+    const status = await execute(["daemon", "status"]);
+    expect(status.stdout).toContain(`projects:\n  ${realpathSync(fixtureProject)}\n`);
   }, 60_000);
 
   it("warns when the running process uses other options", async () => {

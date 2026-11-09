@@ -101,6 +101,9 @@ const processContext = (): ProgramContext => ({
 const devDbDescription = "keep the state of the development server in a SQLite file";
 const temporalBinDescription =
   "Temporal CLI to start the development server with, as a path or a name in PATH";
+const daemonHelp = `
+When "aitw daemon" runs and no server options are given, the resident process runs the steps,
+so the run keeps going after this command exits.`;
 const interruptHelp = `
 Press Ctrl+C to detach: the run waits in Temporal, and "aitw resume" continues it.
 A running script finishes first. Press Ctrl+C again to exit now, which fails the running
@@ -135,6 +138,17 @@ const toServerOptions = (
     : { address, type: "address" };
 };
 
+/**
+ * Returns the version that a resident process must have to serve the command, or `undefined`
+ * when the command names its server and runs its own Worker.
+ */
+const daemonVersionOf = (
+  { dev }: { dev?: true | undefined },
+  command: { getOptionValueSource: (key: string) => string | undefined },
+  version: string,
+): string | undefined =>
+  dev === true || command.getOptionValueSource("address") === "cli" ? undefined : version;
+
 /** Creates the `aitw` command line program. */
 export const createProgram = (context: ProgramContext = processContext()) => {
   const version = readVersion();
@@ -160,14 +174,24 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .option("--dev", "start a temporary Temporal development server for this run")
     .option("--dev-db <path>", devDbDescription)
     .option("--temporal-bin <path>", temporalBinDescription)
-    .addHelpText("after", interruptHelp)
+    .addHelpText(
+      "after",
+      `${interruptHelp}
+${daemonHelp}`,
+    )
     .action(async (workflow, { input, ...options }, command) => {
       const server = toServerOptions(options, command);
       const signal = context.interruptSignal();
       context.setExitCode(
         await run(
           workflow,
-          { input, prepareEngine: context.prepareEngine, server, signal },
+          {
+            daemonVersion: daemonVersionOf(options, command, version),
+            input,
+            prepareEngine: context.prepareEngine,
+            server,
+            signal,
+          },
           context,
         ),
       );
@@ -182,13 +206,24 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .option("--dev-db <path>", devDbDescription)
     .option("--temporal-bin <path>", temporalBinDescription)
     .option("--force", "resume a run that another version of aitw started, which can fail")
-    .addHelpText("after", interruptHelp)
+    .addHelpText(
+      "after",
+      `${interruptHelp}
+${daemonHelp}`,
+    )
     .action(async (workflowId, { force, ...options }, command) => {
       const server = toServerOptions(options, command);
       const signal = context.interruptSignal();
       context.setExitCode(
         await resume(
-          { force, prepareEngine: context.prepareEngine, server, signal, workflowId },
+          {
+            daemonVersion: daemonVersionOf(options, command, version),
+            force,
+            prepareEngine: context.prepareEngine,
+            server,
+            signal,
+            workflowId,
+          },
           context,
         ),
       );
@@ -206,7 +241,16 @@ export const createProgram = (context: ProgramContext = processContext()) => {
       const server = toServerOptions(options, command);
       const signal = context.interruptSignal();
       context.setExitCode(
-        await cancel({ prepareEngine: context.prepareEngine, server, signal, workflowId }, context),
+        await cancel(
+          {
+            daemonVersion: daemonVersionOf(options, command, version),
+            prepareEngine: context.prepareEngine,
+            server,
+            signal,
+            workflowId,
+          },
+          context,
+        ),
       );
     });
 
@@ -254,7 +298,9 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .action(async (options, command) => {
       const server = toServerOptions(options, command);
       const signal = (context.stopSignal ?? context.interruptSignal)();
-      context.setExitCode(await runDaemon({ server, signal, version }, context));
+      context.setExitCode(
+        await runDaemon({ prepareEngine: context.prepareEngine, server, signal, version }, context),
+      );
     });
 
   return program;

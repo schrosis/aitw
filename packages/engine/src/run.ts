@@ -83,6 +83,11 @@ export interface FollowOptions {
   /** Plugins whose wait methods answer the wait steps of the run. */
   plugins?: PluginRegistry;
   /**
+   * Whether this process runs a Worker for the run. Without one, another Worker, such as of a
+   * resident process, runs the steps, and this process only shows the run and answers it.
+   */
+  startWorker?: boolean;
+  /**
    * Receives a problem that does not stop the run, such as a progress log that cannot be read.
    * Each kind of problem is reported once per run.
    */
@@ -104,6 +109,11 @@ export interface RunWorkflowOptions extends FollowOptions {
   memo?: Readonly<Record<string, string>>;
   /** Called with the workflow ID as soon as the workflow starts. */
   onStart?: (workflowId: string) => void;
+  /**
+   * Task queue of the run, such as of a project that a resident process serves. Defaults to a
+   * task queue for this run only.
+   */
+  taskQueue?: string;
 }
 
 /** Options of {@link resumeWorkflow}. */
@@ -114,6 +124,11 @@ export interface ResumeWorkflowOptions extends FollowOptions {
   cancel?: boolean;
   /** Resumes a run that workflow code of another version started, which can fail. */
   force?: boolean;
+  /**
+   * Task queue that another Worker serves, such as of a resident process. A run on it is followed
+   * without a Worker of this process, unless `startWorker` says otherwise.
+   */
+  servedTaskQueue?: string | undefined;
 }
 
 /**
@@ -160,23 +175,26 @@ const follow = async (
     plugins = createPluginRegistry(),
     scriptRunner,
     signal,
+    startWorker = true,
     taskQueue,
     workflowsPath: path = workflowsPath,
   } = options;
-  const worker = await Worker.create({
-    activities: createActivities({ eventLog, scriptRunner }),
-    connection: connections.worker,
-    namespace,
-    shutdownGraceTime: detachGraceTime,
-    taskQueue,
-    workflowsPath: path,
-  });
+  const worker = startWorker
+    ? await Worker.create({
+        activities: createActivities({ eventLog, scriptRunner }),
+        connection: connections.worker,
+        namespace,
+        shutdownGraceTime: detachGraceTime,
+        taskQueue,
+        workflowsPath: path,
+      })
+    : undefined;
 
   let handle: WorkflowHandle<typeof aitw> | undefined;
   let follower: EventFollower | undefined;
   let outcome: RunOutcome;
   try {
-    outcome = await worker.runUntil(async (): Promise<RunOutcome> => {
+    const followRun = async (): Promise<RunOutcome> => {
       handle = await open();
       const { workflowId } = handle;
       const current = handle;
@@ -262,7 +280,9 @@ const follow = async (
         signal?.removeEventListener("abort", stopAnswering);
         detach?.removeEventListener("abort", stopAnswering);
       }
-    });
+    };
+    // The Worker of this process stops after the run ends or detaches.
+    outcome = await (worker === undefined ? followRun() : worker.runUntil(followRun));
   } finally {
     // The Worker has stopped, after the running script finished. Its events are shown before
     // the outcome, also when the run failed.
@@ -297,7 +317,7 @@ export const runWorkflow = async (options: RunWorkflowOptions): Promise<RunOutco
   } = options;
   const id = randomUUID();
   // A task queue for this run keeps other Workers from picking up its tasks.
-  const taskQueue = `aitw-${id}`;
+  const taskQueue = options.taskQueue ?? `aitw-${id}`;
   return withConnections(address, async (clientConnection, workerConnection) => {
     const client = new Client({ connection: clientConnection, namespace });
     return follow(
@@ -338,7 +358,12 @@ export const resumeWorkflow = async (options: ResumeWorkflowOptions): Promise<Ru
       throw new IncompatibleRunError(workflowId, typeof version === "string" ? version : undefined);
     }
     return follow(
-      { ...options, cancelNow: cancel, taskQueue },
+      {
+        ...options,
+        cancelNow: cancel,
+        startWorker: options.startWorker ?? taskQueue !== options.servedTaskQueue,
+        taskQueue,
+      },
       { client, connection: clientConnection, worker: workerConnection },
       async () => handle,
     );
@@ -376,6 +401,8 @@ export const terminateWorkflow = async ({
 export interface RunningWorkflow {
   workflowId: string;
   startTime: Date;
+  /** Task queue of the run, which tells which Worker can continue it. */
+  taskQueue: string;
   /** Values that mark the run, from `memo` of {@link runWorkflow}. */
   memo: Readonly<Record<string, unknown>>;
 }
@@ -403,7 +430,12 @@ export const listRunningWorkflows = async ({
     })) {
       const values = info.memo ?? {};
       if (Object.entries(memo).every(([key, value]) => values[key] === value)) {
-        runs.push({ memo: values, startTime: info.startTime, workflowId: info.workflowId });
+        runs.push({
+          memo: values,
+          startTime: info.startTime,
+          taskQueue: info.taskQueue,
+          workflowId: info.workflowId,
+        });
       }
     }
     return runs.toSorted((a, b) => b.startTime.getTime() - a.startTime.getTime());

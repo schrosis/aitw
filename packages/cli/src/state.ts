@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
 /** Returns the directory that keeps the state of aitw, such as logs. */
@@ -27,3 +27,15 @@ export const workflowMemoKey = "aitwWorkflow";
 /** Returns the directory that keeps the locks of the runs of a project. */
 export const projectLockDirectory = (root: string): string =>
   join(stateDirectory(), "locks", projectHash(root));
+
+/**
+ * Returns the task queue that the resident process serves for a project (C12e).
+ *
+ * The host name keeps the projects of hosts that share a Temporal Server apart.
+ */
+export const projectTaskQueue = (root: string): string => {
+  const host = hostname()
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9-]/gu, "-");
+  return `aitw-${host}-${projectHash(root)}`;
+};

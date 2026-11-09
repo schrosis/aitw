@@ -35,3 +35,5 @@ export type {
 export type { WorkflowResult } from "./workflows/index.js";
 export { answerUpdateName, waitingQueryName } from "./messages.js";
 export type { Answer, WaitingStep } from "./messages.js";
+export { startWorker } from "./worker.js";
+export type { RunningWorker, StartWorkerOptions } from "./worker.js";

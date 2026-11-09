@@ -7,6 +7,7 @@ import { cancelledExitCode, followRun, rootMessage } from "../follow.js";
 import { readWorkflowInput } from "../input.js";
 import { acquireRunLock } from "../lock.js";
 import type { RunLock } from "../lock.js";
+import { connectDaemon } from "../daemon/connect.js";
 import { openServer } from "../server.js";
 import type { OpenedServer, ServerOptions } from "../server.js";
 import { projectHash, projectLockDirectory, projectMemoKey, workflowMemoKey } from "../state.js";
@@ -26,6 +27,11 @@ export interface RunOptions {
   signal: AbortSignal;
   /** Called after the workflow is validated and before it starts. */
   prepareEngine?: () => void;
+  /**
+   * Version of this aitw. With it, a resident process of the same version runs the workflow
+   * when the server options are not given.
+   */
+  daemonVersion?: string | undefined;
 }
 
 /**
@@ -37,7 +43,7 @@ export interface RunOptions {
  */
 export const run = async (
   name: string,
-  { input: inputOption, prepareEngine, server, signal }: RunOptions,
+  { daemonVersion, input: inputOption, prepareEngine, server, signal }: RunOptions,
   context: CommandContext,
 ): Promise<number> => {
   const workflow = await loadWorkflow(name, context);
@@ -71,14 +77,16 @@ export const run = async (
 
   let opened: OpenedServer | undefined;
   try {
-    opened = await openServer(server, context, signal);
+    const root = await realpath(workflow.root);
+    const daemon =
+      daemonVersion === undefined ? undefined : await connectDaemon(root, daemonVersion, context);
+    opened = daemon?.server ?? (await openServer(server, context, signal));
     if (signal.aborted) {
       context.stderr(`${name}: cancelled\n`);
       return cancelledExitCode;
     }
 
     prepareEngine?.();
-    const root = await realpath(workflow.root);
     let lock: RunLock | undefined;
     try {
       return await followRun(
@@ -95,9 +103,14 @@ export const run = async (
               onStart: (workflowId) => {
                 lock = acquireRunLock(projectLockDirectory(root), workflowId);
               },
+              // The resident process runs the steps on the task queue of the project.
+              ...(daemon === undefined
+                ? {}
+                : { startWorker: false, taskQueue: daemon.project.taskQueue }),
             }),
           interrupt: signal,
           name,
+          ownsWorker: daemon === undefined,
           root,
           server: opened,
         },

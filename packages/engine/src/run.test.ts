@@ -15,6 +15,7 @@ import { z } from "zod";
 
 import { createMemoryEventLog } from "./events.ts";
 import { listRunningWorkflows, resumeWorkflow, runWorkflow } from "./run.ts";
+import type { RunOutcome } from "./run.ts";
 
 const intermediate: Intermediate = {
   start: "fetch",
@@ -372,6 +373,43 @@ describe("runWorkflow", () => {
         workflowsPath: workflows,
       });
       expect(resumed).toMatchObject({ executedSteps: ["fetch", "report"], status: "completed" });
+    }, 60_000);
+
+    it("reports a script that failed while the run detached when it is resumed", async () => {
+      const detach = new AbortController();
+      let detached: RunOutcome;
+      try {
+        detached = await runWorkflow({
+          address: environment.address,
+          detach: detach.signal,
+          intermediate,
+          name: "failing",
+          scriptRunner: {
+            run: async () => {
+              detach.abort();
+              await sleep(200);
+              return { exitCode: 2, signal: null, stderr: "", stdout: "" };
+            },
+          },
+          workflowsPath: workflows,
+        });
+      } catch (error) {
+        // The workflow learned of the failure before the Worker stopped.
+        expect(error).toMatchObject({ cause: { cause: { type: "ScriptFailed" } } });
+        return;
+      }
+
+      // The Worker stopped before the workflow learned of the failure, so the run waits to be
+      // resumed, and it fails then.
+      expect(detached).toMatchObject({ status: "detached" });
+      await expect(
+        resumeWorkflow({
+          address: environment.address,
+          scriptRunner: succeed,
+          workflowId: detached.workflowId,
+          workflowsPath: workflows,
+        }),
+      ).rejects.toMatchObject({ cause: { cause: { type: "ScriptFailed" } } });
     }, 60_000);
 
     it("cancels a run that it resumes", async () => {

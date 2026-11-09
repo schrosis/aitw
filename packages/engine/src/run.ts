@@ -248,10 +248,11 @@ const follow = async (
     await follower?.stop();
   }
 
-  // The run may have ended while the Worker waited for the last script.
+  // The run may have ended while the Worker waited for the last script. A run that cannot be
+  // resumed is reported like any other end, and the result throws when it failed.
   if (outcome.status === "detached" && handle !== undefined) {
     const { status } = await handle.describe();
-    if (status.name === "COMPLETED") {
+    if (status.name !== "RUNNING") {
       return { ...(await handle.result()), status: "completed", workflowId: outcome.workflowId };
     }
   }

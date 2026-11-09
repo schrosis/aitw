@@ -84,6 +84,11 @@ const answerStep = async (
       if (!(error instanceof WorkflowUpdateFailedError)) {
         throw error;
       }
+      // Another process may have answered the step in the meantime.
+      const waiting = await handle.query<WaitingStep | null>(waitingQueryName).catch(() => null);
+      if (waiting?.step !== step) {
+        return;
+      }
       const reason = error.cause instanceof Error ? error.cause.message : error.message;
       await report({ step, stream: "stderr", text: `${reason}\n`, type: "stepOutput" });
     }

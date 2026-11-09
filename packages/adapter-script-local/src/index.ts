@@ -3,7 +3,35 @@ import { spawn } from "node:child_process";
 import { ScriptTimeoutError } from "@aitw/core";
 import type { ScriptResult, ScriptRunner } from "@aitw/core";
 
-/** Options of {@link createLocalScriptRunner}. */
+/** Process groups of the scripts that run now, in every runner of this process. */
+const runningGroups = new Set<number>();
+
+/**
+ * Stops the running scripts when the process exits.
+ *
+ * Scripts are in their own process groups, so they would outlive a process that exits without
+ * stopping them, such as by process.exit() on a second interrupt.
+ */
+const killRunningGroups = (): void => {
+  for (const pid of runningGroups) {
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      // The process group has already exited.
+    }
+  }
+};
+
+let listening = false;
+
+/** Registers {@link killRunningGroups} once, so that one listener serves every script. */
+const listenForExit = (): void => {
+  if (!listening) {
+    process.on("exit", killRunningGroups);
+    listening = true;
+  }
+};
+
 export interface LocalScriptRunnerOptions {
   /** Working directory of the scripts. */
   cwd: string;
@@ -43,18 +71,10 @@ export const createLocalScriptRunner = ({
         stdio: ["ignore", "pipe", "pipe"],
       });
 
-      // The script is in its own process group, so it would outlive a process that exits
-      // without stopping it, such as by process.exit() on a second interrupt.
-      const killOnExit = (): void => {
-        if (child.pid !== undefined) {
-          try {
-            process.kill(-child.pid, "SIGKILL");
-          } catch {
-            // The process group has already exited.
-          }
-        }
-      };
-      process.once("exit", killOnExit);
+      if (child.pid !== undefined) {
+        runningGroups.add(child.pid);
+        listenForExit();
+      }
 
       let stdout = "";
       let stderr = "";
@@ -123,7 +143,9 @@ export const createLocalScriptRunner = ({
         stop();
       });
       child.on("close", () => {
-        process.off("exit", killOnExit);
+        if (child.pid !== undefined) {
+          runningGroups.delete(child.pid);
+        }
         if (settled) {
           return;
         }

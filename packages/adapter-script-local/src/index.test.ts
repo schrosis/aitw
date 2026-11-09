@@ -68,6 +68,21 @@ describe("createLocalScriptRunner", () => {
     await expect(waitUntilStopped(pid)).resolves.toBe(true);
   });
 
+  it("registers one exit listener for every script", async () => {
+    const runner = createLocalScriptRunner({ cwd });
+    const before = process.listenerCount("exit");
+    await Promise.all(
+      Array.from({ length: 12 }, async () =>
+        runner.run(
+          { inputs: {}, run: "true", timeoutMs: 10_000 },
+          { signal: new AbortController().signal },
+        ),
+      ),
+    );
+
+    expect(process.listenerCount("exit") - before).toBeLessThanOrEqual(1);
+  });
+
   it("returns the exit code and output", async () => {
     await expect(run("echo out; echo err >&2; exit 3")).resolves.toEqual({
       exitCode: 3,

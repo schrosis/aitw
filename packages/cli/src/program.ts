@@ -164,12 +164,16 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .option("--dev", "start a Temporal development server from --dev-db")
     .option("--dev-db <path>", devDbDescription)
     .option("--temporal-bin <path>", temporalBinDescription)
+    .option("--force", "resume a run that another version of aitw started, which can fail")
     .addHelpText("after", interruptHelp)
-    .action(async (workflowId, options, command) => {
+    .action(async (workflowId, { force, ...options }, command) => {
       const server = toServerOptions(options, command);
       const signal = context.interruptSignal();
       context.setExitCode(
-        await resume({ prepareEngine: context.prepareEngine, server, signal, workflowId }, context),
+        await resume(
+          { force, prepareEngine: context.prepareEngine, server, signal, workflowId },
+          context,
+        ),
       );
     });
 

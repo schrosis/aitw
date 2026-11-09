@@ -1,12 +1,15 @@
+import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { PassThrough, Readable } from "node:stream";
 
+import { intermediateVersion } from "@aitw/core";
+import { workflowCodeVersionMemoKey } from "@aitw/engine";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
 import { acquireRunLock } from "../lock.ts";
 import { listProjectRuns } from "../runs.ts";
-import { projectLockDirectory } from "../state.ts";
+import { projectHash, projectLockDirectory, projectMemoKey, workflowMemoKey } from "../state.ts";
 import { createOutput, fixtureProject } from "../testing.ts";
 import { cancel, resume } from "./resume.ts";
 import { run } from "./run.ts";
@@ -122,6 +125,55 @@ describe("resume and cancel", () => {
       lock.release();
       await execute(cancel, workflowId);
     }
+  }, 60_000);
+
+  it("does not resume a run of another version, and terminates it to cancel it", async () => {
+    const handle = await environment.client.workflow.start("aitw", {
+      args: [
+        {
+          inputs: {},
+          start: "wait",
+          steps: {
+            wait: {
+              answers: {},
+              inputs: {},
+              method: "terminal",
+              next: { type: "end" },
+              outputs: {},
+              type: "wait",
+              with: { message: "Continue?" },
+            },
+          },
+          version: intermediateVersion,
+        },
+        {},
+      ],
+      memo: {
+        [projectMemoKey]: projectHash(root),
+        [workflowCodeVersionMemoKey]: "0",
+        [workflowMemoKey]: "old",
+      },
+      taskQueue: `aitw-${randomUUID()}`,
+      workflowId: `old-${randomUUID()}`,
+    });
+
+    const listed = await execute(resume, undefined, "");
+    expect(listed.stdout).toMatch(
+      /\d+\. old {2}starting {2}started just now {2}\(started by another version of aitw\)\n/u,
+    );
+
+    const resumed = await execute(resume, handle.workflowId);
+    expect(resumed).toMatchObject({ exitCode: 1 });
+    expect(resumed.stderr).toContain("was started by workflow code version 0");
+    expect(resumed.stderr).toContain("pass --force to try anyway");
+
+    await expect(execute(cancel, handle.workflowId)).resolves.toEqual({
+      exitCode: 0,
+      stderr: "",
+      stdout:
+        "old: terminated instead of cancelled, because workflow code version 0 started it. Its running script, if any, stops at its next heartbeat\n",
+    });
+    await expect(handle.describe()).resolves.toMatchObject({ status: { name: "TERMINATED" } });
   }, 60_000);
 
   it("reports a run that is not running in the project", async () => {

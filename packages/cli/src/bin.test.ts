@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -210,4 +210,25 @@ describe("aitw executable", () => {
     },
     20_000,
   );
+});
+
+describe("aitw with an unsafe state directory", () => {
+  it("explains the problem without a stack trace", async () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "aitw-state-")));
+    try {
+      mkdirSync(join(base, "aitw"), { mode: 0o755 });
+      chmodSync(join(base, "aitw"), 0o755);
+
+      const result = await execute(["daemon", "status"], base, {
+        env: { ...process.env, XDG_STATE_HOME: base },
+      });
+
+      expect(result).toEqual({
+        exitCode: 1,
+        output: `aitw: Other users can use the state directory ${join(base, "aitw")}. Run "chmod 700 ${join(base, "aitw")}" to fix it\n`,
+      });
+    } finally {
+      rmSync(base, { force: true, recursive: true });
+    }
+  });
 });

@@ -8,6 +8,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 
+import { ensurePrivateDirectory } from "../private-directory.js";
 import { temporalCliManifest } from "./manifest.js";
 import type { TemporalCliManifest, TemporalCliPlatform } from "./types.js";
 
@@ -29,9 +30,23 @@ export interface EnsureTemporalCliOptions {
   onDownload?: (version: string) => void;
 }
 
-/** Returns the directory that keeps downloaded Temporal CLI releases. */
+/**
+ * Returns the directory that keeps downloaded Temporal CLI releases, creating its parent when
+ * needed.
+ *
+ * A cached release runs without its checksum being checked again, so the cache must be a
+ * directory that only the user can use.
+ *
+ * @throws {UnsafeDirectoryError} When other users could use or replace the cache directory.
+ */
 export const defaultCacheDirectory = (): string =>
-  join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "aitw", "temporal-cli");
+  join(
+    ensurePrivateDirectory(
+      join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "aitw"),
+      "cache directory",
+    ),
+    "temporal-cli",
+  );
 
 const isPlatform = (
   manifest: TemporalCliManifest,

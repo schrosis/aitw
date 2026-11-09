@@ -4,9 +4,22 @@ import { join } from "node:path";
 
 import { workflowCodeVersion } from "@aitw/engine";
 
-/** Returns the directory that keeps the state of aitw, such as logs. */
+import { ensurePrivateDirectory } from "./private-directory.js";
+
+/**
+ * Returns the directory that keeps the state of aitw, such as logs, creating it when needed.
+ *
+ * The socket of the resident process, the locks of runs, and their logs are all in this
+ * directory, so checking it protects them.
+ *
+ * @throws {UnsafeDirectoryError} When the directory is a symbolic link or not a directory,
+ *   belongs to another user, lets others use it, or has an ancestor that others can replace.
+ */
 export const stateDirectory = (): string =>
-  join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "aitw");
+  ensurePrivateDirectory(
+    join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "aitw"),
+    "state directory",
+  );
 
 /**
  * Returns a short hash of a project root, which keeps the state of each project apart.

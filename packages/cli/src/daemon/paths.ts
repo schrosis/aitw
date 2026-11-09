@@ -20,6 +20,8 @@ export interface DaemonPaths {
   log: string;
   /** File that holds the process ID of the development server that the resident process runs. */
   devServer: string;
+  /** Projects that the resident process serves, kept across restarts. */
+  projects: string;
 }
 
 /** Returns the files of the resident process, in the state directory of aitw. */
@@ -29,6 +31,7 @@ export const daemonPaths = (): DaemonPaths => {
     directory,
     devServer: join(directory, "dev-server.pid"),
     log: join(directory, "daemon.log"),
+    projects: join(directory, "projects.json"),
     // acquireRunLock names the lock of "daemon" this way.
     lock: join(directory, "daemon.lock"),
     socket: join(directory, "daemon.sock"),

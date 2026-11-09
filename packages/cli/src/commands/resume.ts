@@ -14,6 +14,7 @@ import {
 import { acquireRunLock, RunLockedError } from "../lock.js";
 import { chooseRun, listProjectRuns } from "../runs.js";
 import type { ProjectRun } from "../runs.js";
+import { connectDaemon } from "../daemon/connect.js";
 import { openServer } from "../server.js";
 import type { OpenedServer, ServerOptions } from "../server.js";
 import { projectLockDirectory, projectLogDirectory } from "../state.js";
@@ -32,6 +33,11 @@ export interface ResumeOptions {
   prepareEngine?: () => void;
   /** Resumes a run that another version of aitw started, which can fail. */
   force?: boolean | undefined;
+  /**
+   * Version of this aitw. With it, a resident process of the same version continues the runs
+   * that it serves, when the server options are not given.
+   */
+  daemonVersion?: string | undefined;
 }
 
 type Selected = { ok: true; run: ProjectRun } | { ok: false; exitCode: number };
@@ -103,7 +109,12 @@ export const resume = async (options: ResumeOptions, context: CommandContext): P
   const terminal = createTerminal(context);
   let server: OpenedServer | undefined;
   try {
-    server = await openServer(options.server, context, signal);
+    const daemon =
+      options.daemonVersion === undefined
+        ? undefined
+        : await connectDaemon(root, options.daemonVersion, context);
+    server = daemon?.server ?? (await openServer(options.server, context, signal));
+    const servedTaskQueue = daemon?.project.taskQueue;
     const selected = await selectRun(
       "resume",
       { address: server.address, root },
@@ -133,10 +144,12 @@ export const resume = async (options: ResumeOptions, context: CommandContext): P
             resumeWorkflow({
               ...followOptions,
               force: options.force === true,
+              servedTaskQueue,
               workflowId: run.workflowId,
             }),
           interrupt: signal,
           name: run.name,
+          ownsWorker: run.taskQueue !== servedTaskQueue,
           root,
           server,
           terminal,
@@ -173,7 +186,12 @@ export const cancel = async (options: ResumeOptions, context: CommandContext): P
   const terminal = createTerminal(context);
   let server: OpenedServer | undefined;
   try {
-    server = await openServer(options.server, context, signal);
+    const daemon =
+      options.daemonVersion === undefined
+        ? undefined
+        : await connectDaemon(root, options.daemonVersion, context);
+    server = daemon?.server ?? (await openServer(options.server, context, signal));
+    const servedTaskQueue = daemon?.project.taskQueue;
     const selected = await selectRun(
       "cancel",
       { address: server.address, root },
@@ -209,6 +227,7 @@ export const cancel = async (options: ResumeOptions, context: CommandContext): P
       cancel: true,
       // The end of the cancelled step is recorded in the same log as the rest of the run.
       eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
+      servedTaskQueue,
       scriptRunner: createLocalScriptRunner({ cwd: root }),
       workflowId: run.workflowId,
     }).catch((error: unknown) => {

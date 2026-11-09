@@ -318,6 +318,7 @@ describe("runWorkflow", () => {
             project: "detach-test",
           },
           startTime: expect.any(Date) as unknown,
+          taskQueue: expect.stringMatching(/^aitw-/u) as unknown,
           workflowId: first.workflowId,
         },
       ]);

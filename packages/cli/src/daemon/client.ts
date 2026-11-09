@@ -14,31 +14,50 @@ export interface DaemonStatus {
   /** Workflow code version of the resident process. */
   workflowCodeVersion: number;
   startedAt: string;
+  /** Projects that the resident process serves. */
+  projects: DaemonProject[];
+}
+
+/** A project that the resident process serves. */
+export interface DaemonProject {
+  /** Real path of the project root. */
+  root: string;
+  taskQueue: string;
+  /** Whether its Worker runs. A Worker that failed is started again on the next request. */
+  running?: boolean;
 }
 
 /** Sends a request to the resident process and returns its JSON response. */
-const call = async (paths: DaemonPaths, method: "GET" | "POST", path: string): Promise<unknown> =>
+const call = async (
+  paths: DaemonPaths,
+  method: "GET" | "POST",
+  path: string,
+  body?: unknown,
+): Promise<unknown> =>
   new Promise((resolve, reject) => {
-    const outgoing = request({ method, path, socketPath: paths.socket }, (response) => {
-      let body = "";
+    const headers = body === undefined ? {} : { "content-type": "application/json" };
+    const outgoing = request({ headers, method, path, socketPath: paths.socket }, (response) => {
+      let received = "";
       response.setEncoding("utf8");
       response.on("data", (chunk: string) => {
-        body += chunk;
+        received += chunk;
       });
       response.on("end", () => {
         if (response.statusCode !== 200) {
-          reject(new Error(`aitw daemon answered ${response.statusCode ?? "nothing"}: ${body}`));
+          reject(
+            new Error(`aitw daemon answered ${response.statusCode ?? "nothing"}: ${received}`),
+          );
           return;
         }
         try {
-          resolve(body === "" ? undefined : JSON.parse(body));
+          resolve(received === "" ? undefined : JSON.parse(received));
         } catch (error) {
           reject(error instanceof Error ? error : new Error(String(error)));
         }
       });
     });
     outgoing.on("error", reject);
-    outgoing.end();
+    outgoing.end(body === undefined ? undefined : JSON.stringify(body));
   });
 
 const isStatus = (value: unknown): value is DaemonStatus =>
@@ -69,6 +88,27 @@ export const getDaemonStatus = async (paths: DaemonPaths): Promise<DaemonStatus 
     }
     throw error;
   }
+};
+
+const isProject = (value: unknown): value is DaemonProject =>
+  typeof value === "object" &&
+  value !== null &&
+  "root" in value &&
+  typeof value.root === "string" &&
+  "taskQueue" in value &&
+  typeof value.taskQueue === "string";
+
+/**
+ * Asks the resident process to serve a project, and returns the task queue of the project.
+ *
+ * The resident process remembers the project across restarts.
+ */
+export const registerProject = async (paths: DaemonPaths, root: string): Promise<DaemonProject> => {
+  const project = await call(paths, "POST", "/projects", { root });
+  if (!isProject(project)) {
+    throw new Error("aitw daemon answered an unexpected project");
+  }
+  return project;
 };
 
 /** Asks the resident process to stop. It answers before it stops. */

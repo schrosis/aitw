@@ -78,6 +78,11 @@ export interface FollowRunOptions {
   follow: (options: FollowOptions) => Promise<RunOutcome>;
   /** Terminal that wait steps ask in, when the command already reads standard input. */
   terminal?: ReturnType<typeof createTerminal>;
+  /**
+   * Whether this process runs the scripts of the run. A run that a resident process serves
+   * detaches at once, because its scripts keep running there.
+   */
+  ownsWorker?: boolean;
 }
 
 /**
@@ -86,7 +91,7 @@ export interface FollowRunOptions {
  * @returns The exit code of the command.
  */
 export const followRun = async (
-  { follow, interrupt, name, root, server, terminal: given }: FollowRunOptions,
+  { follow, interrupt, name, ownsWorker = true, root, server, terminal: given }: FollowRunOptions,
   context: CommandContext,
 ): Promise<number> => {
   const terminal = given ?? createTerminal(context);
@@ -111,7 +116,7 @@ export const followRun = async (
     if (!server.durable) {
       return;
     }
-    if (runningScript !== undefined) {
+    if (ownsWorker && runningScript !== undefined) {
       context.stderr(
         "Waiting for the running step to finish, so that the run can be resumed.\n" +
           "Press Ctrl+C again to exit now. The running step will fail, and the run cannot be resumed.\n",

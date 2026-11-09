@@ -1,12 +1,56 @@
 import { createHash } from "node:crypto";
+import { lstatSync, mkdirSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
 import { workflowCodeVersion } from "@aitw/engine";
 
-/** Returns the directory that keeps the state of aitw, such as logs. */
-export const stateDirectory = (): string =>
-  join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "aitw");
+/** The state directory of aitw is not one that only the user can use. */
+export class StateDirectoryError extends Error {
+  override name = "StateDirectoryError";
+}
+
+/**
+ * Checks that only the user can use a directory.
+ *
+ * Another user who can write to the state directory could put a socket in place of the resident
+ * process, or read the logs of runs. A symbolic link is rejected, because its target can change
+ * after the check.
+ *
+ * @throws {StateDirectoryError} When the directory is a symbolic link, belongs to another user,
+ *   or lets others use it.
+ */
+const checkPrivateDirectory = (directory: string): void => {
+  const stats = lstatSync(directory);
+  if (!stats.isDirectory()) {
+    throw new StateDirectoryError(
+      `The state directory ${directory} must be a directory, not a symbolic link or a file`,
+    );
+  }
+  const uid = process.getuid?.();
+  if (uid !== undefined && stats.uid !== uid) {
+    throw new StateDirectoryError(`The state directory ${directory} belongs to another user`);
+  }
+  if ((stats.mode & 0o077) !== 0) {
+    throw new StateDirectoryError(
+      `Other users can use the state directory ${directory}. Run "chmod 700 ${directory}" to fix it`,
+    );
+  }
+};
+
+/**
+ * Returns the directory that keeps the state of aitw, such as logs, creating it when needed.
+ *
+ * Everything that aitw keeps is inside this directory, so checking it protects the rest.
+ *
+ * @throws {StateDirectoryError} When other users can use the directory.
+ */
+export const stateDirectory = (): string => {
+  const directory = join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "aitw");
+  mkdirSync(directory, { mode: 0o700, recursive: true });
+  checkPrivateDirectory(directory);
+  return directory;
+};
 
 /**
  * Returns a short hash of a project root, which keeps the state of each project apart.

@@ -1,11 +1,14 @@
+import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { createConnection } from "node:net";
+import { once } from "node:events";
+import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
-import { startDevServer } from "./dev-server.ts";
+import { devServerArguments, startDevServer } from "./dev-server.ts";
 
 const canConnect = async (address: string): Promise<boolean> => {
   const [host = "", port = ""] = address.split(":");
@@ -17,6 +20,15 @@ const canConnect = async (address: string): Promise<boolean> => {
     });
     socket.once("error", () => resolve(false));
   });
+};
+
+const freePort = async (): Promise<number> => {
+  const server = createServer().listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  server.close();
+  await once(server, "close");
+  return typeof address === "object" && address !== null ? address.port : 0;
 };
 
 describe("startDevServer", () => {
@@ -35,13 +47,49 @@ describe("startDevServer", () => {
     const server = await startDevServer({ executable });
 
     expect(server.address).toMatch(/^127\.0\.0\.1:\d+$/u);
-    expect(server.uiUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/u);
+    // The Web UI is off by default.
+    expect(server.uiUrl).toBeUndefined();
     await expect(canConnect(server.address)).resolves.toBe(true);
-    const response = await fetch(server.uiUrl);
-    expect(response.ok).toBe(true);
 
     await server.stop();
     await expect(canConnect(server.address)).resolves.toBe(false);
+  }, 60_000);
+
+  it("starts the Web UI when asked", async () => {
+    const server = await startDevServer({ executable, ui: true });
+    try {
+      expect(server.uiUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/u);
+      const response = await fetch(server.uiUrl ?? "");
+      expect(response.ok).toBe(true);
+    } finally {
+      await server.stop();
+    }
+  }, 60_000);
+
+  it("turns off the HTTP API, which a web page could use to start a run", async () => {
+    const [port, httpPort] = await Promise.all([freePort(), freePort()]);
+    const child = spawn(executable, devServerArguments({ httpPort, port, ui: false, uiPort: 0 }), {
+      stdio: "ignore",
+    });
+    try {
+      const url = `http://127.0.0.1:${httpPort}/api/v1/namespaces/default/workflows/probe`;
+      let response: Response | undefined;
+      for (let attempt = 0; attempt < 150 && response === undefined; attempt += 1) {
+        // A form or a plain text request needs no preflight, so any web page can send it.
+        response = await fetch(url, {
+          body: JSON.stringify({ taskQueue: { name: "probe" }, workflowType: { name: "aitw" } }),
+          headers: { "content-type": "text/plain" },
+          method: "POST",
+        }).catch(async () => {
+          await sleep(200);
+          return undefined;
+        });
+      }
+
+      expect(response?.status).toBe(403);
+    } finally {
+      child.kill("SIGKILL");
+    }
   }, 60_000);
 
   it("keeps the state in a SQLite file", async () => {

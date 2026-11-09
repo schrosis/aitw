@@ -15,14 +15,19 @@ export interface DevServerOptions {
   stopGraceMs?: number;
   /** Stops waiting for the server to start, and stops the server, when aborted. */
   signal?: AbortSignal | undefined;
+  /**
+   * Whether to start the Web UI. It is off by default, because a web page that the user opens
+   * can reach it through DNS rebinding and start a run, which runs commands on this machine.
+   */
+  ui?: boolean | undefined;
 }
 
 /** A running Temporal development server. */
 export interface DevServer {
   /** Address of the frontend service, such as `127.0.0.1:7233`. */
   address: string;
-  /** URL of the Web UI. */
-  uiUrl: string;
+  /** URL of the Web UI, when it was started. */
+  uiUrl?: string | undefined;
   /** Process ID of the server, which also leads its process group. */
   pid: number;
   /** Stops the server and waits for it to exit. */
@@ -30,6 +35,15 @@ export interface DevServer {
 }
 
 const host = "127.0.0.1";
+
+/**
+ * Host that the HTTP API accepts, which no browser can send.
+ *
+ * aitw talks to the server through gRPC only. The HTTP API accepts any content type and does not
+ * check the origin, so a web page could start a run through it. Accepting only a reserved name
+ * that never resolves turns it off, including against DNS rebinding.
+ */
+const httpAllowedHost = "aitw.invalid";
 
 /** Size of the server log that is kept to explain a failed start, in characters. */
 const maxLogLength = 4096;
@@ -61,6 +75,40 @@ const canConnect = async (port: number): Promise<boolean> =>
     });
   });
 
+/**
+ * Returns the arguments of `temporal server start-dev`.
+ *
+ * Every port is given, so that the server does not take a default port that another server uses.
+ */
+export const devServerArguments = ({
+  dbFilename,
+  httpPort,
+  port,
+  ui,
+  uiPort,
+}: {
+  dbFilename?: string | undefined;
+  httpPort: number;
+  port: number;
+  ui: boolean;
+  uiPort: number;
+}): string[] => [
+  "server",
+  "start-dev",
+  "--ip",
+  host,
+  "--port",
+  String(port),
+  "--http-port",
+  String(httpPort),
+  "--dynamic-config-value",
+  `frontend.httpAllowedHosts=${JSON.stringify([httpAllowedHost])}`,
+  ...(ui ? ["--ui-port", String(uiPort), "--ui-disable-news-fetch"] : ["--headless"]),
+  "--log-level",
+  "error",
+  ...(dbFilename === undefined ? [] : ["--db-filename", dbFilename]),
+];
+
 /** A server process that exited before it accepted connections, such as for a taken port. */
 class ExitedBeforeStartError extends Error {}
 
@@ -70,24 +118,10 @@ const startOnce = async ({
   signal,
   startTimeoutMs = 30_000,
   stopGraceMs = 5000,
+  ui = false,
 }: DevServerOptions): Promise<DevServer> => {
   const [port, uiPort, httpPort] = await Promise.all([freePort(), freePort(), freePort()]);
-  const args = [
-    "server",
-    "start-dev",
-    "--ip",
-    host,
-    "--port",
-    String(port),
-    "--ui-port",
-    String(uiPort),
-    "--http-port",
-    String(httpPort),
-    "--ui-disable-news-fetch",
-    "--log-level",
-    "error",
-    ...(dbFilename === undefined ? [] : ["--db-filename", dbFilename]),
-  ];
+  const args = devServerArguments({ dbFilename, httpPort, port, ui, uiPort });
   const child = spawn(executable, args, {
     detached: true,
     stdio: ["ignore", "ignore", "pipe"],
@@ -177,7 +211,7 @@ const startOnce = async ({
     // The server accepts connections, so it has started and has a process ID.
     pid: child.pid ?? 0,
     stop,
-    uiUrl: `http://${host}:${uiPort}`,
+    ...(ui ? { uiUrl: `http://${host}:${uiPort}` } : {}),
   };
 };
 

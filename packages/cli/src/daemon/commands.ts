@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { CommandContext } from "../commands/load.js";
 import { workflowCodeVersion } from "@aitw/engine";
 
-import { defaultAddress, quote } from "../server.js";
+import { defaultAddress, quote, serverArguments } from "../server.js";
 import type { ServerOptions } from "../server.js";
 import { getDaemonStatus, requestDaemonStop } from "./client.js";
 import type { DaemonStatus } from "./client.js";
@@ -24,23 +24,21 @@ export interface StartDaemonOptions {
   executable: string;
 }
 
-/** Returns the arguments of `aitw daemon run` that reach the same server. */
-const serverArguments = (server: ServerOptions, cwd: string): string[] => {
-  if (server.type === "address") {
-    return ["--address", server.address];
-  }
-  return [
-    "--dev",
-    // The resident process runs in the state directory, so paths are made absolute.
-    ...(server.dbFilename === undefined ? [] : ["--dev-db", resolve(cwd, server.dbFilename)]),
-    ...(server.temporalBin === undefined
-      ? []
-      : [
-          "--temporal-bin",
-          server.temporalBin.includes("/") ? resolve(cwd, server.temporalBin) : server.temporalBin,
-        ]),
-  ];
-};
+/**
+ * Returns the server options with absolute paths, because the resident process runs in the state
+ * directory.
+ */
+const withAbsolutePaths = (server: ServerOptions, cwd: string): ServerOptions =>
+  server.type === "address"
+    ? server
+    : {
+        ...server,
+        dbFilename: server.dbFilename === undefined ? undefined : resolve(cwd, server.dbFilename),
+        temporalBin:
+          server.temporalBin?.includes("/") === true
+            ? resolve(cwd, server.temporalBin)
+            : server.temporalBin,
+      };
 
 /** Returns how a running resident process differs from the one that a command asks for. */
 const differences = (running: DaemonStatus, version: string, requested: string[]): string[] => {
@@ -95,7 +93,7 @@ export const startDaemon = async (
     );
     return 1;
   }
-  const requested = serverArguments(server, context.cwd);
+  const requested = serverArguments(withAbsolutePaths(server, context.cwd));
   const running = await getDaemonStatus(paths);
   if (running !== undefined) {
     context.stdout(`aitw daemon: already running (${describe(running)})\n`);
@@ -192,6 +190,7 @@ export const showDaemonStatus = async (context: CommandContext): Promise<number>
       `aitw daemon: running (${describe(status)})`,
       `started: ${status.startedAt}`,
       `log: ${paths.log}`,
+      ...(status.uiUrl === undefined ? [] : [`web ui: ${status.uiUrl}`]),
       ...(status.projects.length === 0
         ? ["projects: none"]
         : [

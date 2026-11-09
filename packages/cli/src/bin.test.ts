@@ -98,7 +98,8 @@ describe("aitw executable", () => {
       );
 
       expect(exitCode).toBe(0);
-      expect(output).toMatch(/^Temporal Web UI: http:\/\/127\.0\.0\.1:\d+\n/mu);
+      // The Web UI starts only with --dev-ui.
+      expect(output).not.toContain("Temporal Web UI");
       expect(output).toContain("run-success: completed (check, finish)\n");
     }, 40_000);
 
@@ -125,7 +126,7 @@ describe("aitw executable", () => {
     it("cancels the run and stops the server when interrupted while waiting", async () => {
       let address: string | undefined;
       const { exitCode, output } = await execute(
-        ["run", "wait-valid", "--dev", "--temporal-bin", executable],
+        ["run", "wait-valid", "--dev", "--dev-ui", "--temporal-bin", executable],
         fixtureProject,
         {
           onOutput: (child, text) => {
@@ -150,7 +151,7 @@ describe("aitw executable", () => {
     it("stops the server when interrupted twice", async () => {
       let address: string | undefined;
       const { exitCode } = await execute(
-        ["run", "run-sleep", "--dev", "--temporal-bin", executable],
+        ["run", "run-sleep", "--dev", "--dev-ui", "--temporal-bin", executable],
         fixtureProject,
         {
           onOutput: (child, text) => {
@@ -172,7 +173,7 @@ describe("aitw executable", () => {
     it("cancels the run and stops the server when interrupted", async () => {
       let address: string | undefined;
       const { exitCode, output } = await execute(
-        ["run", "run-sleep", "--dev", "--temporal-bin", executable],
+        ["run", "run-sleep", "--dev", "--dev-ui", "--temporal-bin", executable],
         fixtureProject,
         {
           onOutput: (child, text) => {
@@ -197,6 +198,7 @@ describe("aitw executable", () => {
   it.each([
     [["--dev", "--address", "localhost:7233"], "cannot be used with"],
     [["--dev-db", "state.db"], "require --dev"],
+    [["--dev-ui"], "require --dev"],
     [["--temporal-bin", "temporal"], "require --dev"],
   ])(
     "rejects the server options %j",

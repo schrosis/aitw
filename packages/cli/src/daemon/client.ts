@@ -9,6 +9,8 @@ export interface DaemonStatus {
   address: string;
   /** Options that reach the same Temporal Server again, such as ` --dev --dev-db state.db`. */
   serverOptions: string;
+  /** URL of the Web UI of the development server, when --dev-ui started it. */
+  uiUrl?: string | undefined;
   /** Version of the aitw that runs the resident process. */
   version: string;
   /** Workflow code version of the resident process. */

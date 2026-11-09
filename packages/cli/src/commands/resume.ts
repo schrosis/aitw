@@ -189,12 +189,18 @@ export const cancel = async (options: ResumeOptions, context: CommandContext): P
     // Workflow code of another version could not replay the run to cancel it, so the run is
     // terminated without running its code.
     if (!run.compatible) {
+      const why =
+        run.version === undefined
+          ? "it records no workflow code version"
+          : `workflow code version ${run.version} started it`;
       await terminateWorkflow({
         address: server.address,
-        reason: "Cancelled by aitw cancel. Another version of aitw started the run",
+        reason: `Cancelled by aitw cancel. It was terminated, because ${why}`,
         workflowId: run.workflowId,
       });
-      context.stdout(`${run.name}: terminated, because another version of aitw started it\n`);
+      context.stdout(
+        `${run.name}: terminated instead of cancelled, because ${why}. Its running script, if any, stops at its next heartbeat\n`,
+      );
       return 0;
     }
     // A Worker runs the cancellation, in case no other process follows the run.

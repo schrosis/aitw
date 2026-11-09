@@ -170,7 +170,8 @@ describe("resume and cancel", () => {
     await expect(execute(cancel, handle.workflowId)).resolves.toEqual({
       exitCode: 0,
       stderr: "",
-      stdout: "old: terminated, because another version of aitw started it\n",
+      stdout:
+        "old: terminated instead of cancelled, because workflow code version 0 started it. Its running script, if any, stops at its next heartbeat\n",
     });
     await expect(handle.describe()).resolves.toMatchObject({ status: { name: "TERMINATED" } });
   }, 60_000);

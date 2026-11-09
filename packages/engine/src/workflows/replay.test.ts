@@ -21,9 +21,12 @@ import { aitw } from "./index.ts";
  * Replay tests: the histories of earlier runs must replay with the current workflow code.
  *
  * A change that fails these tests would break runs that wait in Temporal. Make the change
- * replay, such as with `patched()`, or raise `workflowCodeVersion` and record the histories
- * again with `AITW_RECORD_HISTORIES=1 pnpm --filter @aitw/engine test`.
+ * replay, such as with `patched()`. Otherwise, raise `workflowCodeVersion`, delete the histories
+ * of the earlier version, record new ones with `AITW_RECORD_HISTORIES=1 pnpm --filter
+ * @aitw/engine test`, and run the tests again. Only the histories of the current version are
+ * replayed, because the earlier ones need the earlier code.
  */
+const recording = process.env.AITW_RECORD_HISTORIES === "1";
 const historiesDirectory = fileURLToPath(new URL("../../test/histories/", import.meta.url));
 const workflowsPath = fileURLToPath(new URL("./index.ts", import.meta.url));
 
@@ -157,14 +160,15 @@ const record = async (): Promise<void> => {
   }
 };
 
-describe("aitw replay", () => {
-  it.runIf(process.env.AITW_RECORD_HISTORIES === "1")(
-    "records the histories of the scenarios",
-    record,
-    120_000,
-  );
+// Recording writes the histories only. The next run of the tests replays them.
+describe.runIf(recording)("aitw replay recording", () => {
+  it("records the histories of the scenarios", record, 120_000);
+});
 
-  const files = readdirSync(historiesDirectory).filter((file) => file.endsWith(".json"));
+describe.skipIf(recording)("aitw replay", () => {
+  const files = readdirSync(historiesDirectory).filter(
+    (file) => file.startsWith(`v${workflowCodeVersion}-`) && file.endsWith(".json"),
+  );
 
   it("has histories of the current workflow code version", () => {
     expect(files).toEqual(

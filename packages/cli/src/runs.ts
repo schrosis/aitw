@@ -1,6 +1,6 @@
 import { createFileEventLog } from "@aitw/adapter-event-log-file";
 import type { WorkflowEvent } from "@aitw/core";
-import { isCompatibleMemo, listRunningWorkflows } from "@aitw/engine";
+import { isCompatibleMemo, listRunningWorkflows, workflowCodeVersionMemoKey } from "@aitw/engine";
 
 import type { TerminalIO } from "@aitw/adapter-wait-terminal";
 import { projectHash, projectLogDirectory, projectMemoKey, workflowMemoKey } from "./state.js";
@@ -15,6 +15,8 @@ export interface ProjectRun {
   status: string;
   /** Whether this aitw can continue the run, which workflow code of its version started. */
   compatible: boolean;
+  /** Workflow code version that started the run, or `undefined` when the run records none. */
+  version: string | undefined;
 }
 
 /** Describes where a run is from its events. */
@@ -49,8 +51,10 @@ export const listProjectRuns = async (address: string, root: string): Promise<Pr
     runs.map(async ({ memo, startTime, workflowId }): Promise<ProjectRun> => {
       const name = memo[workflowMemoKey];
       const { events } = await log.read(workflowId).catch(() => ({ events: [] }));
+      const version = memo[workflowCodeVersionMemoKey];
       return {
         compatible: isCompatibleMemo(memo),
+        version: typeof version === "string" ? version : undefined,
         name: typeof name === "string" ? name : workflowId,
         startTime,
         status: describeEvents(events),

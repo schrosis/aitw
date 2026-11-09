@@ -22,7 +22,8 @@ export const cancelledExitCode = 130;
  */
 export const detachedExitCode = 3;
 
-const isCancelled = (error: unknown): boolean =>
+/** Returns whether an error of the engine means that the run was cancelled. */
+export const isCancelled = (error: unknown): boolean =>
   error instanceof Error && error.cause instanceof Error && error.cause.name === "CancelledFailure";
 
 /** Returns the message of the innermost cause, which describes the actual failure. */

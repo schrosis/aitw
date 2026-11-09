@@ -1,15 +1,22 @@
 import { realpath } from "node:fs/promises";
 
+import { createFileEventLog } from "@aitw/adapter-event-log-file";
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
 import { resumeWorkflow } from "@aitw/engine";
 
-import { cancelledExitCode, createTerminal, followRun, rootMessage } from "../follow.js";
+import {
+  cancelledExitCode,
+  createTerminal,
+  followRun,
+  isCancelled,
+  rootMessage,
+} from "../follow.js";
 import { acquireRunLock, RunLockedError } from "../lock.js";
 import { chooseRun, listProjectRuns } from "../runs.js";
 import type { ProjectRun } from "../runs.js";
 import { openServer } from "../server.js";
 import type { OpenedServer, ServerOptions } from "../server.js";
-import { projectLockDirectory } from "../state.js";
+import { projectLockDirectory, projectLogDirectory } from "../state.js";
 import { aitwDirectory, findProjectRoot } from "../workflows.js";
 import type { CommandContext } from "./load.js";
 
@@ -177,13 +184,13 @@ export const cancel = async (options: ResumeOptions, context: CommandContext): P
     const outcome = await resumeWorkflow({
       address: server.address,
       cancel: true,
+      // The end of the cancelled step is recorded in the same log as the rest of the run.
+      eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
       scriptRunner: createLocalScriptRunner({ cwd: root }),
       workflowId: run.workflowId,
     }).catch((error: unknown) => {
-      if (error instanceof Error && error.cause instanceof Error) {
-        if (error.cause.name === "CancelledFailure") {
-          return "cancelled" as const;
-        }
+      if (isCancelled(error)) {
+        return "cancelled" as const;
       }
       throw error;
     });

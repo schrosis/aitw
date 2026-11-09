@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -25,10 +25,18 @@ describe("acquireRunLock", () => {
     acquireRunLock(directory, "release/notes-1").release();
   });
 
+  it("keeps a lock that it cannot read", () => {
+    writeFileSync(join(directory, "run.lock"), "");
+
+    expect(() => acquireRunLock(directory, "run")).toThrow("Remove");
+  });
+
   it("takes over a lock that a stopped process left", () => {
     // Process IDs are positive and far below this value on the platforms that aitw supports.
     writeFileSync(join(directory, "run.lock"), "2147483646\n");
 
     expect(() => acquireRunLock(directory, "run").release()).not.toThrow();
+    // No file of the lock is left behind.
+    expect(readdirSync(directory)).toEqual([]);
   });
 });

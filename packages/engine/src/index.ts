@@ -1,5 +1,6 @@
 export { createActivities } from "./activities/index.js";
 export { jsonBytes, maxValueBytes } from "./limits.js";
+export { encryptionKeyBytes } from "./encryption.js";
 export type {
   Activities,
   ActivityDependencies,

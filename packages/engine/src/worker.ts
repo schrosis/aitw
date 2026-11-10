@@ -2,6 +2,7 @@ import type { AiRunner, EnvironmentReader, EventLog, ScriptRunner } from "@aitw/
 import { NativeConnection, Worker } from "@temporalio/worker";
 
 import { createActivities } from "./activities/index.js";
+import { workerDataConverter } from "./encryption.js";
 import { workflowsPath } from "./run.js";
 
 /** Options of {@link startWorker}. */
@@ -15,6 +16,8 @@ export interface StartWorkerOptions {
   scriptRunner: ScriptRunner;
   aiRunner?: AiRunner | undefined;
   readEnvironment?: EnvironmentReader | undefined;
+  /** Encrypts what goes through Temporal. The Worker then refuses values without it. */
+  encryptionKey?: Uint8Array | undefined;
   /** Stores the progress events of the runs of the task queue. */
   eventLog: EventLog;
   /** Path of the workflow code. Defaults to {@link workflowsPath}. */
@@ -41,6 +44,7 @@ export interface RunningWorker {
 export const startWorker = async ({
   address,
   aiRunner,
+  encryptionKey,
   eventLog,
   namespace = "default",
   onError = () => {},
@@ -53,6 +57,7 @@ export const startWorker = async ({
   try {
     const worker = await Worker.create({
       activities: createActivities({ aiRunner, eventLog, readEnvironment, scriptRunner }),
+      ...workerDataConverter(encryptionKey),
       connection,
       namespace,
       // Stopping waits for running scripts, as when a run detaches.

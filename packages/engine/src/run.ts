@@ -17,6 +17,7 @@ import { DefaultLogger, NativeConnection, Runtime, Worker } from "@temporalio/wo
 import type { LogLevel } from "@temporalio/worker";
 
 import { createActivities } from "./activities/index.js";
+import { clientDataConverter, workerDataConverter } from "./encryption.js";
 import { answerWaits } from "./answer.js";
 import { createMemoryEventLog, followEvents } from "./events.js";
 import {
@@ -72,6 +73,8 @@ export interface FollowOptions {
   scriptRunner: ScriptRunner;
   aiRunner?: AiRunner | undefined;
   readEnvironment?: EnvironmentReader | undefined;
+  /** Encrypts what goes through Temporal. A Worker then refuses values without it. */
+  encryptionKey?: Uint8Array | undefined;
   /** Receives progress events of the run, in order. */
   eventSink?: EventSink;
   /**
@@ -178,6 +181,7 @@ const follow = async (
   const {
     aiRunner,
     cancelNow = false,
+    encryptionKey,
     detach,
     eventLog = createMemoryEventLog(),
     eventSink = discardEvents,
@@ -194,6 +198,7 @@ const follow = async (
   const worker = startWorker
     ? await Worker.create({
         activities: createActivities({ aiRunner, eventLog, readEnvironment, scriptRunner }),
+        ...workerDataConverter(encryptionKey),
         connection: connections.worker,
         namespace,
         shutdownGraceTime: detachGraceTime,
@@ -331,7 +336,11 @@ export const runWorkflow = async (options: RunWorkflowOptions): Promise<RunOutco
   // A task queue for this run keeps other Workers from picking up its tasks.
   const taskQueue = options.taskQueue ?? `aitw-${id}`;
   return withConnections(address, async (clientConnection, workerConnection) => {
-    const client = new Client({ connection: clientConnection, namespace });
+    const client = new Client({
+      connection: clientConnection,
+      namespace,
+      ...clientDataConverter(options.encryptionKey),
+    });
     return follow(
       { ...options, taskQueue },
       { client, connection: clientConnection, worker: workerConnection },
@@ -359,7 +368,11 @@ export const runWorkflow = async (options: RunWorkflowOptions): Promise<RunOutco
 export const resumeWorkflow = async (options: ResumeWorkflowOptions): Promise<RunOutcome> => {
   const { address, cancel = false, force = false, namespace = "default", workflowId } = options;
   return withConnections(address, async (clientConnection, workerConnection) => {
-    const client = new Client({ connection: clientConnection, namespace });
+    const client = new Client({
+      connection: clientConnection,
+      namespace,
+      ...clientDataConverter(options.encryptionKey),
+    });
     const handle = client.workflow.getHandle<typeof aitw>(workflowId);
     const { memo, status, taskQueue } = await handle.describe();
     if (status.name !== "RUNNING") {
@@ -425,17 +438,20 @@ export interface ListRunningWorkflowsOptions {
   namespace?: string;
   /** Returns only the runs whose memo has these values, such as the runs of a project. */
   memo?: Readonly<Record<string, string>>;
+  /** Key that decrypts the memos of the runs. */
+  encryptionKey?: Uint8Array | undefined;
 }
 
 /** Lists the running workflows of aitw, most recent first. */
 export const listRunningWorkflows = async ({
   address,
+  encryptionKey,
   memo = {},
   namespace = "default",
 }: ListRunningWorkflowsOptions): Promise<RunningWorkflow[]> => {
   const connection = await Connection.connect({ address });
   try {
-    const client = new Client({ connection, namespace });
+    const client = new Client({ connection, namespace, ...clientDataConverter(encryptionKey) });
     const runs: RunningWorkflow[] = [];
     for await (const info of client.workflow.list({
       query: "WorkflowType = 'aitw' AND ExecutionStatus = 'Running'",

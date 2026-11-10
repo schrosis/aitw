@@ -1,0 +1,142 @@
+import { randomBytes, randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+
+import { intermediateVersion } from "@aitw/core";
+import type { Intermediate, ScriptRequest } from "@aitw/core";
+import { Client } from "@temporalio/client";
+import { TestWorkflowEnvironment } from "@temporalio/testing";
+import { Worker } from "@temporalio/worker";
+import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+
+import { createActivities } from "../activities/index.ts";
+import { clientDataConverter, workerDataConverter } from "../encryption.ts";
+import { aitw } from "./index.ts";
+
+const key = randomBytes(32);
+const workflowsPath = fileURLToPath(new URL("./index.ts", import.meta.url));
+const attackWorkflowsPath = fileURLToPath(
+  new URL("../../test/fixtures/schedule-activity.ts", import.meta.url),
+);
+
+const intermediate: Intermediate = {
+  inputs: {},
+  start: "greet",
+  steps: {
+    greet: {
+      inputs: {},
+      next: { type: "end" },
+      outputs: {},
+      run: "echo secret-command",
+      timeoutMs: 5000,
+      type: "script",
+    },
+  },
+  version: intermediateVersion,
+};
+
+describe("aitw with encryption", () => {
+  let environment: TestWorkflowEnvironment;
+
+  beforeAll(async () => {
+    environment = await TestWorkflowEnvironment.createLocal({
+      server: { executable: { path: inject("temporalCli"), type: "existing-path" } },
+    });
+  });
+
+  afterAll(async () => {
+    await environment?.teardown();
+  });
+
+  const createVictim = async (taskQueue: string, requests: ScriptRequest[]) =>
+    Worker.create({
+      activities: createActivities({
+        scriptRunner: {
+          run: async (request) => {
+            requests.push(request);
+            return { exitCode: 0, signal: null, stderr: "", stdout: "" };
+          },
+        },
+      }),
+      connection: environment.nativeConnection,
+      taskQueue,
+      workflowsPath,
+      ...workerDataConverter(key),
+    });
+
+  it("runs a workflow without leaving its values in the history", async () => {
+    const requests: ScriptRequest[] = [];
+    const taskQueue = randomUUID();
+    const worker = await createVictim(taskQueue, requests);
+    const client = new Client({
+      connection: environment.connection,
+      ...clientDataConverter(key),
+    });
+
+    await worker.runUntil(async () => {
+      const handle = await client.workflow.start(aitw, {
+        args: [intermediate],
+        taskQueue,
+        workflowId: randomUUID(),
+      });
+      await expect(handle.result()).resolves.toEqual({ executedSteps: ["greet"] });
+      const history = JSON.stringify(await handle.fetchHistory());
+      expect(history).not.toContain(Buffer.from("secret-command").toString("base64"));
+    });
+
+    expect(requests).toHaveLength(1);
+  }, 60_000);
+
+  it("does not run a workflow that someone without the key starts", async () => {
+    const requests: ScriptRequest[] = [];
+    const taskQueue = randomUUID();
+    const worker = await createVictim(taskQueue, requests);
+
+    await worker.runUntil(async () => {
+      const handle = await environment.client.workflow.start(aitw, {
+        args: [intermediate],
+        taskQueue,
+        workflowExecutionTimeout: "3 seconds",
+        workflowId: randomUUID(),
+      });
+      await expect(handle.result()).rejects.toThrow();
+    });
+
+    expect(requests).toEqual([]);
+  }, 60_000);
+
+  it("does not run an activity that someone without the key schedules", async () => {
+    const requests: ScriptRequest[] = [];
+    const victimQueue = randomUUID();
+    const attackQueue = randomUUID();
+    const victim = await createVictim(victimQueue, requests);
+    const attacker = await Worker.create({
+      connection: environment.nativeConnection,
+      taskQueue: attackQueue,
+      workflowsPath: attackWorkflowsPath,
+    });
+
+    await victim.runUntil(async () =>
+      attacker.runUntil(async () => {
+        await expect(
+          environment.client.workflow.execute("scheduleActivity", {
+            args: [
+              victimQueue,
+              {
+                inputs: {},
+                outputs: {},
+                references: {},
+                run: "echo attacked",
+                step: "attack",
+                timeoutMs: 1000,
+              },
+            ],
+            taskQueue: attackQueue,
+            workflowId: randomUUID(),
+          }),
+        ).rejects.toThrow();
+      }),
+    );
+
+    expect(requests).toEqual([]);
+  }, 60_000);
+});

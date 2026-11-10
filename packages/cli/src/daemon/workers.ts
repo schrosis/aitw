@@ -7,6 +7,7 @@ import { createAiRunner } from "@aitw/core";
 import { startWorker } from "@aitw/engine";
 import type { RunningWorker } from "@aitw/engine";
 
+import { loadEncryptionKey } from "../encryption.js";
 import { createEnvironmentReader } from "../environment.js";
 import { createRegistry } from "../plugins.js";
 import { projectLogDirectory, projectTaskQueue } from "../state.js";
@@ -89,6 +90,7 @@ export const createProjectWorkers = ({
       const running = await startProjectWorker({
         address,
         aiRunner: createAiRunner({ cwd: root, plugins: createRegistry() }),
+        encryptionKey: loadEncryptionKey(),
         eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
         onError: (error) => {
           log(

@@ -3,6 +3,7 @@ import type { WorkflowEvent } from "@aitw/core";
 import { isCompatibleMemo, listRunningWorkflows, workflowCodeVersionMemoKey } from "@aitw/engine";
 
 import type { TerminalIO } from "@aitw/adapter-wait-terminal";
+import { loadEncryptionKey } from "./encryption.js";
 import { projectHash, projectLogDirectory, projectMemoKey, workflowMemoKey } from "./state.js";
 
 /** A running workflow of the project, with where it is. */
@@ -47,6 +48,7 @@ export const listProjectRuns = async (address: string, root: string): Promise<Pr
   const log = createFileEventLog({ directory: projectLogDirectory(root) });
   const runs = await listRunningWorkflows({
     address,
+    encryptionKey: loadEncryptionKey(),
     memo: { [projectMemoKey]: projectHash(root) },
   });
   return Promise.all(

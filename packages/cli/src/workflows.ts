@@ -27,7 +27,14 @@ export const findProjectRoot = async (cwd: string): Promise<string | undefined> 
 };
 
 /** Result of {@link listWorkflows}. */
-export type ListResult = { ok: true; names: string[] } | { ok: false; message: string };
+export type ListResult =
+  | {
+      ok: true;
+      names: string[];
+      /** Definition files whose names cannot be workflow names, relative to the project root. */
+      skipped: string[];
+    }
+  | { ok: false; message: string };
 
 /** Lists the names of the workflows of a project, in order, such as `deploy` or `release/notes`. */
 export const listWorkflows = async (cwd: string): Promise<ListResult> => {
@@ -37,19 +44,24 @@ export const listWorkflows = async (cwd: string): Promise<ListResult> => {
   }
   const directory = join(root, aitwDirectory, "workflows");
   if (!(await exists(directory))) {
-    return { names: [], ok: true };
+    return { names: [], ok: true, skipped: [] };
   }
   const files = await readdir(directory, { recursive: true });
-  const names = files.flatMap((file) => {
+  const names = new Set<string>();
+  const skipped: string[] = [];
+  for (const file of files.toSorted()) {
     const extension = extensions.find((candidate) => file.endsWith(candidate));
-    if (extension === undefined) {
-      return [];
+    if (extension !== undefined) {
+      const name = file.slice(0, -extension.length).split(sep).join("/");
+      if (name.split("/").every((segment) => segmentPattern.test(segment))) {
+        // A name with both .yaml and .yml is listed once, and resolving it reports the problem.
+        names.add(name);
+      } else {
+        skipped.push(join(aitwDirectory, "workflows", file));
+      }
     }
-    const name = file.slice(0, -extension.length).split(sep).join("/");
-    return name.split("/").every((segment) => segmentPattern.test(segment)) ? [name] : [];
-  });
-  // A name with both .yaml and .yml is listed once, and resolving it reports the problem.
-  return { names: [...new Set(names)].toSorted(), ok: true };
+  }
+  return { names: [...names].toSorted(), ok: true, skipped };
 };
 
 /** Result of {@link resolveWorkflow}. */

@@ -59,6 +59,9 @@ export const docs = async (name: string | undefined, context: CommandContext): P
       context.stderr(`${listed.message}\n`);
       return 1;
     }
+    for (const file of listed.skipped) {
+      context.stderr(`${file}: skipped, because it is not a valid workflow name\n`);
+    }
     names = listed.names;
   }
 

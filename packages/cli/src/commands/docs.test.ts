@@ -110,6 +110,17 @@ describe("docs", () => {
     expect(result.stderr).toContain(".aitw/workflows/broken.yaml");
   });
 
+  it("warns about a file whose name cannot be a workflow name", async () => {
+    writeFileSync(join(workflows, "a.yaml"), valid);
+    writeFileSync(join(workflows, "1st.yaml"), valid);
+
+    await expect(run()).resolves.toEqual({
+      exitCode: 0,
+      stderr: ".aitw/workflows/1st.yaml: skipped, because it is not a valid workflow name\n",
+      stdout: "a: wrote .aitw/workflows/a.md\n",
+    });
+  });
+
   it("succeeds when there are no workflows", async () => {
     await expect(run()).resolves.toEqual({ exitCode: 0, stderr: "", stdout: "" });
   });

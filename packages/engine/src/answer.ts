@@ -58,7 +58,7 @@ const formatPrefixedErrors = (prefix: string, errors: { path: unknown[]; message
 
 /** Asks the method of a waiting step for an answer until the workflow accepts one. */
 const answerStep = async (
-  { answers, method: name, options, step }: WaitingStep,
+  { answers, method: name, options, step, visit }: WaitingStep,
   { flush, handle, plugins, report, signal }: AnswerWaitsOptions,
 ): Promise<void> => {
   const method = plugins.waitMethod(name);
@@ -79,7 +79,7 @@ const answerStep = async (
       signal,
     );
     try {
-      const answer: Answer = { step, values };
+      const answer: Answer = { step, values, visit };
       await handle.executeUpdate(answerUpdateName, { args: [answer] });
       return;
     } catch (error) {
@@ -89,7 +89,7 @@ const answerStep = async (
       }
       // Another process may have answered the step in the meantime.
       const waiting = await handle.query<WaitingStep | null>(waitingQueryName).catch(() => null);
-      if (waiting?.step !== step) {
+      if (waiting?.step !== step || waiting.visit !== visit) {
         return;
       }
       const reason = error.cause instanceof Error ? error.cause.message : error.message;

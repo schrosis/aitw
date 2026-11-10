@@ -10,6 +10,8 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
 import { createActivities } from "../activities/index.ts";
 import type { ScriptStepRequest } from "../activities/index.ts";
+import { answerUpdateName, waitingQueryName } from "../messages.ts";
+import type { WaitingStep } from "../messages.ts";
 import { aitw } from "./index.ts";
 
 const step = (run: string, next: string | null): Intermediate["steps"][string] => ({
@@ -428,6 +430,71 @@ describe("aitw", () => {
 
     expect(result).toMatchObject({ ok: true });
     expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh", "echo [hello][]"]);
+  }, 60_000);
+
+  it("does not take an answer for an earlier visit of a wait step", async () => {
+    const taskQueue = randomUUID();
+    const worker = await Worker.create({
+      activities: createActivities({
+        scriptRunner: {
+          run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }),
+        },
+      }),
+      connection: environment.nativeConnection,
+      taskQueue,
+      workflowsPath: fileURLToPath(new URL("./index.ts", import.meta.url)),
+    });
+    const input: Intermediate = {
+      ...intermediate,
+      start: "ask",
+      steps: {
+        ask: {
+          answers: { again: { required: true, type: "boolean" } },
+          inputs: {},
+          method: "terminal",
+          next: {
+            branches: [
+              { if: "${{ result.again == true }}", to: { step: "ask", type: "step" } },
+              { to: { type: "end" } },
+            ],
+            type: "branch",
+          },
+          outputs: {},
+          type: "wait",
+          with: { message: "Again?" },
+        },
+      },
+    };
+
+    await worker.runUntil(async () => {
+      const handle = await environment.client.workflow.start(aitw, {
+        args: [input],
+        taskQueue,
+        workflowId: randomUUID(),
+      });
+      const waitForVisit = async (visit: number): Promise<void> => {
+        for (let attempt = 0; attempt < 200; attempt += 1) {
+          const waiting = await handle.query<WaitingStep | null>(waitingQueryName);
+          if (waiting?.visit === visit) {
+            return;
+          }
+          await sleep(25);
+        }
+        throw new Error(`The step did not wait for visit ${visit}`);
+      };
+      const answerStep = async (visit: number, again: boolean) =>
+        handle.executeUpdate(answerUpdateName, {
+          args: [{ step: "ask", values: { again }, visit }],
+        });
+
+      await waitForVisit(0);
+      await answerStep(0, true);
+      await waitForVisit(1);
+      await expect(answerStep(0, false)).rejects.toThrow();
+      await answerStep(1, false);
+
+      await expect(handle.result()).resolves.toMatchObject({ executedSteps: ["ask", "ask"] });
+    });
   }, 60_000);
 
   it("finishes on a branch to end", async () => {

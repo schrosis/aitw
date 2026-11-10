@@ -277,9 +277,13 @@ export const aitw = async (
     },
     {
       // A rejected answer leaves no trace in the history, and the caller can answer again.
-      validator: ({ step, values }) => {
+      validator: ({ step, values, visit }) => {
         const current = waiting;
-        if (current === null || current.step !== step) {
+        if (
+          current === null ||
+          current.step !== step ||
+          (visit !== undefined && current.visit !== visit)
+        ) {
           throw new Error(`Step ${step} is not waiting for an answer`);
         }
         const accepted = resolveWorkflowInput(current.answers, values);
@@ -313,7 +317,7 @@ export const aitw = async (
     workflowEnv[name] = embedValue(evaluated.value);
   }
   const executedSteps: string[] = [];
-  // The latest output of each step. Loops will keep every visit (B10b).
+  // The latest output of each step.
   const outputs: Record<string, StepOutput> = {};
   // The outputs of every visit of each step, oldest first (B10b).
   const visits: Record<string, { outputs: StepOutput }[]> = {};
@@ -418,6 +422,7 @@ export const aitw = async (
         method: step.method,
         options: typeof options === "object" && options !== null ? { ...options } : {},
         step: id,
+        visit: visited,
       };
       answer = undefined;
       try {

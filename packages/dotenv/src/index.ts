@@ -33,3 +33,18 @@ export const readDotenv = (cwd: string, path: string): DotenvResult => {
     return failure(error instanceof Error ? error.message : String(error));
   }
 };
+
+/**
+ * Returns the environment that a step sees besides the variables of its definition, which take
+ * precedence over it.
+ *
+ * Inherited variables take precedence over the dotenv file. Scripts, AI steps, and conditions all
+ * use it, so that they see the same values.
+ */
+export const readEnvironment = (cwd: string, dotenv: string | undefined): DotenvResult => {
+  if (dotenv === undefined) {
+    return { ok: true, values: { ...process.env } };
+  }
+  const file = readDotenv(cwd, dotenv);
+  return file.ok ? { ok: true, values: { ...file.values, ...process.env } } : file;
+};

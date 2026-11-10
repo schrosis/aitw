@@ -407,14 +407,16 @@ export const aitw = async (
           result: answer,
         });
         if (step.next.type === "branch") {
+          const values: Record<string, unknown> = {
+            ...pickReferences([], context, sharedRoots, conditionPaths(step)),
+            outputs: outputs[id],
+            result: answer,
+          };
+          checkValueSize(id, { values, workflowEnv });
           chosen = await chooseBranch({
             branches: step.next.branches,
             dotenv,
-            values: {
-              ...pickReferences([], context, sharedRoots, conditionPaths(step)),
-              outputs: outputs[id],
-              result: answer,
-            },
+            values,
             workflowEnv,
           });
         }

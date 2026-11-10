@@ -2,8 +2,7 @@ import { spawn } from "node:child_process";
 
 import { ScriptTimeoutError } from "@aitw/core";
 import type { ScriptResult, ScriptRunner } from "@aitw/core";
-import { readDotenv } from "@aitw/dotenv";
-import type { DotenvResult } from "@aitw/dotenv";
+import { readEnvironment } from "@aitw/dotenv";
 
 /** Process groups of the scripts that run now, in every runner of this process. */
 const runningGroups = new Set<number>();
@@ -66,10 +65,9 @@ export const createLocalScriptRunner = ({
         return;
       }
 
-      const dotenv: DotenvResult =
-        request.dotenv === undefined ? { ok: true, values: {} } : readDotenv(cwd, request.dotenv);
-      if (!dotenv.ok) {
-        reject(new Error(dotenv.message));
+      const environment = readEnvironment(cwd, request.dotenv);
+      if (!environment.ok) {
+        reject(new Error(environment.message));
         return;
       }
 
@@ -77,8 +75,8 @@ export const createLocalScriptRunner = ({
         cwd,
         // A new process group lets the runner stop child processes of the script.
         detached: true,
-        // The definition sets variables over the inherited ones, which dotenv does not replace.
-        env: { ...dotenv.values, ...process.env, ...request.env },
+        // The definition sets variables over what the step inherits.
+        env: { ...environment.values, ...request.env },
         stdio: ["ignore", "pipe", "pipe"],
       });
 

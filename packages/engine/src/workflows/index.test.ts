@@ -249,6 +249,26 @@ describe("aitw", () => {
     expect(requests.map(({ run: command }) => command)).toEqual(["./first.sh", "./again.sh"]);
   }, 60_000);
 
+  it("reads a visit of an earlier step", async () => {
+    const { requests, result } = await run(
+      {
+        ...intermediate,
+        steps: {
+          fetch: { ...step("./fetch.sh", "report"), outputs: { title: "${{ result.stdout }}" } },
+          report: step(
+            "echo [${{ steps.fetch.visits[0].outputs.title }}][${{ steps.fetch.visits[1].outputs.title }}]",
+            null,
+          ),
+        },
+      },
+      {},
+      { "./fetch.sh": "hello\n" },
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh", "echo [hello][]"]);
+  }, 60_000);
+
   it("finishes on a branch to end", async () => {
     const { requests, result } = await run({
       ...intermediate,

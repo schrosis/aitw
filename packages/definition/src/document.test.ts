@@ -29,6 +29,13 @@ const branch = (condition: string, step: string): Transition => ({
   type: "branch",
 });
 
+const labelOf = (condition: string): string =>
+  renderMermaid(workflow("a", { a: script(branch(condition, "b")), b: script(end) }))
+    .split("\n")
+    .find((line) => line.includes("d_a_0{"))
+    ?.replace(/^\s*d_a_0\{"/u, "")
+    .replace(/"\}$/u, "") ?? "";
+
 describe("renderMermaid", () => {
   it("draws each type of step with its shape, in the order of the definition", () => {
     expect(
@@ -70,7 +77,47 @@ describe("renderMermaid", () => {
     );
   });
 
-  it("labels branches with their conditions, and a loop goes back", () => {
+  it("draws each condition as a node, tried in order", () => {
+    const next: Transition = {
+      branches: [
+        { if: "${{ outputs.a == 1 }}", to: { step: "b", type: "step" } },
+        { if: "${{ outputs.a == 2 }}", to: { type: "end" } },
+        { to: { step: "c", type: "step" } },
+      ],
+      type: "branch",
+    };
+
+    expect(renderMermaid(workflow("a", { a: script(next), b: script(end), c: script(end) }))).toBe(
+      [
+        "flowchart TD",
+        '  start_(("start"))',
+        '  s_a["a"]',
+        '  d_a_0{"outputs.a == 1"}',
+        '  d_a_1{"outputs.a == 2"}',
+        '  s_b["b"]',
+        '  s_c["c"]',
+        '  end_(("end"))',
+        "  start_ --> s_a",
+        "  s_a --> d_a_0",
+        '  d_a_0 -->|"yes"| s_b',
+        '  d_a_0 -->|"no"| d_a_1',
+        '  d_a_1 -->|"yes"| end_',
+        '  d_a_1 -->|"no"| s_c',
+        "  s_b --> end_",
+        "  s_c --> end_",
+      ].join("\n"),
+    );
+  });
+
+  it("goes straight to the target of a single branch without a condition", () => {
+    expect(
+      renderMermaid(
+        workflow("a", { a: script({ branches: [{ to: { type: "end" } }], type: "branch" }) }),
+      ),
+    ).toContain("  s_a --> end_");
+  });
+
+  it("draws a loop back to an earlier step", () => {
     expect(
       renderMermaid(
         workflow("a", {
@@ -78,33 +125,35 @@ describe("renderMermaid", () => {
           b: script(branch("${{ outputs.ok == false }}", "a")),
         }),
       ),
-    ).toContain(['  s_b -->|"outputs.ok == false"| s_a', '  s_b -->|"else"| end_'].join("\n"));
+    ).toContain('  d_b_0 -->|"yes"| s_a');
   });
 
-  it("escapes the characters that a label cannot hold", () => {
-    expect(
-      renderMermaid(
-        workflow("a", { a: script(branch("${{ a == 'x\"y' || b && c }}", "b")), b: script(end) }),
-      ),
-    ).toContain(`"a == 'x#34;y' #124;#124; b #38;#38; c"`);
+  it("escapes only what a quoted label cannot hold", () => {
+    expect(labelOf("${{ a == 'x\"y<z>' }}")).toBe("a == 'x#quot;y#lt;z#gt;'");
   });
 
-  it("writes a condition of several lines on one line", () => {
-    expect(
-      renderMermaid(
-        workflow("a", { a: script(branch("${{ a == 1\n  || b == 2 }}", "b")), b: script(end) }),
-      ),
-    ).toContain('"a == 1 #124;#124; b == 2"');
+  it("starts a line at each && and || outside of parentheses", () => {
+    expect(labelOf("${{ (a && b) || (c && d) || e && f }}")).toBe(
+      "(a && b)<br/>|| (c && d)<br/>|| e<br/>&& f",
+    );
   });
 
-  it("shortens a long condition by characters", () => {
+  it("does not break inside of a string", () => {
+    expect(labelOf("${{ a == 'x || y' && b }}")).toBe("a == 'x || y'<br/>&& b");
+  });
+
+  it("writes a condition of several lines as its parts", () => {
+    expect(labelOf("${{ a == 1\n  || b == 2 }}")).toBe("a == 1<br/>|| b == 2");
+  });
+
+  it("does not shorten a long condition", () => {
     const long = "あ".repeat(60);
 
     expect(
       renderMermaid(
         workflow("a", { a: script(branch(`\${{ a == '${long}' }}`, "b")), b: script(end) }),
       ),
-    ).toContain(`"a == '${"あ".repeat(44)}…"`);
+    ).toContain(`"a == '${long}'"`);
   });
 
   it("is not broken by a step named after a keyword", () => {

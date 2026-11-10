@@ -1,5 +1,6 @@
+import { conditionReferences, parseCondition } from "../expression/condition.js";
 import { parseTemplate } from "../expression/template.js";
-import { executionOrder } from "./order.js";
+import { earlierSteps, reachableSteps } from "./order.js";
 import type { Intermediate } from "./schema.js";
 import type { ValidationError } from "./validate.js";
 
@@ -107,6 +108,22 @@ const checkExpression = (
   });
 };
 
+/** Checks the references of a condition, such as of a branch. */
+const checkCondition = (
+  text: string,
+  path: (number | string)[],
+  check: (reference: readonly string[]) => string | undefined,
+): ValidationError[] => {
+  const parsed = parseCondition(text);
+  if (!parsed.ok) {
+    return [{ message: parsed.message, path }];
+  }
+  return conditionReferences(parsed.condition).flatMap((reference) => {
+    const message = check(reference);
+    return message === undefined ? [] : [{ message: `${message}: ${reference.join(".")}`, path }];
+  });
+};
+
 /** What a field of a step can reference, in addition to earlier steps and the workflow input. */
 interface Scope {
   /** Whether the field can read the declared input of its own step. */
@@ -116,13 +133,19 @@ interface Scope {
    * whose result is known only when it runs.
    */
   result?: ReadonlySet<string> | "any";
+  /** Whether the field can read the declared outputs of its own step. */
+  outputs?: boolean;
+  /** Whether the field can read environment variables. */
+  env?: boolean;
 }
 
-const describeScope = ({ inputs, result }: Scope): string => {
+const describeScope = ({ env, inputs, outputs, result }: Scope): string => {
   const references = [
     "steps.<id>.outputs.<name>",
     "workflow.inputs.<name>",
     ...(inputs ? ["inputs.<name>"] : []),
+    ...(outputs === true ? ["outputs.<name>"] : []),
+    ...(env === true ? ["env.<name>"] : []),
     ...(result === "any"
       ? ["result.<name>"]
       : [...(result ?? [])].map((field) => `result.${field}`)),
@@ -140,9 +163,14 @@ const describeScope = ({ inputs, result }: Scope): string => {
  * step, and `outputs` can read the declared inputs of their own step. `outputs` can read the
  * result: `exitCode`, `stdout`, and `stderr` of a script, the declared answers of a wait step, or
  * `data` of an AI step.
+ *
+ * A step can reference any step that can run before it. One on another branch reads as `null`
+ * when it did not run. A condition of a branch can read `outputs`, `result`, the steps before it,
+ * the input of the workflow, and `env`, whose names are not checked.
  */
 export const validateExpressions = (intermediate: Intermediate): ValidationError[] => {
-  const order = executionOrder(intermediate);
+  const order = reachableSteps(intermediate);
+  const earlierOf = earlierSteps(intermediate);
   const errors: ValidationError[] = [];
 
   // The environment of the workflow is evaluated once when it starts, before any step runs.
@@ -160,9 +188,9 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
     );
   }
 
-  // Steps that run before the current step. It grows as the loop moves forward.
-  const earlier = new Set<string>();
   for (const id of order) {
+    // A step that can run before this one. It may be on another branch, and then it reads as null.
+    const earlier = earlierOf.get(id) ?? new Set<string>();
     const step = intermediate.steps[id];
     if (step === undefined) {
       continue;
@@ -194,6 +222,18 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
           return third === undefined
             ? undefined
             : "Cannot reference a field of a workflow input value";
+        }
+        if (root === "outputs" && scope.outputs === true && first !== undefined) {
+          if (!Object.hasOwn(step.outputs, first)) {
+            return `Step ${id} does not declare the output ${first}`;
+          }
+          return second === undefined ? undefined : "Cannot reference a field of an output value";
+        }
+        if (root === "env" && scope.env === true && first !== undefined) {
+          // Variables can come from outside of the definition, so that names cannot be checked.
+          return second === undefined
+            ? undefined
+            : "Cannot reference a field of an environment variable";
         }
         if (root === "inputs" && scope.inputs && first !== undefined) {
           if (!Object.hasOwn(step.inputs, first)) {
@@ -261,7 +301,19 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
         ),
       );
     }
-    earlier.add(id);
+    if (step.next.type === "branch") {
+      for (const [index, branch] of step.next.branches.entries()) {
+        if (branch.if !== undefined) {
+          errors.push(
+            ...checkCondition(
+              branch.if,
+              ["steps", id, "next", "branches", index, "if"],
+              check({ env: true, inputs: false, outputs: true, result }),
+            ),
+          );
+        }
+      }
+    }
   }
 
   return errors;

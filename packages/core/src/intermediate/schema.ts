@@ -23,9 +23,20 @@ const expressionMapSchema = z.record(z.string().min(1), z.string().min(1));
  */
 const envSchema = z.record(z.string().regex(envNamePattern, envNameMessage), z.string()).optional();
 
-const transitionSchema = z.discriminatedUnion("type", [
+const directTransitionSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("step"), step: stepIdSchema }),
   z.strictObject({ type: z.literal("end") }),
+]);
+
+const transitionSchema = z.discriminatedUnion("type", [
+  ...directTransitionSchema.options,
+  z.strictObject({
+    type: z.literal("branch"),
+    /** Evaluated in order. The first whose condition holds is taken, and the last has none. */
+    branches: z
+      .array(z.strictObject({ if: z.string().min(1).optional(), to: directTransitionSchema }))
+      .min(1),
+  }),
 ]);
 
 const scriptStepSchema = z.strictObject({

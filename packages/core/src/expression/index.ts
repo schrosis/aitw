@@ -2,6 +2,8 @@ import { evaluateTemplate } from "./evaluate.js";
 import type { EvaluateResult } from "./evaluate.js";
 import { parseTemplate } from "./template.js";
 
+export { conditionReferences, evaluateCondition, parseCondition } from "./condition.js";
+export type { Condition, EvaluateConditionResult, ParseConditionResult } from "./condition.js";
 export { embedValue, evaluateTemplate, pickReferences } from "./evaluate.js";
 export type { EvaluateResult } from "./evaluate.js";
 export { parseTemplate } from "./template.js";

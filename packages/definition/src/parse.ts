@@ -140,6 +140,19 @@ const convertIssue = (
 ): DefinitionError[] => {
   const path = toPath(issue.path);
 
+  // A value that has the type of one option of a union is reported with the problems of that
+  // option, such as an unknown field of a branch.
+  if (issue.code === "invalid_union") {
+    const option = issue.errors.find(
+      (issues) => !issues.some((inner) => inner.code === "invalid_type" && inner.path.length === 0),
+    );
+    if (option !== undefined) {
+      return option.flatMap((inner) =>
+        convertIssue({ ...inner, path: [...issue.path, ...inner.path] }, document, lineCounter),
+      );
+    }
+  }
+
   if (issue.code === "unrecognized_keys") {
     return issue.keys.map((key) => {
       const keyPath = [...path, key];

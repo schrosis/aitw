@@ -314,3 +314,122 @@ describe("compileDefinition for AI steps", () => {
     });
   });
 });
+
+const branchSource = (next: string): string => `version: v0.1
+start: check
+steps:
+  check:
+    type: script
+    run: ./check.sh
+    outputs:
+      ok: \${{ result.stdout }}
+    next:
+${next}
+  fix:
+    type: script
+    run: ./fix.sh
+    next: end
+`;
+
+describe("compileDefinition for branches", () => {
+  it("builds branches in order", () => {
+    const source = branchSource(`      - if: \${{ outputs.ok == 'no' }}
+        to: fix
+      - to: end`);
+
+    expect(compileDefinition(source)).toMatchObject({
+      intermediate: {
+        steps: {
+          check: {
+            next: {
+              branches: [
+                { if: "${{ outputs.ok == 'no' }}", to: { step: "fix", type: "step" } },
+                { to: { type: "end" } },
+              ],
+              type: "branch",
+            },
+          },
+        },
+      },
+      ok: true,
+    });
+  });
+
+  it("locates a missing last branch at its condition", () => {
+    const source = branchSource(`      - if: \${{ outputs.ok == 'no' }}
+        to: fix`);
+
+    expect(compileDefinition(source)).toEqual({
+      errors: [
+        {
+          column: 13,
+          line: 10,
+          message:
+            "The last branch must have no if, so that a branch is always taken. Use to: end to finish",
+          path: ["steps", "check", "next", 0, "if"],
+        },
+      ],
+      ok: false,
+    });
+  });
+
+  it("locates an unknown target and an invalid condition", () => {
+    const source = branchSource(`      - if: \${{ outputs.ok < 1 }}
+        to: fix
+      - to: missing`);
+
+    expect(compileDefinition(source)).toMatchObject({
+      errors: expect.arrayContaining([
+        expect.objectContaining({
+          line: 12,
+          message: "Unknown step: missing",
+          path: ["steps", "check", "next", 1, "to"],
+        }),
+        expect.objectContaining({ line: 10, path: ["steps", "check", "next", 0, "if"] }),
+      ]) as unknown,
+      ok: false,
+    });
+  });
+
+  it("explains what next can be", () => {
+    expect(compileDefinition(branchSource("      1"))).toMatchObject({
+      errors: [
+        {
+          message: "Must be the name of a step, end, or a list of branches with if and to",
+          path: ["steps", "check", "next"],
+        },
+      ],
+      ok: false,
+    });
+  });
+
+  it("reports the problem inside of a branch", () => {
+    expect(compileDefinition(branchSource("      - to: end\n        when: x"))).toMatchObject({
+      errors: [{ message: "Unknown field: when", path: ["steps", "check", "next", 0, "when"] }],
+      ok: false,
+    });
+    expect(compileDefinition(branchSource("      - to: 1"))).toMatchObject({
+      errors: [{ path: ["steps", "check", "next", 0, "to"] }],
+      ok: false,
+    });
+  });
+
+  it("reports the problem of a name", () => {
+    expect(compileDefinition(branchSource("      fix-1"))).toMatchObject({
+      errors: [
+        {
+          message: expect.stringContaining("Must start with a letter") as unknown,
+          path: ["steps", "check", "next"],
+        },
+      ],
+      ok: false,
+    });
+  });
+
+  it("rejects an empty list and an unknown field", () => {
+    expect(compileDefinition(branchSource("      []"))).toMatchObject({ ok: false });
+    expect(compileDefinition(branchSource("      - to: end\n        when: x"))).toMatchObject({
+      ok: false,
+    });
+  });
+});

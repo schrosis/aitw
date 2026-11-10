@@ -64,10 +64,12 @@ describe("validateIntermediate", () => {
     ]);
   });
 
-  it("rejects a step with two incoming transitions", () => {
-    expect(errorsOf(intermediate("a", { a: "c", b: "c", c: null }))).toEqual([
-      { message: "Step c is already the next step of a", path: ["steps", "b", "next", "step"] },
-      { message: "Step is not reachable from start", path: ["steps", "b"] },
+  it("rejects a transition back to a step on its path", () => {
+    expect(errorsOf(intermediate("a", { a: "b", b: "c", c: "b" }))).toEqual([
+      {
+        message: "Cannot transition back to step b: loops are not supported yet",
+        path: ["steps", "c", "next", "step"],
+      },
     ]);
   });
 

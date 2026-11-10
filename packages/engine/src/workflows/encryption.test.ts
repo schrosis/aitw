@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { intermediateVersion } from "@aitw/core";
@@ -10,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
 import { createActivities } from "../activities/index.ts";
 import { clientDataConverter, workerDataConverter } from "../encryption.ts";
+import { listRunningWorkflows } from "../run.ts";
 import { aitw } from "./index.ts";
 
 const key = randomBytes(32);
@@ -84,6 +86,34 @@ describe("aitw with encryption", () => {
     });
 
     expect(requests).toHaveLength(1);
+  }, 60_000);
+
+  it("lists its own runs while runs of another key are on the server", async () => {
+    const otherKey = randomBytes(32);
+    const start = async (encryptionKey: Uint8Array, project: string): Promise<string> => {
+      const workflowId = randomUUID();
+      await new Client({
+        connection: environment.connection,
+        ...clientDataConverter(encryptionKey),
+      }).workflow.start(aitw, {
+        args: [intermediate],
+        memo: { project },
+        taskQueue: randomUUID(),
+        workflowId,
+      });
+      return workflowId;
+    };
+    await start(otherKey, "other");
+    const own = await start(key, "own");
+    const options = { address: environment.address, encryptionKey: key, memo: { project: "own" } };
+
+    let runs = await listRunningWorkflows(options);
+    for (let attempt = 0; attempt < 100 && runs.length === 0; attempt += 1) {
+      await sleep(100);
+      runs = await listRunningWorkflows(options);
+    }
+
+    expect(runs.map(({ workflowId }) => workflowId)).toEqual([own]);
   }, 60_000);
 
   it("does not run a workflow that someone without the key starts", async () => {

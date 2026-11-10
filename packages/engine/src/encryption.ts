@@ -67,6 +67,13 @@ export interface EncryptionCodecOptions {
    * what it reads, such as the memo of a run from before payloads were encrypted.
    */
   allowPlaintext?: boolean;
+  /**
+   * Whether to read a value that this key cannot decrypt as `null`.
+   *
+   * It is for listing runs, which reads the memos of every run on the server, including the runs
+   * that others started with their own keys.
+   */
+  nullWhenUnreadable?: boolean;
 }
 
 /**
@@ -80,7 +87,7 @@ export interface EncryptionCodecOptions {
  */
 export const createEncryptionCodec = (
   key: Uint8Array,
-  { allowPlaintext = false }: EncryptionCodecOptions = {},
+  { allowPlaintext = false, nullWhenUnreadable = false }: EncryptionCodecOptions = {},
 ): PayloadCodec => {
   if (key.length !== encryptionKeyBytes) {
     throw new Error(`An encryption key must have ${encryptionKeyBytes} bytes`);
@@ -111,6 +118,9 @@ export const createEncryptionCodec = (
         Buffer.concat([decipher.update(bytes.subarray(nonceBytes + tagBytes)), decipher.final()]),
       );
     } catch (error) {
+      if (nullWhenUnreadable) {
+        return { data: Buffer.from("null"), metadata: { encoding: Buffer.from("json/plain") } };
+      }
       throw new Error("Refused a value that cannot be decrypted with the key of this host", {
         cause: error,
       });
@@ -136,3 +146,17 @@ export const clientDataConverter = (
   key === undefined
     ? {}
     : { dataConverter: { payloadCodecs: [createEncryptionCodec(key, { allowPlaintext: true })] } };
+
+/** Returns the options that make a client read the memos of runs that others started. */
+export const listingDataConverter = (
+  key: Uint8Array | undefined,
+): { dataConverter?: DataConverter } =>
+  key === undefined
+    ? {}
+    : {
+        dataConverter: {
+          payloadCodecs: [
+            createEncryptionCodec(key, { allowPlaintext: true, nullWhenUnreadable: true }),
+          ],
+        },
+      };

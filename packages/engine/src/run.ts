@@ -17,7 +17,7 @@ import { DefaultLogger, NativeConnection, Runtime, Worker } from "@temporalio/wo
 import type { LogLevel } from "@temporalio/worker";
 
 import { createActivities } from "./activities/index.js";
-import { clientDataConverter, workerDataConverter } from "./encryption.js";
+import { clientDataConverter, listingDataConverter, workerDataConverter } from "./encryption.js";
 import { answerWaits } from "./answer.js";
 import { createMemoryEventLog, followEvents } from "./events.js";
 import {
@@ -451,7 +451,7 @@ export const listRunningWorkflows = async ({
 }: ListRunningWorkflowsOptions): Promise<RunningWorkflow[]> => {
   const connection = await Connection.connect({ address });
   try {
-    const client = new Client({ connection, namespace, ...clientDataConverter(encryptionKey) });
+    const client = new Client({ connection, namespace, ...listingDataConverter(encryptionKey) });
     const runs: RunningWorkflow[] = [];
     for await (const info of client.workflow.list({
       query: "WorkflowType = 'aitw' AND ExecutionStatus = 'Running'",

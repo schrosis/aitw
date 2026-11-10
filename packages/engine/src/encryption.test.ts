@@ -78,6 +78,16 @@ describe("createEncryptionCodec", () => {
     expect(Buffer.from(decoded?.data ?? []).toString()).toContain("secret");
   });
 
+  it("reads a value of another key as null when it is asked to", async () => {
+    const encoded = await encodeOne(payload, createEncryptionCodec(randomBytes(32)));
+    const codec = createEncryptionCodec(key, { allowPlaintext: true, nullWhenUnreadable: true });
+
+    const [decoded] = await codec.decode([encoded]);
+
+    expect(Buffer.from(decoded?.data ?? []).toString()).toBe("null");
+    expect(Buffer.from(decoded?.metadata?.encoding ?? []).toString()).toBe("json/plain");
+  });
+
   it("rejects a key of the wrong size", () => {
     expect(() => createEncryptionCodec(randomBytes(16))).toThrow("must have 32 bytes");
   });

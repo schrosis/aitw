@@ -10,6 +10,7 @@ import { showDaemonStatus, startDaemon, stopDaemon } from "./daemon/commands.js"
 import { runDaemon } from "./daemon/process.js";
 import { defaultAddress } from "./server.js";
 import type { ServerOptions } from "./server.js";
+import { docs } from "./commands/docs.js";
 import { validate } from "./commands/validate.js";
 
 const readVersion = (): string => {
@@ -160,6 +161,14 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .name("aitw")
     .description("Run workflows that combine AI, people, and scripts")
     .version(version);
+
+  program
+    .command("docs")
+    .description("Generate a Markdown document next to each workflow definition")
+    .argument("[workflow]", "workflow name, such as deploy or release/notes. Defaults to all")
+    .action(async (workflow) => {
+      context.setExitCode(await docs(workflow, context));
+    });
 
   program
     .command("validate")

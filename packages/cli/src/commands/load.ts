@@ -25,6 +25,8 @@ export interface CommandContext {
 export interface LoadedWorkflow {
   /** Project root, the directory that contains `.aitw`. */
   root: string;
+  /** Path of the definition file. */
+  file: string;
   intermediate: Intermediate;
 }
 
@@ -71,5 +73,5 @@ export const loadWorkflow = async (
     return undefined;
   }
 
-  return { intermediate: result.intermediate, root: resolved.root };
+  return { file: resolved.file, intermediate: result.intermediate, root: resolved.root };
 };

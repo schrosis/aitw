@@ -1,0 +1,27 @@
+version: v0.1
+dotenv: .aitw/env.fixture
+env:
+  LEVEL: debug
+start: check
+steps:
+  check:
+    type: script
+    run: echo yes
+    next:
+      - if: ${{ result.stdout == 'yes' && env.FROM_DOTENV == 'dotenv' && env.LEVEL == 'debug' }}
+        to: matched
+      - to: other
+  matched:
+    type: script
+    run: echo matched
+    next: join
+  other:
+    type: script
+    run: echo other
+    outputs:
+      value: ${{ result.stdout }}
+    next: join
+  join:
+    type: script
+    run: echo "other=[${{ steps.other.outputs.value }}]"
+    next: end

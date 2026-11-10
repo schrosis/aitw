@@ -153,6 +153,28 @@ describe("run", () => {
     expect(result.stdout).not.toMatch(/^injected$/mu);
   }, 60_000);
 
+  it("takes the first branch that holds, and reads a step that did not run as empty", async () => {
+    const result = await execute("run-branch");
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(result.stdout).toContain("run-branch: completed (check, matched, join)\n");
+    expect(result.stdout).toContain("other=[]\n");
+  }, 60_000);
+
+  it.each([
+    ["y\n", "run-branch-wait: completed (ask, continued)\n"],
+    ["n\n", "run-branch-wait: completed (ask)\n"],
+  ])(
+    "chooses a branch of a wait step for %j",
+    async (answers, completed) => {
+      const result = await execute("run-branch-wait", undefined, undefined, undefined, answers);
+
+      expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+      expect(result.stdout).toContain(completed);
+    },
+    60_000,
+  );
+
   it("reports a failed script", async () => {
     const result = await execute("run-failure");
 

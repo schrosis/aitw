@@ -1,4 +1,4 @@
-import type { AiRunner, EventLog, ScriptRunner } from "@aitw/core";
+import type { AiRunner, EnvironmentReader, EventLog, ScriptRunner } from "@aitw/core";
 import { NativeConnection, Worker } from "@temporalio/worker";
 
 import { createActivities } from "./activities/index.js";
@@ -14,6 +14,7 @@ export interface StartWorkerOptions {
   taskQueue: string;
   scriptRunner: ScriptRunner;
   aiRunner?: AiRunner | undefined;
+  readEnvironment?: EnvironmentReader | undefined;
   /** Stores the progress events of the runs of the task queue. */
   eventLog: EventLog;
   /** Path of the workflow code. Defaults to {@link workflowsPath}. */
@@ -43,6 +44,7 @@ export const startWorker = async ({
   eventLog,
   namespace = "default",
   onError = () => {},
+  readEnvironment,
   scriptRunner,
   taskQueue,
   workflowsPath: path = workflowsPath,
@@ -50,7 +52,7 @@ export const startWorker = async ({
   const connection = await NativeConnection.connect({ address });
   try {
     const worker = await Worker.create({
-      activities: createActivities({ aiRunner, eventLog, scriptRunner }),
+      activities: createActivities({ aiRunner, eventLog, readEnvironment, scriptRunner }),
       connection,
       namespace,
       // Stopping waits for running scripts, as when a run detaches.

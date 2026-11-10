@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { AiTimeoutError, defineAiProvider, definePlugin } from "@aitw/core";
 import type { AiProvider, AiResult, Plugin } from "@aitw/core";
-import { readDotenv } from "@aitw/dotenv";
+import { readEnvironment } from "@aitw/dotenv";
 import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 
@@ -116,10 +116,9 @@ const createProvider = (query: ClaudeQuery): AiProvider<z.output<typeof optionsS
       if (signal.aborted) {
         throw signal.reason;
       }
-      const dotenvValues =
-        dotenv === undefined ? { ok: true as const, values: {} } : readDotenv(cwd, dotenv);
-      if (!dotenvValues.ok) {
-        throw new Error(dotenvValues.message);
+      const environment = readEnvironment(cwd, dotenv);
+      if (!environment.ok) {
+        throw new Error(environment.message);
       }
 
       const controller = new AbortController();
@@ -139,8 +138,8 @@ const createProvider = (query: ClaudeQuery): AiProvider<z.output<typeof optionsS
             cwd,
             // The definition of the workflow must not change while it runs.
             disallowedTools: [`Edit(/${join(cwd, ".aitw")}/**)`],
-            // The definition sets variables over the inherited ones, which dotenv does not replace.
-            env: { ...dotenvValues.values, ...process.env, ...env },
+            // The definition sets variables over what the step inherits.
+            env: { ...environment.values, ...env },
             // Nobody can answer a question during a step, so what is not allowed is denied.
             permissionMode: "dontAsk",
             ...(allowedTools === undefined ? {} : { allowedTools }),

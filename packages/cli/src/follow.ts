@@ -7,6 +7,7 @@ import { IncompatibleRunError } from "@aitw/engine";
 import type { FollowOptions, RunOutcome } from "@aitw/engine";
 
 import type { CommandContext } from "./commands/load.js";
+import { createEnvironmentReader } from "./environment.js";
 import { createLineReader } from "./lines.js";
 import type { LineReader } from "./lines.js";
 import { createRegistry } from "./plugins.js";
@@ -136,6 +137,7 @@ export const followRun = async (
       onWarning: (message) => context.stderr(`${name}: warning: ${message}\n`),
       aiRunner: createAiRunner({ cwd: root, plugins: createRegistry() }),
       plugins: createRegistry(terminal),
+      readEnvironment: createEnvironmentReader(root),
       scriptRunner: createLocalScriptRunner({ cwd: root }),
       ...(server.durable ? { detach: detach.signal } : { signal: interrupt }),
     });

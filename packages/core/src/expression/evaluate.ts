@@ -52,13 +52,21 @@ const setPath = (tree: Tree, path: readonly string[], value: unknown): void => {
  *
  * @param roots Names of the top-level context entries to pick from. Other references are left
  *   out, such as references to values that are not known yet.
+ * @param paths Paths to pick in addition, such as the references of conditions.
  */
 export const pickReferences = (
   texts: readonly string[],
   context: Readonly<Record<string, unknown>>,
   roots: ReadonlySet<string>,
+  paths: readonly (readonly string[])[] = [],
 ): Tree => {
   const picked: Tree = {};
+  for (const path of paths) {
+    const resolved = roots.has(path[0] ?? "") ? resolve(context, path) : { ok: false as const };
+    if (resolved.ok) {
+      setPath(picked, path, resolved.value);
+    }
+  }
   for (const text of texts) {
     const parsed = parseTemplate(text);
     if (!parsed.ok) {
@@ -117,10 +125,14 @@ export const evaluateTemplate = (
       continue;
     }
     const resolved = resolve(context, part.path);
-    if (!resolved.ok) {
+    if (resolved.ok) {
+      values.push(resolved.value);
+    } else if (part.path[0] === "steps") {
+      // A step on another branch may not have run. Validation checks that the step exists.
+      values.push(null);
+    } else {
       return { message: `Unknown reference: ${part.source}`, ok: false };
     }
-    values.push(resolved.value);
   }
 
   const [only] = template;

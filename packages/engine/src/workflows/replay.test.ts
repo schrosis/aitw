@@ -60,6 +60,47 @@ const scenarios: Record<
       version: intermediateVersion,
     },
   },
+  branch: {
+    drive: async (handle) => {
+      await waitForStep(handle);
+      await handle.executeUpdate(answerUpdateName, {
+        args: [{ step: "ask", values: { go: true } }],
+      });
+    },
+    inputs: {},
+    intermediate: {
+      inputs: {},
+      start: "check",
+      steps: {
+        after: script("echo after", null),
+        ask: {
+          answers: { go: { required: true, type: "boolean" } },
+          inputs: {},
+          method: "terminal",
+          next: {
+            branches: [
+              { if: "${{ result.go == true }}", to: { step: "after", type: "step" } },
+              { to: { type: "end" } },
+            ],
+            type: "branch",
+          },
+          outputs: {},
+          type: "wait",
+          with: { message: "Continue?" },
+        },
+        check: script("echo check", null, {
+          next: {
+            branches: [
+              { if: "${{ result.stdout == 'x' }}", to: { step: "ask", type: "step" } },
+              { to: { type: "end" } },
+            ],
+            type: "branch",
+          },
+        }),
+      },
+      version: intermediateVersion,
+    },
+  },
   ai: {
     inputs: {},
     intermediate: {

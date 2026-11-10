@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createPluginRegistry } from "@aitw/core";
 import type {
   AiRunner,
+  EnvironmentReader,
   EventLog,
   EventSink,
   Intermediate,
@@ -70,6 +71,7 @@ export interface FollowOptions {
   namespace?: string;
   scriptRunner: ScriptRunner;
   aiRunner?: AiRunner | undefined;
+  readEnvironment?: EnvironmentReader | undefined;
   /** Receives progress events of the run, in order. */
   eventSink?: EventSink;
   /**
@@ -182,6 +184,7 @@ const follow = async (
     namespace = "default",
     onWarning = () => {},
     plugins = createPluginRegistry(),
+    readEnvironment,
     scriptRunner,
     signal,
     startWorker = true,
@@ -190,7 +193,7 @@ const follow = async (
   } = options;
   const worker = startWorker
     ? await Worker.create({
-        activities: createActivities({ aiRunner, eventLog, scriptRunner }),
+        activities: createActivities({ aiRunner, eventLog, readEnvironment, scriptRunner }),
         connection: connections.worker,
         namespace,
         shutdownGraceTime: detachGraceTime,

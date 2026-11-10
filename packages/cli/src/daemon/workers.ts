@@ -7,6 +7,7 @@ import { createAiRunner } from "@aitw/core";
 import { startWorker } from "@aitw/engine";
 import type { RunningWorker } from "@aitw/engine";
 
+import { createEnvironmentReader } from "../environment.js";
 import { createRegistry } from "../plugins.js";
 import { projectLogDirectory, projectTaskQueue } from "../state.js";
 import { aitwDirectory } from "../workflows.js";
@@ -96,6 +97,7 @@ export const createProjectWorkers = ({
           // The next request for the project starts a new Worker.
           forget(root, worker);
         },
+        readEnvironment: createEnvironmentReader(root),
         scriptRunner: createLocalScriptRunner({ cwd: root }),
         taskQueue,
       });

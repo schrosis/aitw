@@ -1,6 +1,8 @@
 import {
+  conditionReferences,
   embedValue,
   evaluateExpression,
+  parseCondition,
   pickReferences,
   resolveWorkflowInput,
   validateIntermediate,
@@ -25,7 +27,13 @@ import {
   setHandler,
 } from "@temporalio/workflow";
 
-import type { Activities, StepOutput } from "../activities/index.js";
+import type {
+  Activities,
+  AiStepResult,
+  BranchedStepResult,
+  ScriptStepRequest,
+  StepOutput,
+} from "../activities/index.js";
 import { jsonBytes, maxValueBytes } from "../limits.js";
 import { answerUpdateName, waitingQueryName } from "../messages.js";
 import type { Answer, WaitingStep } from "../messages.js";
@@ -33,7 +41,7 @@ import type { Answer, WaitingStep } from "../messages.js";
 const waitingQuery = defineQuery<WaitingStep | null>(waitingQueryName);
 
 // Recording an event is quick, so a local activity keeps it out of the task queue.
-const { recordEvent } = proxyLocalActivities<Activities>({
+const { chooseBranch, recordEvent } = proxyLocalActivities<Activities>({
   retry: { maximumAttempts: 3 },
   startToCloseTimeout: "10 seconds",
 });
@@ -53,6 +61,18 @@ const activityTimeoutGraceMs = 10_000;
  * Keep it longer than `heartbeatIntervalMs` of the activities.
  */
 const activityHeartbeatTimeoutMs = 30_000;
+
+/**
+ * Returns the activities that run a step.
+ *
+ * They are not retried, because a step may have had side effects before it failed.
+ */
+const stepActivities = (timeoutMs: number) =>
+  proxyActivities<Activities>({
+    heartbeatTimeout: activityHeartbeatTimeoutMs,
+    retry: { maximumAttempts: 1 },
+    startToCloseTimeout: timeoutMs + activityTimeoutGraceMs,
+  });
 
 /** Result of {@link aitw}. */
 export interface WorkflowResult {
@@ -101,6 +121,17 @@ const checkValueSize = (id: string, values: unknown): void => {
   }
 };
 
+/** Returns the references of the conditions of a step. */
+const conditionPaths = (step: IntermediateStep): string[][] => {
+  if (step.next.type !== "branch") {
+    return [];
+  }
+  return step.next.branches.flatMap(({ if: text }) => {
+    const parsed = text === undefined ? undefined : parseCondition(text);
+    return parsed?.ok === true ? conditionReferences(parsed.condition) : [];
+  });
+};
+
 /**
  * Builds the values that a step receives and checks their size.
  *
@@ -122,6 +153,7 @@ const prepareStep = (
     ],
     context,
     sharedRoots,
+    conditionPaths(step),
   );
 
   // The values can combine the output of several steps, so they are limited separately.
@@ -294,20 +326,11 @@ export const aitw = async (
       workflow: { inputs: resolved.inputs },
     };
 
-    if (step.next.type === "branch") {
-      throw ApplicationFailure.nonRetryable(
-        `steps.${id}.next: Branches are not supported yet`,
-        "UnsupportedStep",
-      );
-    }
+    // Where a step with branches goes, which its activity tells.
+    let chosen: string | null = null;
 
     if (step.type === "ai") {
-      const { executeAiStep } = proxyActivities<Activities>({
-        heartbeatTimeout: activityHeartbeatTimeoutMs,
-        // The step may have changed files before it failed.
-        retry: { maximumAttempts: 1 },
-        startToCloseTimeout: step.timeoutMs + activityTimeoutGraceMs,
-      });
+      const { executeAiStep } = stepActivities(step.timeoutMs);
       const prepared = prepareStep(id, step, context, workflowEnv);
       const evaluated = evaluateStrings(step.with, `steps.${id}.with`, {
         ...context,
@@ -315,8 +338,9 @@ export const aitw = async (
       });
       const options = typeof evaluated === "object" && evaluated !== null ? { ...evaluated } : {};
       checkValueSize(id, { ...prepared, options, workflowEnv });
-      const result = await executeAiStep({
+      const result: AiStepResult = await executeAiStep({
         ...prepared,
+        ...(step.next.type === "branch" ? { branches: step.next.branches } : {}),
         dotenv,
         model: step.model,
         options,
@@ -331,6 +355,7 @@ export const aitw = async (
         workflowEnv,
       });
       outputs[id] = result.outputs;
+      chosen = result.next ?? null;
       if (result.sessionId !== undefined) {
         sessions[id] = result.sessionId;
       }
@@ -381,6 +406,20 @@ export const aitw = async (
           inputs: stepInputs,
           result: answer,
         });
+        if (step.next.type === "branch") {
+          const values: Record<string, unknown> = {
+            ...pickReferences([], context, sharedRoots, conditionPaths(step)),
+            outputs: outputs[id],
+            result: answer,
+          };
+          checkValueSize(id, { values, workflowEnv });
+          chosen = await chooseBranch({
+            branches: step.next.branches,
+            dotenv,
+            values,
+            workflowEnv,
+          });
+        }
       } catch (error) {
         waiting = null;
         if (isCancellation(error)) {
@@ -392,12 +431,8 @@ export const aitw = async (
       }
       await finish("succeeded");
     } else {
-      const { executeScriptStep } = proxyActivities<Activities>({
-        heartbeatTimeout: activityHeartbeatTimeoutMs,
-        retry: { maximumAttempts: 1 },
-        startToCloseTimeout: step.timeoutMs + activityTimeoutGraceMs,
-      });
-      outputs[id] = await executeScriptStep({
+      const { executeBranchingScriptStep, executeScriptStep } = stepActivities(step.timeoutMs);
+      const request: ScriptStepRequest = {
         ...prepareStep(id, step, context, workflowEnv),
         dotenv,
         outputs: step.outputs,
@@ -406,11 +441,22 @@ export const aitw = async (
         stepEnv: step.env,
         timeoutMs: step.timeoutMs,
         workflowEnv,
-      });
+      };
+      // A step without branches keeps the result of the activity that recorded histories have.
+      if (step.next.type === "branch") {
+        const result: BranchedStepResult = await executeBranchingScriptStep({
+          ...request,
+          branches: step.next.branches,
+        });
+        outputs[id] = result.outputs;
+        chosen = result.next;
+      } else {
+        outputs[id] = await executeScriptStep(request);
+      }
     }
     executedSteps.push(id);
 
-    id = step.next.type === "step" ? step.next.step : null;
+    id = step.next.type === "branch" ? chosen : step.next.type === "step" ? step.next.step : null;
   }
 
   // Outputs are not returned, because the result of every step together could exceed the

@@ -305,6 +305,9 @@ importers:
       '@aitw/definition':
         specifier: workspace:*
         version: link:../definition
+      '@aitw/dotenv':
+        specifier: workspace:*
+        version: link:../dotenv
       '@aitw/engine':
         specifier: workspace:*
         version: link:../engine

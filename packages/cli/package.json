@@ -29,6 +29,7 @@
     "@aitw/adapter-wait-terminal": "workspace:*",
     "@aitw/core": "workspace:*",
     "@aitw/definition": "workspace:*",
+    "@aitw/dotenv": "workspace:*",
     "@aitw/engine": "workspace:*",
     "@commander-js/extra-typings": "^15.0.0",
     "commander": "^15.0.0"

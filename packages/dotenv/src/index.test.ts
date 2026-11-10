@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { readDotenv } from "./index.ts";
+import { readDotenv, readEnvironment } from "./index.ts";
 
 describe("readDotenv", () => {
   let cwd: string;
@@ -51,5 +51,34 @@ describe("readDotenv", () => {
     } finally {
       rmSync(outside, { force: true, recursive: true });
     }
+  });
+});
+
+describe("readEnvironment", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = realpathSync(mkdtempSync(join(tmpdir(), "aitw-environment-")));
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { force: true, recursive: true });
+  });
+
+  it("returns the inherited variables without a file", () => {
+    expect(readEnvironment(cwd, undefined)).toEqual({ ok: true, values: process.env });
+  });
+
+  it("keeps inherited variables over the file", () => {
+    writeFileSync(join(cwd, ".env"), "FROM_FILE=file\nHOME=from-file\n");
+
+    expect(readEnvironment(cwd, ".env")).toMatchObject({
+      ok: true,
+      values: { FROM_FILE: "file", HOME: process.env.HOME },
+    });
+  });
+
+  it("reports a file that cannot be read", () => {
+    expect(readEnvironment(cwd, "missing.env")).toMatchObject({ ok: false });
   });
 });

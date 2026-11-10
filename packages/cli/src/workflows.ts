@@ -1,5 +1,5 @@
-import { access } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { access, readdir } from "node:fs/promises";
+import { dirname, join, sep } from "node:path";
 
 /** Directory that holds aitw files at the project root. */
 export const aitwDirectory = ".aitw";
@@ -24,6 +24,32 @@ export const findProjectRoot = async (cwd: string): Promise<string | undefined> 
     directory = parent;
   }
   return directory;
+};
+
+/** Result of {@link listWorkflows}. */
+export type ListResult = { ok: true; names: string[] } | { ok: false; message: string };
+
+/** Lists the names of the workflows of a project, in order, such as `deploy` or `release/notes`. */
+export const listWorkflows = async (cwd: string): Promise<ListResult> => {
+  const root = await findProjectRoot(cwd);
+  if (root === undefined) {
+    return { message: `No ${aitwDirectory} directory found in ${cwd} or its parents`, ok: false };
+  }
+  const directory = join(root, aitwDirectory, "workflows");
+  if (!(await exists(directory))) {
+    return { names: [], ok: true };
+  }
+  const files = await readdir(directory, { recursive: true });
+  const names = files.flatMap((file) => {
+    const extension = extensions.find((candidate) => file.endsWith(candidate));
+    if (extension === undefined) {
+      return [];
+    }
+    const name = file.slice(0, -extension.length).split(sep).join("/");
+    return name.split("/").every((segment) => segmentPattern.test(segment)) ? [name] : [];
+  });
+  // A name with both .yaml and .yml is listed once, and resolving it reports the problem.
+  return { names: [...new Set(names)].toSorted(), ok: true };
 };
 
 /** Result of {@link resolveWorkflow}. */

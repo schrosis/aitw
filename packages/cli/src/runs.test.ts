@@ -6,6 +6,7 @@ describe("describeEvents", () => {
   it.each([
     [[], "starting"],
     [[{ run: "make", step: "build", type: "stepStarted" }], "running build"],
+    [[{ provider: "claude-code", step: "review", type: "stepStarted" }], "running review"],
     [
       [{ message: "Approve?", step: "approve", type: "stepStarted" }],
       "waiting at approve: Approve?",

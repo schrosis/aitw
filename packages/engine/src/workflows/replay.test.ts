@@ -60,6 +60,30 @@ const scenarios: Record<
       version: intermediateVersion,
     },
   },
+  ai: {
+    inputs: {},
+    intermediate: {
+      env: { LEVEL: "info" },
+      inputs: {},
+      start: "review",
+      steps: {
+        report: script("echo ${{ steps.review.outputs.verdict }}", null),
+        review: {
+          inputs: {},
+          next: { step: "report", type: "step" },
+          outputs: { verdict: "${{ result.data.verdict }}" },
+          prompt: "Review",
+          provider: "claude-code",
+          schema: { type: "object" },
+          session: "reuse",
+          timeoutMs: 5000,
+          type: "ai",
+          with: { note: "x" },
+        },
+      },
+      version: intermediateVersion,
+    },
+  },
   wait: {
     drive: async (handle) => {
       await waitForStep(handle);
@@ -135,6 +159,7 @@ const record = async (): Promise<void> => {
       const taskQueue = randomUUID();
       const worker = await Worker.create({
         activities: createActivities({
+          aiRunner: { run: async () => ({ data: { verdict: "approve" }, sessionId: "session" }) },
           eventLog: createMemoryEventLog(),
           scriptRunner: {
             run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "x\n" }),

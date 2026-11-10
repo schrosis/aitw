@@ -217,7 +217,7 @@ export const createActivities = ({
    */
   const trackStep = async <Result>(
     step: string,
-    started: { run?: string },
+    started: { provider?: string; run?: string },
     body: (onOutput: (output: ScriptOutput) => void) => Promise<Result>,
   ): Promise<Result> => {
     const context = Context.current();
@@ -361,7 +361,7 @@ export const createActivities = ({
       // The step inputs are added last, so that references cannot replace them.
       const values = { ...references, inputs };
 
-      return trackStep(step, {}, async (onOutput) => {
+      return trackStep(step, { provider }, async (onOutput) => {
         const env = evaluateEnv(stepEnv, workflowEnv, values);
         if (!env.ok) {
           throw env.error;

@@ -34,7 +34,7 @@ export const describeEvents = (events: readonly WorkflowEvent[]): string => {
   if (current === undefined) {
     return events.length === 0 ? "starting" : "paused between steps";
   }
-  if (current.run !== undefined) {
+  if (current.run !== undefined || current.provider !== undefined) {
     return `running ${current.step}`;
   }
   return current.message === undefined

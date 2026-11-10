@@ -37,14 +37,20 @@ export { workflowEventSchema } from "./ports/event-sink.js";
 export type { EventSink, StepOutcome, WorkflowEvent } from "./ports/event-sink.js";
 export type { EventLog, EventPage } from "./ports/event-log.js";
 export {
+  conditionReferences,
   embedValue,
+  evaluateCondition,
   evaluateExpression,
   evaluateTemplate,
+  parseCondition,
   parseTemplate,
   pickReferences,
 } from "./expression/index.js";
 export type {
+  Condition,
+  EvaluateConditionResult,
   EvaluateResult,
+  ParseConditionResult,
   ParseTemplateResult,
   Template,
   TemplatePart,

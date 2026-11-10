@@ -1,5 +1,5 @@
 import { intermediateVersion } from "@aitw/core";
-import type { InputDeclaration, Intermediate, IntermediateStep } from "@aitw/core";
+import type { InputDeclaration, Intermediate, IntermediateStep, Transition } from "@aitw/core";
 
 import type { Definition } from "./schema.js";
 
@@ -19,6 +19,20 @@ export type WaitAnswers = Readonly<
   Record<string, Readonly<Record<string, InputDeclaration>> | undefined>
 >;
 
+const toDirectTransition = (name: string) =>
+  name === "end" ? { type: "end" as const } : { step: name, type: "step" as const };
+
+const buildTransition = (next: Definition["steps"][string]["next"]): Transition =>
+  typeof next === "string"
+    ? toDirectTransition(next)
+    : {
+        branches: next.map(({ if: condition, to }) => ({
+          ...(condition === undefined ? {} : { if: condition }),
+          to: toDirectTransition(to),
+        })),
+        type: "branch",
+      };
+
 const buildStep = (
   id: string,
   step: Definition["steps"][string],
@@ -26,8 +40,7 @@ const buildStep = (
 ): IntermediateStep => {
   const common = {
     inputs: step.inputs ?? {},
-    next:
-      step.next === "end" ? { type: "end" as const } : { step: step.next, type: "step" as const },
+    next: buildTransition(step.next),
     outputs: step.outputs ?? {},
   };
   if (step.type === "script") {
@@ -93,7 +106,11 @@ export const toDefinitionPath = (path: readonly (number | string)[]): (number | 
   }
   // A transition is written as a single value in a definition.
   if (field === "next") {
-    return [root, id ?? "", field];
+    // A branch is written as an item of the list, with its condition and its target.
+    const [kind, index, part] = rest;
+    return kind === "branches"
+      ? [root, id ?? "", field, index ?? 0, ...(typeof part === "string" ? [part] : [])]
+      : [root, id ?? "", field];
   }
   // Answers come from with, in a form that only the method knows.
   if (field === "answers") {

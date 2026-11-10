@@ -186,6 +186,24 @@ describe("aitw", () => {
     expect(scriptRequests.map(({ run: command }) => command)).toEqual(["echo approve"]);
   }, 60_000);
 
+  it("fails a step with branches, which are not supported yet", async () => {
+    const { requests, result } = await run({
+      ...intermediate,
+      steps: {
+        fetch: {
+          ...step("./fetch.sh", null),
+          next: { branches: [{ to: { type: "end" } }], type: "branch" },
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      error: { cause: { message: "steps.fetch.next: Branches are not supported yet" } },
+      ok: false,
+    });
+    expect(requests).toEqual([]);
+  }, 60_000);
+
   it("runs the steps in order", async () => {
     const { requests, result } = await run(intermediate);
 

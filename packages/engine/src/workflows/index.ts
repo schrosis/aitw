@@ -294,6 +294,13 @@ export const aitw = async (
       workflow: { inputs: resolved.inputs },
     };
 
+    if (step.next.type === "branch") {
+      throw ApplicationFailure.nonRetryable(
+        `steps.${id}.next: Branches are not supported yet`,
+        "UnsupportedStep",
+      );
+    }
+
     if (step.type === "ai") {
       const { executeAiStep } = proxyActivities<Activities>({
         heartbeatTimeout: activityHeartbeatTimeoutMs,

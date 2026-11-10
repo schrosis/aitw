@@ -28,6 +28,22 @@ const stepIdSchema = z
     "Must start with a letter, contain only letters, digits, or _, and not be the reserved word end",
   );
 
+/** Where a step goes next: a step, or branches of which the first that holds is taken. */
+const nextSchema = z.union(
+  [
+    identifierSchema,
+    z
+      .array(
+        z.strictObject({
+          if: z.string().min(1).optional().describe("Condition, such as ${{ outputs.ok == true }}"),
+          to: identifierSchema.describe("Step to go to, or end"),
+        }),
+      )
+      .min(1),
+  ],
+  { error: "Must be the name of a step, end, or a list of branches with if and to" },
+);
+
 const expressionMapSchema = z.record(identifierSchema, z.string().min(1));
 
 /**
@@ -44,7 +60,7 @@ const envSchema = z
 const scriptStepSchema = z.strictObject({
   type: z.literal("script"),
   run: z.string().min(1),
-  next: identifierSchema,
+  next: nextSchema,
   timeout: z
     .string()
     .regex(durationPattern, "Must be a positive duration such as 30s, 5m, or 1h")
@@ -62,7 +78,7 @@ const waitStepSchema = z.strictObject({
     .record(z.string(), z.json())
     .optional()
     .describe("Options of the method. Strings may contain expressions"),
-  next: identifierSchema,
+  next: nextSchema,
   inputs: expressionMapSchema.optional(),
   outputs: expressionMapSchema.optional(),
 });
@@ -84,7 +100,7 @@ const aiStepSchema = z.strictObject({
     .record(z.string(), z.json())
     .optional()
     .describe("Options of the provider. Strings may contain expressions"),
-  next: identifierSchema,
+  next: nextSchema,
   timeout: z
     .string()
     .regex(durationPattern, "Must be a positive duration such as 30s, 5m, or 1h")

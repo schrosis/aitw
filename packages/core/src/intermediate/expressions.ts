@@ -142,6 +142,7 @@ interface Scope {
 const describeScope = ({ env, inputs, outputs, result }: Scope): string => {
   const references = [
     "steps.<id>.outputs.<name>",
+    "steps.<id>.visits[n].outputs.<name>",
     "workflow.inputs.<name>",
     ...(inputs ? ["inputs.<name>"] : []),
     ...(outputs === true ? ["outputs.<name>"] : []),
@@ -189,7 +190,8 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
   }
 
   for (const id of order) {
-    // A step that can run before this one. It may be on another branch, and then it reads as null.
+    // A step that can run before this one, which can be later in a loop or on another branch. It
+    // reads as null until it has run.
     const earlier = earlierOf.get(id) ?? new Set<string>();
     const step = intermediate.steps[id];
     if (step === undefined) {
@@ -201,16 +203,24 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
       ([root, first, second, third, ...rest]: readonly string[]): string | undefined => {
         const unsupported = `Can reference only ${describeScope(scope)}`;
         if (root === "steps") {
-          if (first === undefined || second !== "outputs" || third === undefined) {
+          // An index of a visit comes before the same path as the latest output.
+          const visit = second === "visits";
+          const [section, name, ...fields] = visit ? rest : [second, third, ...rest];
+          if (
+            first === undefined ||
+            section !== "outputs" ||
+            name === undefined ||
+            (visit && !/^\d+$/u.test(third ?? ""))
+          ) {
             return unsupported;
           }
           if (!earlier.has(first)) {
             return `Step ${first} does not run before ${id}`;
           }
-          if (!Object.hasOwn(intermediate.steps[first]?.outputs ?? {}, third)) {
-            return `Step ${first} does not declare the output ${third}`;
+          if (!Object.hasOwn(intermediate.steps[first]?.outputs ?? {}, name)) {
+            return `Step ${first} does not declare the output ${name}`;
           }
-          return rest.length > 0 ? "Cannot reference a field of an output value" : undefined;
+          return fields.length > 0 ? "Cannot reference a field of an output value" : undefined;
         }
         if (root === "workflow") {
           if (first !== "inputs" || second === undefined) {

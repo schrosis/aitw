@@ -39,6 +39,7 @@ const buildStep = (
   answers: WaitAnswers,
 ): IntermediateStep => {
   const common = {
+    ...(step.maxVisits === undefined ? {} : { maxVisits: step.maxVisits }),
     inputs: step.inputs ?? {},
     next: buildTransition(step.next),
     outputs: step.outputs ?? {},

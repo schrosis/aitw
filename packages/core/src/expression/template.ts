@@ -11,13 +11,29 @@ export type Template = TemplatePart[];
 /** Result of {@link parseTemplate}. */
 export type ParseTemplateResult = { ok: true; template: Template } | { ok: false; message: string };
 
+const digitsPattern = /^\d+$/u;
+
+/**
+ * Splits the indexes off the segments of a path, such as `visits[0]` into `visits` and `0`.
+ *
+ * A segment that is only an index is not valid on its own, and is left to fail as a name.
+ */
+export const expandIndexes = (segments: readonly string[]): string[] =>
+  segments.flatMap((segment) => {
+    const match = /^(?<name>[^[\]]+)\[(?<index>\d+)\]$/u.exec(segment);
+    return match?.groups?.name !== undefined && match.groups.index !== undefined
+      ? [match.groups.name, match.groups.index]
+      : [segment];
+  });
+
 const open = "${{";
 const close = "}}";
 
 /**
  * Parses the `${{ }}` references in a string.
  *
- * A reference is a dot-separated path of names. Functions and operators are not supported.
+ * A reference is a dot-separated path of names, each of which can have an index such as
+ * `visits[0]`. Functions and operators are not supported.
  */
 export const parseTemplate = (text: string): ParseTemplateResult => {
   const template: Template = [];
@@ -39,11 +55,13 @@ export const parseTemplate = (text: string): ParseTemplateResult => {
     }
 
     const source = text.slice(start, end + close.length);
-    const path = text
-      .slice(start + open.length, end)
-      .trim()
-      .split(".");
-    if (!path.every((segment) => identifierPattern.test(segment))) {
+    const path = expandIndexes(
+      text
+        .slice(start + open.length, end)
+        .trim()
+        .split("."),
+    );
+    if (!path.every((segment) => identifierPattern.test(segment) || digitsPattern.test(segment))) {
       return {
         message: `Invalid expression: ${source}. Use a reference such as steps.fetch.outputs.title`,
         ok: false,

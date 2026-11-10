@@ -223,6 +223,32 @@ describe("aitw", () => {
     60_000,
   );
 
+  it("fails when a step runs again, which is not supported yet", async () => {
+    const { requests, result } = await run({
+      ...intermediate,
+      start: "first",
+      steps: {
+        again: {
+          ...step("./again.sh", null),
+          next: {
+            branches: [
+              { if: "${{ result.exitCode == 0 }}", to: { step: "first", type: "step" } },
+              { to: { type: "end" } },
+            ],
+            type: "branch",
+          },
+        },
+        first: step("./first.sh", "again"),
+      },
+    });
+
+    expect(result).toMatchObject({
+      error: { cause: { message: "steps.first: Running a step again is not supported yet" } },
+      ok: false,
+    });
+    expect(requests.map(({ run: command }) => command)).toEqual(["./first.sh", "./again.sh"]);
+  }, 60_000);
+
   it("finishes on a branch to end", async () => {
     const { requests, result } = await run({
       ...intermediate,

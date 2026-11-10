@@ -326,6 +326,13 @@ export const aitw = async (
       workflow: { inputs: resolved.inputs },
     };
 
+    if (executedSteps.includes(id)) {
+      throw ApplicationFailure.nonRetryable(
+        `steps.${id}: Running a step again is not supported yet`,
+        "UnsupportedStep",
+      );
+    }
+
     // Where a step with branches goes, which its activity tells.
     let chosen: string | null = null;
 

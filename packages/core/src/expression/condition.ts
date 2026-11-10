@@ -1,3 +1,5 @@
+import { expandIndexes } from "./template.js";
+
 /** A condition of a transition, as a tree. */
 export type Condition =
   | { type: "literal"; value: boolean | number | string | null }
@@ -21,7 +23,7 @@ type Token =
 
 // Names can start with _, unlike those of a template, because environment variables can.
 const tokenPattern =
-  /\s*(?:(?<operator>==|!=|&&|\|\||!|\(|\))|'(?<text>(?:[^']|'')*)'|(?<number>-?\d+(?:\.\d+)?)|(?<name>[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*))/uy;
+  /\s*(?:(?<operator>==|!=|&&|\|\||!|\(|\))|'(?<text>(?:[^']|'')*)'|(?<number>-?\d+(?:\.\d+)?)|(?<name>[A-Za-z_][A-Za-z0-9_]*(?:\[\d+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[\d+\])?)*))/uy;
 
 const keywords: ReadonlyMap<string, boolean | null> = new Map([
   ["false", false],
@@ -53,7 +55,7 @@ const tokenize = (expression: string): Token[] => {
       const keyword = keywords.get(name);
       tokens.push(
         keyword === undefined
-          ? { kind: "reference", path: name.split(".") }
+          ? { kind: "reference", path: expandIndexes(name.split(".")) }
           : { kind: "literal", value: keyword },
       );
     }

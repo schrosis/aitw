@@ -69,6 +69,15 @@ describe("evaluateCondition", () => {
     expect(evaluate("${{ true || count }}")).toEqual({ ok: true, value: true });
   });
 
+  it("reads an index of a list", () => {
+    const parsed = parseCondition("${{ list[1].name == 'b' }}");
+
+    expect(
+      parsed.ok && evaluateCondition(parsed.condition, { list: [{ name: "a" }, { name: "b" }] }),
+    ).toEqual({ ok: true, value: true });
+    expect(parsed.ok && conditionReferences(parsed.condition)).toEqual([["list", "1", "name"]]);
+  });
+
   it("does not read inherited members", () => {
     expect(evaluate("${{ outputs.constructor == null }}")).toEqual({ ok: true, value: true });
   });

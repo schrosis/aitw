@@ -74,35 +74,43 @@ const validateBranches = (id: string, step: Intermediate["steps"][string]): Vali
   });
 };
 
-/** Reports transitions that go back to a step on their own path. Loops are not supported yet. */
-const validateCycles = ({ start, steps }: Intermediate): ValidationError[] => {
-  const errors: ValidationError[] = [];
-  const finished = new Set<string>();
-  const onPath = new Set<string>();
-  const visit = (id: string): void => {
-    const step = steps[id];
-    if (step === undefined || !Object.hasOwn(steps, id) || finished.has(id)) {
-      return;
+/** Reports the steps from which no path reaches the end, so that the workflow could never finish. */
+const validateTermination = (intermediate: Intermediate): ValidationError[] => {
+  const { steps } = intermediate;
+  const reachable = reachableSteps(intermediate);
+  const sources = new Map<string, string[]>();
+  const finishing: string[] = [];
+  for (const id of reachable) {
+    const next = steps[id]?.next;
+    if (next === undefined) {
+      continue;
     }
-    onPath.add(id);
-    for (const { path, step: target } of transitionTargets(step.next)) {
-      if (onPath.has(target)) {
-        // A transition to the start has its own message.
-        if (target !== start) {
-          errors.push({
-            message: `Cannot transition back to step ${target}: loops are not supported yet`,
-            path: ["steps", id, "next", ...path],
-          });
-        }
-      } else {
-        visit(target);
-      }
+    const targets = transitionTargets(next);
+    for (const { step } of targets) {
+      sources.set(step, [...(sources.get(step) ?? []), id]);
     }
-    onPath.delete(id);
-    finished.add(id);
-  };
-  visit(start);
-  return errors;
+    const ends =
+      next.type === "end" ||
+      (next.type === "branch" && next.branches.some(({ to }) => to.type === "end"));
+    // An unknown step is reported on its own, so it does not count as a path that never ends.
+    if (ends || targets.some(({ step }) => !Object.hasOwn(steps, step))) {
+      finishing.push(id);
+    }
+  }
+
+  const canFinish = new Set<string>();
+  for (let id = finishing.pop(); id !== undefined; id = finishing.pop()) {
+    if (!canFinish.has(id)) {
+      canFinish.add(id);
+      finishing.push(...(sources.get(id) ?? []));
+    }
+  }
+  return reachable
+    .filter((id) => !canFinish.has(id))
+    .map((id) => ({
+      message: `Step ${id} cannot reach end, so the workflow could never finish`,
+      path: ["steps", id, "next"],
+    }));
 };
 
 const validateTransitions = (intermediate: Intermediate): ValidationError[] => {
@@ -119,14 +127,12 @@ const validateTransitions = (intermediate: Intermediate): ValidationError[] => {
       const path = ["steps", id, "next", ...targetPath];
       if (!Object.hasOwn(steps, next)) {
         errors.push({ message: `Unknown step: ${next}`, path });
-      } else if (next === start) {
-        errors.push({ message: `Cannot transition to the start step: ${next}`, path });
       }
     }
   }
-  errors.push(...validateCycles(intermediate));
+  errors.push(...validateTermination(intermediate));
 
-  // An unknown step or a cycle ends the path. Both are reported above.
+  // An unknown step ends the path, and is reported above.
   const reachable = new Set(reachableSteps(intermediate));
   for (const id of Object.keys(steps)) {
     if (!reachable.has(id)) {
@@ -140,7 +146,7 @@ const validateTransitions = (intermediate: Intermediate): ValidationError[] => {
 /**
  * Validates the shape and transitions of an intermediate representation.
  *
- * Every step must be reachable from `start`, and loops are not supported yet.
+ * Every step must be reachable from `start`, and must have a path to the end.
  */
 export const validateIntermediate = (input: unknown): ValidationResult => {
   const result = intermediateSchema.safeParse(input);

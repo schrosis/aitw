@@ -39,8 +39,12 @@ const transitionSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+/** Times that a step can run in a run. A step without it has no limit. */
+const maxVisitsSchema = z.int().positive().optional();
+
 const scriptStepSchema = z.strictObject({
   type: z.literal("script"),
+  maxVisits: maxVisitsSchema,
   run: z.string().min(1),
   next: transitionSchema,
   timeoutMs: z.int().positive(),
@@ -51,6 +55,7 @@ const scriptStepSchema = z.strictObject({
 
 const waitStepSchema = z.strictObject({
   type: z.literal("wait"),
+  maxVisits: maxVisitsSchema,
   method: z.string().min(1),
   next: transitionSchema,
   /** Options of the method as the definition writes them. Strings may contain expressions. */
@@ -66,6 +71,7 @@ const waitStepSchema = z.strictObject({
 
 const aiStepSchema = z.strictObject({
   type: z.literal("ai"),
+  maxVisits: maxVisitsSchema,
   /** Name of the provider that runs the step, such as `claude-code`. */
   provider: z.string().min(1),
   /** Model to use, passed to the provider as it is. The provider chooses one when it is omitted. */

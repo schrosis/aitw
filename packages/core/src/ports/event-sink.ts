@@ -10,6 +10,8 @@ export type WorkflowEvent =
       step: string;
       /** Command line of a script step. Other steps have none. */
       run?: string | undefined;
+      /** Provider of an AI step. Other steps have none. */
+      provider?: string | undefined;
       /**
        * What a wait step waits for, from the `message` option of its method, such as to list
        * the runs that wait.
@@ -48,6 +50,7 @@ export const workflowEventSchema: z.ZodType<WorkflowEvent> = z.discriminatedUnio
     type: z.literal("stepStarted"),
     ...stepEventBase,
     run: z.string().optional(),
+    provider: z.string().optional(),
     message: z.string().optional(),
   }),
   z.strictObject({

@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import type { InputDeclaration } from "../intermediate/index.js";
+import type { AiRequest, AiResult, AiRunOptions } from "../ports/ai-runner.js";
 
 /**
  * A way for a `wait` step to wait, such as asking in the terminal or watching a CI run.
@@ -58,6 +59,21 @@ export interface AiProvider<Options = unknown> {
   name: string;
   /** Schema of the `with` field of a step. It must validate synchronously. */
   with: StandardSchemaV1<unknown, Options>;
+  /**
+   * Runs a step and resolves with its result after it finishes.
+   *
+   * It must stop the step when the signal is aborted, and throw {@link AiTimeoutError} when the
+   * step exceeds `timeoutMs`.
+   */
+  run(request: AiProviderRequest<Options>, options: AiRunOptions): Promise<AiResult>;
+}
+
+/** What {@link AiProvider.run} receives. */
+export interface AiProviderRequest<Options> extends Omit<AiRequest, "options" | "provider"> {
+  /** Options from `with`, after its expressions are evaluated and the schema is applied. */
+  options: Options;
+  /** Working directory of the step. */
+  cwd: string;
 }
 
 /** A package that extends aitw. */

@@ -1,6 +1,7 @@
 import { createFileEventLog } from "@aitw/adapter-event-log-file";
 import type { TerminalIO } from "@aitw/adapter-wait-terminal";
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
+import { createAiRunner } from "@aitw/core";
 import type { EventSink } from "@aitw/core";
 import { IncompatibleRunError } from "@aitw/engine";
 import type { FollowOptions, RunOutcome } from "@aitw/engine";
@@ -96,14 +97,15 @@ export const followRun = async (
 ): Promise<number> => {
   const terminal = given ?? createTerminal(context);
   const printer = createProgressPrinter(context);
-  // The script that runs now, so that an interrupt can tell that the run waits for it.
-  let runningScript: string | undefined;
+  // The script or AI step that runs now, so that an interrupt can tell that the run waits for it.
+  let runningStep: string | undefined;
   const eventSink: EventSink = {
     emit: (event) => {
       if (event.type === "stepStarted") {
-        runningScript = event.run === undefined ? undefined : event.step;
+        runningStep =
+          event.run === undefined && event.provider === undefined ? undefined : event.step;
       } else if (event.type === "stepFinished") {
-        runningScript = undefined;
+        runningStep = undefined;
       }
       printer.emit(event);
     },
@@ -116,7 +118,7 @@ export const followRun = async (
     if (!server.durable) {
       return;
     }
-    if (ownsWorker && runningScript !== undefined) {
+    if (ownsWorker && runningStep !== undefined) {
       context.stderr(
         "Waiting for the running step to finish, so that the run can be resumed.\n" +
           "Press Ctrl+C again to exit now. The running step will fail, and the run cannot be resumed.\n",
@@ -132,6 +134,7 @@ export const followRun = async (
       eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
       eventSink,
       onWarning: (message) => context.stderr(`${name}: warning: ${message}\n`),
+      aiRunner: createAiRunner({ cwd: root, plugins: createRegistry() }),
       plugins: createRegistry(terminal),
       scriptRunner: createLocalScriptRunner({ cwd: root }),
       ...(server.durable ? { detach: detach.signal } : { signal: interrupt }),

@@ -77,9 +77,9 @@ const aiStepSchema = z.strictObject({
 export const intermediateSchema = z.strictObject({
   version: z.literal(intermediateVersion),
   inputs: z.record(inputNameSchema, inputDeclarationSchema),
-  /** Environment variables of every script step. Values can reference only `workflow.inputs`. */
+  /** Environment variables of every script and AI step. Values can reference only `workflow.inputs`. */
   env: envSchema,
-  /** Path of a dotenv file, relative to the project root, that script steps read. */
+  /** Path of a dotenv file, relative to the project root, that script and AI steps read. */
   dotenv: z
     .string()
     .min(1)

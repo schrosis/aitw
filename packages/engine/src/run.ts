@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import { createPluginRegistry } from "@aitw/core";
-import type { EventLog, EventSink, Intermediate, PluginRegistry, ScriptRunner } from "@aitw/core";
+import type {
+  AiRunner,
+  EventLog,
+  EventSink,
+  Intermediate,
+  PluginRegistry,
+  ScriptRunner,
+} from "@aitw/core";
 import { Client, Connection } from "@temporalio/client";
 import type { WorkflowHandle } from "@temporalio/client";
 import { DefaultLogger, NativeConnection, Runtime, Worker } from "@temporalio/worker";
@@ -62,6 +69,7 @@ export interface FollowOptions {
   /** Temporal namespace. Defaults to `default`. */
   namespace?: string;
   scriptRunner: ScriptRunner;
+  aiRunner?: AiRunner | undefined;
   /** Receives progress events of the run, in order. */
   eventSink?: EventSink;
   /**
@@ -166,6 +174,7 @@ const follow = async (
   open: () => Promise<WorkflowHandle<typeof aitw>>,
 ): Promise<RunOutcome> => {
   const {
+    aiRunner,
     cancelNow = false,
     detach,
     eventLog = createMemoryEventLog(),
@@ -181,7 +190,7 @@ const follow = async (
   } = options;
   const worker = startWorker
     ? await Worker.create({
-        activities: createActivities({ eventLog, scriptRunner }),
+        activities: createActivities({ aiRunner, eventLog, scriptRunner }),
         connection: connections.worker,
         namespace,
         shutdownGraceTime: detachGraceTime,

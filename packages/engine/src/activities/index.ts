@@ -1,6 +1,11 @@
-import { embedValue, evaluateExpression, ScriptTimeoutError } from "@aitw/core";
+import { AiTimeoutError, embedValue, evaluateExpression, ScriptTimeoutError } from "@aitw/core";
 import type {
+  AiRequest,
+  AiResult,
+  AiRunner,
+  AiRunOptions,
   EventLog,
+  ScriptOutput,
   ScriptRequest,
   ScriptResult,
   ScriptRunner,
@@ -15,6 +20,8 @@ import { jsonBytes, maxValueBytes } from "../limits.js";
 /** Adapters and settings that the activities use. */
 export interface ActivityDependencies {
   scriptRunner: ScriptRunner;
+  /** Runs AI steps. A step fails when it is omitted, such as in a Worker only for cancelling. */
+  aiRunner?: AiRunner | undefined;
   /** Stores progress events, keyed by the workflow ID. Events are discarded when it is omitted. */
   eventLog?: EventLog | undefined;
   /**
@@ -41,6 +48,29 @@ export interface ScriptStepRequest extends Omit<ScriptRequest, "env"> {
    * `steps` and `workflow` entries.
    */
   references: Readonly<Record<string, unknown>>;
+}
+
+/** Input of {@link Activities.executeAiStep}. */
+export interface AiStepRequest extends Omit<AiRequest, "env"> {
+  /** ID of the step in the workflow definition. */
+  step: string;
+  /** Environment variables of the step, keyed by name. Values may contain expressions. */
+  stepEnv?: Readonly<Record<string, string>> | undefined;
+  /** Environment variables of the workflow, after their expressions are evaluated. */
+  workflowEnv?: Readonly<Record<string, string>> | undefined;
+  /** Evaluated input values of the step. */
+  inputs: Readonly<Record<string, unknown>>;
+  /** Expressions of the values that the step publishes, keyed by name. */
+  outputs: Readonly<Record<string, string>>;
+  /** Values of earlier steps and of the workflow input that the step references. */
+  references: Readonly<Record<string, unknown>>;
+}
+
+/** Result of {@link Activities.executeAiStep}. */
+export interface AiStepResult {
+  outputs: StepOutput;
+  /** Session that a later run of the step can continue. */
+  sessionId?: string | undefined;
 }
 
 /** Values that a step publishes to later steps, keyed by name. */
@@ -79,17 +109,12 @@ const evaluateEnv = (
   return { ok: true, value: env };
 };
 
-/** Evaluates the declared output values from the result of a script. */
+/** Evaluates the declared output values from the result of a step. */
 const evaluateOutput = (
   expressions: Readonly<Record<string, string>>,
   context: Readonly<Record<string, unknown>>,
-  { exitCode, stderr, stdout }: ScriptResult,
+  result: Readonly<Record<string, unknown>>,
 ): StepOutput => {
-  const result = {
-    exitCode,
-    stderr: trimTrailingNewline(stderr),
-    stdout: trimTrailingNewline(stdout),
-  };
   const output: StepOutput = {};
   for (const [name, expression] of Object.entries(expressions)) {
     const evaluated = evaluateExpression(expression, { ...context, result });
@@ -160,47 +185,41 @@ const runScript = async (
   return result;
 };
 
+const runAi = async (
+  aiRunner: AiRunner | undefined,
+  request: AiRequest,
+  options: AiRunOptions,
+): Promise<AiResult> => {
+  if (aiRunner === undefined) {
+    throw ApplicationFailure.nonRetryable("This Worker cannot run AI steps", "AiRunnerUnavailable");
+  }
+  return aiRunner.run(request, options).catch((error: unknown) => {
+    if (error instanceof AiTimeoutError) {
+      throw ApplicationFailure.nonRetryable(error.message, "AiTimedOut", {
+        timeoutMs: error.timeoutMs,
+      });
+    }
+    throw error;
+  });
+};
+
 /** Creates the activities that a Worker registers. */
 export const createActivities = ({
+  aiRunner,
   eventLog = discardEvents,
   heartbeatIntervalMs = 5000,
   scriptRunner,
-}: ActivityDependencies) => ({
+}: ActivityDependencies) => {
   /**
-   * Stores a progress event of the workflow, such as the start of a wait step.
+   * Reports the start and the end of a step around its work, and keeps the activity alive.
    *
-   * The workflow cannot write the log itself, and storing events from the Worker keeps them in
-   * the order of the steps.
+   * @param body Does the work, and receives a function that reports its output.
    */
-  recordEvent: async (event: WorkflowEvent): Promise<void> => {
-    const context = Context.current();
-    try {
-      const runId = context.info.workflowExecution?.workflowId;
-      if (runId !== undefined) {
-        eventLog.append(runId, event);
-      }
-    } catch (error) {
-      // Progress is only observed, so a failing log must not stop the workflow.
-      context.log.warn("Failed to record a progress event", { error, step: event.step });
-    }
-  },
-  /**
-   * Runs a script step and fails without retrying when the script does not exit with zero.
-   *
-   * The `${{ }}` references in `run` are expanded as plain text. Only the declared output
-   * values are returned, because the workflow history stores the result.
-   */
-  executeScriptStep: async ({
-    dotenv,
-    inputs,
-    outputs: outputExpressions,
-    references,
-    run: runTemplate,
-    step,
-    stepEnv,
-    timeoutMs,
-    workflowEnv,
-  }: ScriptStepRequest): Promise<StepOutput> => {
+  const trackStep = async <Result>(
+    step: string,
+    started: { provider?: string; run?: string },
+    body: (onOutput: (output: ScriptOutput) => void) => Promise<Result>,
+  ): Promise<Result> => {
     const context = Context.current();
     // Progress is only observed, so a failing log must not change the result of the step.
     const emit = (event: WorkflowEvent): void => {
@@ -216,51 +235,25 @@ export const createActivities = ({
     };
     // A monotonic clock keeps durations correct when the system clock is adjusted.
     const startedAt = performance.now();
-    // Output that arrives after the script settles would appear after the end of the step.
+    // Output that arrives after the step settles would appear after the end of the step.
     let settled = false;
-    // The step inputs are added last, so that references cannot replace them.
-    const values = { ...references, inputs };
-    const env = evaluateEnv(stepEnv, workflowEnv, values);
-    const expanded = evaluateExpression(runTemplate, values);
-    const run = expanded.ok ? embedValue(expanded.value) : runTemplate;
-    emit({ run, step, type: "stepStarted" });
+    emit({ ...started, step, type: "stepStarted" });
     const heartbeat = setInterval(() => context.heartbeat(), heartbeatIntervalMs);
 
     try {
-      if (!env.ok) {
-        throw env.error;
-      }
-      if (!expanded.ok) {
-        throw invalidExpression("run", expanded.message);
-      }
-      const result = await runScript(
-        scriptRunner,
-        {
-          // A step without variables sends none, as before they existed.
-          ...(dotenv === undefined ? {} : { dotenv }),
-          ...(env.ok && Object.keys(env.value).length > 0 ? { env: env.value } : {}),
-          inputs,
-          run,
-          timeoutMs,
-        },
-        {
-          onOutput: (output) => {
-            if (!settled) {
-              emit({ ...output, step, type: "stepOutput" });
-            }
-          },
-          signal: context.cancellationSignal,
-        },
-      );
+      const result = await body((output) => {
+        if (!settled) {
+          emit({ ...output, step, type: "stepOutput" });
+        }
+      });
       settled = true;
-      const output = evaluateOutput(outputExpressions, values, result);
       emit({
         durationMs: Math.round(performance.now() - startedAt),
         outcome: "succeeded",
         step,
         type: "stepFinished",
       });
-      return output;
+      return result;
     } catch (error) {
       settled = true;
       emit({
@@ -274,8 +267,135 @@ export const createActivities = ({
     } finally {
       clearInterval(heartbeat);
     }
-  },
-});
+  };
+
+  return {
+    /**
+     * Stores a progress event of the workflow, such as the start of a wait step.
+     *
+     * The workflow cannot write the log itself, and storing events from the Worker keeps them in
+     * the order of the steps.
+     */
+    recordEvent: async (event: WorkflowEvent): Promise<void> => {
+      const context = Context.current();
+      try {
+        const runId = context.info.workflowExecution?.workflowId;
+        if (runId !== undefined) {
+          eventLog.append(runId, event);
+        }
+      } catch (error) {
+        // Progress is only observed, so a failing log must not stop the workflow.
+        context.log.warn("Failed to record a progress event", { error, step: event.step });
+      }
+    },
+    /**
+     * Runs a script step and fails without retrying when the script does not exit with zero.
+     *
+     * The `${{ }}` references in `run` are expanded as plain text. Only the declared output
+     * values are returned, because the workflow history stores the result.
+     */
+    executeScriptStep: async ({
+      dotenv,
+      inputs,
+      outputs: outputExpressions,
+      references,
+      run: runTemplate,
+      step,
+      stepEnv,
+      timeoutMs,
+      workflowEnv,
+    }: ScriptStepRequest): Promise<StepOutput> => {
+      // The step inputs are added last, so that references cannot replace them.
+      const values = { ...references, inputs };
+      const env = evaluateEnv(stepEnv, workflowEnv, values);
+      const expanded = evaluateExpression(runTemplate, values);
+      const run = expanded.ok ? embedValue(expanded.value) : runTemplate;
+
+      return trackStep(step, { run }, async (onOutput) => {
+        if (!env.ok) {
+          throw env.error;
+        }
+        if (!expanded.ok) {
+          throw invalidExpression("run", expanded.message);
+        }
+        const { exitCode, stderr, stdout } = await runScript(
+          scriptRunner,
+          {
+            // A step without variables sends none, as before they existed.
+            ...(dotenv === undefined ? {} : { dotenv }),
+            ...(Object.keys(env.value).length > 0 ? { env: env.value } : {}),
+            inputs,
+            run,
+            timeoutMs,
+          },
+          { onOutput, signal: Context.current().cancellationSignal },
+        );
+        return evaluateOutput(outputExpressions, values, {
+          exitCode,
+          stderr: trimTrailingNewline(stderr),
+          stdout: trimTrailingNewline(stdout),
+        });
+      });
+    },
+    /**
+     * Runs an AI step. It is not retried, because it may have changed files before it failed.
+     *
+     * Only the declared output values are returned, because the workflow history stores the result.
+     */
+    executeAiStep: async ({
+      dotenv,
+      inputs,
+      model,
+      options,
+      outputs: outputExpressions,
+      prompt: promptTemplate,
+      provider,
+      references,
+      schema,
+      sessionId,
+      step,
+      stepEnv,
+      timeoutMs,
+      workflowEnv,
+    }: AiStepRequest): Promise<AiStepResult> => {
+      // The step inputs are added last, so that references cannot replace them.
+      const values = { ...references, inputs };
+
+      return trackStep(step, { provider }, async (onOutput) => {
+        const env = evaluateEnv(stepEnv, workflowEnv, values);
+        if (!env.ok) {
+          throw env.error;
+        }
+        const prompt = evaluateExpression(promptTemplate, values);
+        if (!prompt.ok) {
+          throw invalidExpression("prompt", prompt.message);
+        }
+        const result = await runAi(
+          aiRunner,
+          {
+            ...(dotenv === undefined ? {} : { dotenv }),
+            ...(Object.keys(env.value).length > 0 ? { env: env.value } : {}),
+            ...(model === undefined ? {} : { model }),
+            ...(schema === undefined ? {} : { schema }),
+            ...(sessionId === undefined ? {} : { sessionId }),
+            options,
+            prompt: embedValue(prompt.value),
+            provider,
+            timeoutMs,
+          },
+          {
+            onProgress: (text) => onOutput({ stream: "stdout", text }),
+            signal: Context.current().cancellationSignal,
+          },
+        );
+        return {
+          outputs: evaluateOutput(outputExpressions, values, { data: result.data }),
+          ...(result.sessionId === undefined ? {} : { sessionId: result.sessionId }),
+        };
+      });
+    },
+  };
+};
 
 /** Activities registered by a Worker. */
 export type Activities = ReturnType<typeof createActivities>;

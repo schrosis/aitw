@@ -6,6 +6,8 @@
     { "path": "packages/engine" },
     { "path": "packages/adapter-event-log-file" },
     { "path": "packages/adapter-script-local" },
+    { "path": "packages/dotenv" },
+    { "path": "packages/adapter-ai-claude-code" },
     { "path": "packages/adapter-wait-terminal" },
     { "path": "packages/cli" }
   ]

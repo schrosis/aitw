@@ -20,7 +20,8 @@
     "typecheck": "tsc -b && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@aitw/core": "workspace:*"
+    "@aitw/core": "workspace:*",
+    "@aitw/dotenv": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:"

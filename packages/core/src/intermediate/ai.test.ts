@@ -123,9 +123,18 @@ describe("validateIntermediate for AI steps", () => {
     ).toEqual([]);
   });
 
+  it.each([[{ items: { type: "number" }, type: "array" }], [{ type: "string" }], [{}]])(
+    "rejects a schema that is not an object: %j",
+    (notObject) => {
+      expect(errorsOf(review({ schema: notObject }))).toEqual([
+        { message: "The schema must have type: object", path: ["steps", "review", "schema"] },
+      ]);
+    },
+  );
+
   it("allows what only the run can tell", () => {
     const open = { additionalProperties: true, properties: {}, type: "object" };
-    const untyped = { oneOf: [{ type: "object" }] };
+    const untyped = { oneOf: [{ type: "object" }], type: "object" };
 
     expect(errorsOf(review({ outputs: { a: "${{ result.data.any }}" }, schema: open }))).toEqual(
       [],

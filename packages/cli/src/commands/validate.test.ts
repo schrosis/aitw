@@ -83,6 +83,14 @@ describe("validate", () => {
     });
   });
 
+  it("accepts an AI step of a built-in provider", async () => {
+    await expect(run("ai-valid")).resolves.toEqual({
+      exitCode: 0,
+      stderr: "",
+      stdout: "ai-valid: valid\n",
+    });
+  });
+
   it("reports invalid references in env", async () => {
     await expect(run("env-error")).resolves.toEqual({
       exitCode: 1,

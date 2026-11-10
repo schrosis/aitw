@@ -22,7 +22,11 @@ const prefixed = (prefix: (number | string)[], errors: ValidationError[]): Valid
 /** Validates the parts of declarations that the schema cannot express. */
 const validateDeclarations = ({ inputs, steps }: Intermediate): ValidationError[] => [
   ...prefixed(["inputs"], checkInputDeclarations(inputs)),
-  ...Object.entries(steps).flatMap(([id, step]) => {
+  ...Object.entries(steps).flatMap(([id, step]): ValidationError[] => {
+    // Providers return a structured result as an object.
+    if (step.type === "ai" && step.schema !== undefined && step.schema.type !== "object") {
+      return [{ message: "The schema must have type: object", path: ["steps", id, "schema"] }];
+    }
     if (step.type !== "wait" || step.answers === undefined) {
       return [];
     }

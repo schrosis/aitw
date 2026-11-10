@@ -109,6 +109,20 @@ describe("validateIntermediate for AI steps", () => {
     ]);
   });
 
+  it.each([
+    ["allOf", [{ properties: { summary: { type: "string" } } }]],
+    ["anyOf", [{ properties: { summary: { type: "string" } } }]],
+    ["oneOf", [{ properties: { summary: { type: "string" } } }]],
+    ["$ref", "#/$defs/review"],
+    ["patternProperties", { "^s": { type: "string" } }],
+  ])("allows a property that %s can declare beside properties", (keyword, value) => {
+    const composed = { ...schema, [keyword]: value };
+
+    expect(
+      errorsOf(review({ outputs: { summary: "${{ result.data.summary }}" }, schema: composed })),
+    ).toEqual([]);
+  });
+
   it("allows what only the run can tell", () => {
     const open = { additionalProperties: true, properties: {}, type: "object" };
     const untyped = { oneOf: [{ type: "object" }] };

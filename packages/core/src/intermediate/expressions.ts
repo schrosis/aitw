@@ -12,11 +12,31 @@ const aiResultFields: ReadonlySet<string> = new Set(["data"]);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** JSON Schema keywords that can declare properties outside of `properties`. */
+const propertyKeywords = [
+  "$ref",
+  "allOf",
+  "anyOf",
+  "dependentSchemas",
+  "if",
+  "oneOf",
+  "patternProperties",
+  "unevaluatedProperties",
+];
+
+/** Returns whether a JSON Schema object can have properties that `properties` does not list. */
+const allowsOtherProperties = (schema: Readonly<Record<string, unknown>>): boolean =>
+  (schema.additionalProperties !== undefined && schema.additionalProperties !== false) ||
+  propertyKeywords.some((keyword) => Object.hasOwn(schema, keyword));
+
 /**
  * Checks a reference to the result of an AI step against its JSON Schema.
  *
  * Only `properties` are followed. What other keywords describe, such as `$ref` or `oneOf`, is
  * known only when the step runs, so references into them are allowed.
+ *
+ * An object without `additionalProperties` is treated as closed, which is stricter than JSON
+ * Schema, so that a misspelled name is reported before the step runs. Set it to allow others.
  *
  * @param path The reference after `result`, such as `["data", "verdict"]`.
  */
@@ -38,9 +58,9 @@ const checkAiResult = (
       return undefined;
     }
     if (!Object.hasOwn(current.properties, segment)) {
-      const open =
-        current.additionalProperties !== undefined && current.additionalProperties !== false;
-      return open ? undefined : `The schema of step ${id} does not declare the property ${segment}`;
+      return allowsOtherProperties(current)
+        ? undefined
+        : `The schema of step ${id} does not declare the property ${segment}`;
     }
     current = current.properties[segment];
   }

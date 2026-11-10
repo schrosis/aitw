@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  createAiRunner,
   createPluginRegistry,
   defineAiProvider,
   definePlugin,
@@ -43,7 +44,11 @@ describe("createPluginRegistry", () => {
   });
 
   it("registers AI providers like wait methods", () => {
-    const claude = defineAiProvider({ name: "claude-code", with: z.strictObject({}) });
+    const claude = defineAiProvider({
+      name: "claude-code",
+      run: async () => ({ data: "" }),
+      with: z.strictObject({}),
+    });
     const registry = createPluginRegistry({
       builtins: [definePlugin({ aiProviders: [claude], name: "claude" })],
       plugins: [definePlugin({ aiProviders: [{ ...claude }], name: "acme" })],
@@ -55,7 +60,11 @@ describe("createPluginRegistry", () => {
   });
 
   it("rejects duplicate and invalid AI provider names", () => {
-    const claude = defineAiProvider({ name: "claude-code", with: z.strictObject({}) });
+    const claude = defineAiProvider({
+      name: "claude-code",
+      run: async () => ({ data: "" }),
+      with: z.strictObject({}),
+    });
 
     expect(() =>
       createPluginRegistry({
@@ -186,5 +195,49 @@ describe("validateWithSchema", () => {
       errors: [{ message: expect.stringContaining("asynchronously") as unknown, path: [] }],
       ok: false,
     });
+  });
+});
+
+describe("createAiRunner", () => {
+  const requests: unknown[] = [];
+  const plugins = createPluginRegistry({
+    builtins: [
+      definePlugin({
+        aiProviders: [
+          defineAiProvider({
+            name: "claude-code",
+            run: async (request) => {
+              requests.push(request);
+              return { data: "done", sessionId: "s1" };
+            },
+            with: z.strictObject({ limit: z.number().default(3) }),
+          }),
+        ],
+        name: "claude",
+      }),
+    ],
+  });
+  const runner = createAiRunner({ cwd: "/project", plugins });
+  const signal = new AbortController().signal;
+
+  it("runs the provider that the step names, with its validated options", async () => {
+    await expect(
+      runner.run({ options: {}, prompt: "Hi", provider: "claude-code", timeoutMs: 1 }, { signal }),
+    ).resolves.toEqual({ data: "done", sessionId: "s1" });
+    expect(requests).toEqual([
+      { cwd: "/project", options: { limit: 3 }, prompt: "Hi", timeoutMs: 1 },
+    ]);
+  });
+
+  it("rejects an unknown provider and invalid options", async () => {
+    await expect(
+      runner.run({ options: {}, prompt: "Hi", provider: "codex", timeoutMs: 1 }, { signal }),
+    ).rejects.toThrow("Unknown AI provider: codex");
+    await expect(
+      runner.run(
+        { options: { limit: "x" }, prompt: "Hi", provider: "claude-code", timeoutMs: 1 },
+        { signal },
+      ),
+    ).rejects.toThrow("Invalid options of AI provider claude-code: limit:");
   });
 });

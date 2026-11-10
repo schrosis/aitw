@@ -3,7 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { intermediateVersion } from "@aitw/core";
-import type { Intermediate, ScriptRequest, ScriptResult } from "@aitw/core";
+import type { AiRequest, Intermediate, ScriptRequest, ScriptResult } from "@aitw/core";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
@@ -118,30 +118,72 @@ describe("aitw", () => {
     ]);
   }, 60_000);
 
-  it("fails an AI step, which is not supported yet", async () => {
-    const { requests, result } = await run({
+  it("runs an AI step and passes its result to later steps", async () => {
+    const aiRequests: AiRequest[] = [];
+    const scriptRequests: ScriptRequest[] = [];
+    const taskQueue = randomUUID();
+    const worker = await Worker.create({
+      activities: createActivities({
+        aiRunner: {
+          run: async (request) => {
+            aiRequests.push(request);
+            return { data: { verdict: "approve" }, sessionId: "s1" };
+          },
+        },
+        scriptRunner: {
+          run: async (request) => {
+            scriptRequests.push(request);
+            return { exitCode: 0, signal: null, stderr: "", stdout: "" };
+          },
+        },
+      }),
+      connection: environment.nativeConnection,
+      taskQueue,
+      workflowsPath: fileURLToPath(new URL("./index.ts", import.meta.url)),
+    });
+    const input: Intermediate = {
       ...intermediate,
+      env: { LEVEL: "${{ workflow.inputs.level }}" },
+      inputs: { level: { default: "info", required: false, type: "string" } },
       start: "review",
       steps: {
+        report: { ...step("echo ${{ steps.review.outputs.verdict }}", null) },
         review: {
           inputs: {},
-          next: { type: "end" },
-          outputs: {},
-          prompt: "Review",
+          model: "claude-opus-5-5",
+          next: { step: "report", type: "step" },
+          outputs: { verdict: "${{ result.data.verdict }}" },
+          prompt: "Review for ${{ workflow.inputs.level }}",
           provider: "claude-code",
+          schema: { type: "object" },
           session: "reuse",
           timeoutMs: 5000,
           type: "ai",
-          with: {},
+          with: { note: "${{ workflow.inputs.level }}" },
         },
       },
-    });
+    };
 
-    expect(result).toMatchObject({
-      error: { cause: { message: "steps.review: AI steps are not supported yet" } },
-      ok: false,
-    });
-    expect(requests).toEqual([]);
+    await worker.runUntil(
+      environment.client.workflow.execute(aitw, {
+        args: [input],
+        taskQueue,
+        workflowId: randomUUID(),
+      }),
+    );
+
+    expect(aiRequests).toEqual([
+      {
+        env: { LEVEL: "info" },
+        model: "claude-opus-5-5",
+        options: { note: "info" },
+        prompt: "Review for info",
+        provider: "claude-code",
+        schema: { type: "object" },
+        timeoutMs: 5000,
+      },
+    ]);
+    expect(scriptRequests.map(({ run: command }) => command)).toEqual(["echo approve"]);
   }, 60_000);
 
   it("runs the steps in order", async () => {

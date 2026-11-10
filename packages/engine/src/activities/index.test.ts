@@ -1,5 +1,7 @@
-import { ScriptTimeoutError } from "@aitw/core";
+import { AiTimeoutError, ScriptTimeoutError } from "@aitw/core";
 import type {
+  AiRequest,
+  AiResult,
   EventLog,
   ScriptRequest,
   ScriptResult,
@@ -11,7 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import { maxValueBytes } from "../limits.ts";
 import { createActivities } from "./index.ts";
-import type { ScriptStepRequest } from "./index.ts";
+import type { AiStepRequest, ScriptStepRequest } from "./index.ts";
 
 /** An event log that collects the events of every run. */
 const logTo = (events: WorkflowEvent[]): EventLog => ({
@@ -289,5 +291,175 @@ describe("executeScriptStep", () => {
     await expect(
       runStep({ outputs: { data: "${{ result.stdout }}" } }, { stdout: "x".repeat(maxValueBytes) }),
     ).rejects.toMatchObject({ nonRetryable: true, type: "OutputTooLarge" });
+  });
+});
+
+describe("executeAiStep", () => {
+  const unusedScriptRunner: ScriptRunner = {
+    run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }),
+  };
+
+  const runAi = async (
+    request: Partial<AiStepRequest>,
+    result: AiResult | Error = { data: "done" },
+    requests: AiRequest[] = [],
+    events: WorkflowEvent[] = [],
+  ) =>
+    new MockActivityEnvironment().run(
+      createActivities({
+        aiRunner: {
+          run: async (aiRequest, { onProgress }) => {
+            requests.push(aiRequest);
+            onProgress?.("Read a.ts\n");
+            if (result instanceof Error) {
+              throw result;
+            }
+            return result;
+          },
+        },
+        eventLog: logTo(events),
+        scriptRunner: unusedScriptRunner,
+      }).executeAiStep,
+      {
+        inputs: {},
+        options: {},
+        outputs: {},
+        prompt: "Review",
+        provider: "claude-code",
+        references: {},
+        step: "review",
+        timeoutMs: 1000,
+        ...request,
+      },
+    );
+
+  it("sends the evaluated prompt and environment", async () => {
+    const requests: AiRequest[] = [];
+    await runAi(
+      {
+        dotenv: ".env",
+        inputs: { diff: "a" },
+        model: "claude-opus-5-5",
+        options: { allowedTools: ["Read"] },
+        prompt: "Review ${{ inputs.diff }} ${{ steps.fetch.outputs.count }}",
+        references: { steps: { fetch: { outputs: { count: 3 } } } },
+        schema: { type: "object" },
+        sessionId: "s1",
+        stepEnv: { DIFF: "${{ inputs.diff }}" },
+        workflowEnv: { LEVEL: "info" },
+      },
+      { data: {} },
+      requests,
+    );
+
+    expect(requests).toEqual([
+      {
+        dotenv: ".env",
+        env: { DIFF: "a", LEVEL: "info" },
+        model: "claude-opus-5-5",
+        options: { allowedTools: ["Read"] },
+        prompt: "Review a 3",
+        provider: "claude-code",
+        schema: { type: "object" },
+        sessionId: "s1",
+        timeoutMs: 1000,
+      },
+    ]);
+  });
+
+  it("sends nothing that the step does not set", async () => {
+    const requests: AiRequest[] = [];
+    await runAi({}, { data: "done" }, requests);
+
+    expect(requests).toEqual([
+      { options: {}, prompt: "Review", provider: "claude-code", timeoutMs: 1000 },
+    ]);
+  });
+
+  it("publishes outputs from result.data and returns the session", async () => {
+    await expect(
+      runAi(
+        {
+          outputs: {
+            name: "${{ result.data.author.name }}",
+            verdict: "${{ result.data.verdict }}",
+          },
+        },
+        { data: { author: { name: "Ada" }, verdict: "approve" }, sessionId: "s2" },
+      ),
+    ).resolves.toEqual({ outputs: { name: "Ada", verdict: "approve" }, sessionId: "s2" });
+  });
+
+  it("publishes text as result.data", async () => {
+    await expect(runAi({ outputs: { text: "${{ result.data }}" } })).resolves.toEqual({
+      outputs: { text: "done" },
+    });
+  });
+
+  it("reports progress as the output of the step", async () => {
+    const events: WorkflowEvent[] = [];
+    await new MockActivityEnvironment({
+      workflowExecution: { runId: "run", workflowId: "workflow" },
+    }).run(
+      createActivities({
+        aiRunner: {
+          run: async (_request, { onProgress }) => {
+            onProgress?.("Read a.ts\n");
+            return { data: "done" };
+          },
+        },
+        eventLog: logTo(events),
+        scriptRunner: unusedScriptRunner,
+      }).executeAiStep,
+      {
+        inputs: {},
+        options: {},
+        outputs: {},
+        prompt: "Review",
+        provider: "claude-code",
+        references: {},
+        step: "review",
+        timeoutMs: 1000,
+      },
+    );
+
+    expect(events).toMatchObject([
+      { step: "review", type: "stepStarted" },
+      { step: "review", stream: "stdout", text: "Read a.ts\n", type: "stepOutput" },
+      { outcome: "succeeded", step: "review", type: "stepFinished" },
+    ]);
+  });
+
+  it("fails without retrying on a timeout", async () => {
+    await expect(runAi({}, new AiTimeoutError(1000))).rejects.toMatchObject({
+      message: "AI step timed out after 1000 ms",
+      nonRetryable: true,
+      type: "AiTimedOut",
+    });
+  });
+
+  it("fails without retrying on an invalid expression", async () => {
+    await expect(runAi({ prompt: "${{ inputs.missing }}" })).rejects.toMatchObject({
+      nonRetryable: true,
+      type: "InvalidExpression",
+    });
+  });
+
+  it("fails in a Worker without an AI runner", async () => {
+    await expect(
+      new MockActivityEnvironment().run(
+        createActivities({ scriptRunner: unusedScriptRunner }).executeAiStep,
+        {
+          inputs: {},
+          options: {},
+          outputs: {},
+          prompt: "Review",
+          provider: "claude-code",
+          references: {},
+          step: "review",
+          timeoutMs: 1000,
+        },
+      ),
+    ).rejects.toMatchObject({ type: "AiRunnerUnavailable" });
   });
 });

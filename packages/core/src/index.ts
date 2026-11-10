@@ -23,6 +23,8 @@ export type {
   WaitStep,
   WorkflowInput,
 } from "./intermediate/index.js";
+export { AiTimeoutError } from "./ports/ai-runner.js";
+export type { AiRequest, AiResult, AiRunner, AiRunOptions } from "./ports/ai-runner.js";
 export { ScriptTimeoutError } from "./ports/script-runner.js";
 export type {
   ScriptOutput,
@@ -55,6 +57,7 @@ export {
   identifierSource,
 } from "./identifier.js";
 export {
+  createAiRunner,
   createPluginRegistry,
   defineAiProvider,
   definePlugin,
@@ -63,6 +66,8 @@ export {
 } from "./plugin/index.js";
 export type {
   AiProvider,
+  AiProviderRequest,
+  AiRunnerOptions,
   Plugin,
   PluginRegistry,
   PluginRegistryOptions,

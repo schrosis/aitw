@@ -209,6 +209,7 @@ describe("compileDefinition for AI steps", () => {
         aiProviders: [
           defineAiProvider({
             name: "claude-code",
+            run: async () => ({ data: "" }),
             with: z.strictObject({ allowedTools: z.array(z.string()).optional() }),
           }),
         ],

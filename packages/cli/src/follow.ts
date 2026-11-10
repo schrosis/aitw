@@ -1,6 +1,7 @@
 import { createFileEventLog } from "@aitw/adapter-event-log-file";
 import type { TerminalIO } from "@aitw/adapter-wait-terminal";
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
+import { createAiRunner } from "@aitw/core";
 import type { EventSink } from "@aitw/core";
 import { IncompatibleRunError } from "@aitw/engine";
 import type { FollowOptions, RunOutcome } from "@aitw/engine";
@@ -132,6 +133,7 @@ export const followRun = async (
       eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
       eventSink,
       onWarning: (message) => context.stderr(`${name}: warning: ${message}\n`),
+      aiRunner: createAiRunner({ cwd: root, plugins: createRegistry() }),
       plugins: createRegistry(terminal),
       scriptRunner: createLocalScriptRunner({ cwd: root }),
       ...(server.durable ? { detach: detach.signal } : { signal: interrupt }),

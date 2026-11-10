@@ -6,6 +6,7 @@ import {
   validateIntermediate,
 } from "@aitw/core";
 import type {
+  AiStep,
   IntermediateStep,
   ScriptStep,
   StepOutcome,
@@ -89,33 +90,42 @@ const evaluateInput = (
   return inputs;
 };
 
-/**
- * Builds the values that a step receives and checks their size.
- *
- * The step receives only the shared values that its `run` and `outputs` reference, so that the
- * history does not store every value of the workflow again for each step.
- */
-const prepareStep = (
-  id: string,
-  step: ScriptStep,
-  context: SharedContext,
-  workflowEnv: Readonly<Record<string, string>>,
-) => {
-  const inputs = evaluateInput(id, step.inputs, context);
-  const references = pickReferences(
-    [step.run, ...Object.values(step.outputs), ...Object.values(step.env ?? {})],
-    context,
-    sharedRoots,
-  );
-
-  // The values can combine the output of several steps, so they are limited separately.
-  const bytes = jsonBytes({ inputs, references, workflowEnv });
+/** Checks the size of the values that a step receives. */
+const checkValueSize = (id: string, values: unknown): void => {
+  const bytes = jsonBytes(values);
   if (bytes > maxValueBytes) {
     throw ApplicationFailure.nonRetryable(
       `The values for steps.${id} are ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
       "InputTooLarge",
     );
   }
+};
+
+/**
+ * Builds the values that a step receives and checks their size.
+ *
+ * The step receives only the shared values that it references, so that the
+ * history does not store every value of the workflow again for each step.
+ */
+const prepareStep = (
+  id: string,
+  step: AiStep | ScriptStep,
+  context: SharedContext,
+  workflowEnv: Readonly<Record<string, string>>,
+) => {
+  const inputs = evaluateInput(id, step.inputs, context);
+  const references = pickReferences(
+    [
+      step.type === "script" ? step.run : step.prompt,
+      ...Object.values(step.outputs),
+      ...Object.values(step.env ?? {}),
+    ],
+    context,
+    sharedRoots,
+  );
+
+  // The values can combine the output of several steps, so they are limited separately.
+  checkValueSize(id, { inputs, references, workflowEnv });
   return { inputs, references };
 };
 
@@ -256,6 +266,8 @@ export const aitw = async (
   );
 
   const { dotenv, start, steps } = validation.intermediate;
+  // Sessions of the AI steps of this run, keyed by step, so that each step continues its own.
+  const sessions: Record<string, string> = {};
   // The environment of the workflow reads only its input, so it is the same for every step.
   const workflowEnv: Record<string, string> = {};
   for (const [name, expression] of Object.entries(validation.intermediate.env ?? {})) {
@@ -283,13 +295,39 @@ export const aitw = async (
     };
 
     if (step.type === "ai") {
-      throw ApplicationFailure.nonRetryable(
-        `steps.${id}: AI steps are not supported yet`,
-        "UnsupportedStep",
-      );
-    }
-
-    if (step.type === "wait") {
+      const { executeAiStep } = proxyActivities<Activities>({
+        heartbeatTimeout: activityHeartbeatTimeoutMs,
+        // The step may have changed files before it failed.
+        retry: { maximumAttempts: 1 },
+        startToCloseTimeout: step.timeoutMs + activityTimeoutGraceMs,
+      });
+      const prepared = prepareStep(id, step, context, workflowEnv);
+      const evaluated = evaluateStrings(step.with, `steps.${id}.with`, {
+        ...context,
+        inputs: prepared.inputs,
+      });
+      const options = typeof evaluated === "object" && evaluated !== null ? { ...evaluated } : {};
+      checkValueSize(id, { ...prepared, options, workflowEnv });
+      const result = await executeAiStep({
+        ...prepared,
+        dotenv,
+        model: step.model,
+        options,
+        outputs: step.outputs,
+        prompt: step.prompt,
+        provider: step.provider,
+        schema: step.schema,
+        sessionId: step.session === "reuse" ? sessions[id] : undefined,
+        step: id,
+        stepEnv: step.env,
+        timeoutMs: step.timeoutMs,
+        workflowEnv,
+      });
+      outputs[id] = result.outputs;
+      if (result.sessionId !== undefined) {
+        sessions[id] = result.sessionId;
+      }
+    } else if (step.type === "wait") {
       if (step.answers === undefined) {
         throw ApplicationFailure.nonRetryable(
           `steps.${id}: Wait method ${step.method} does not describe its answers, which is not supported yet`,

@@ -105,7 +105,7 @@ export const definitionSchema = z.strictObject({
     .optional()
     .describe("Values that the workflow receives when it starts"),
   env: envSchema.describe(
-    "Environment variables of every script step. Values can reference workflow.inputs",
+    "Environment variables of every script and AI step. Values can reference workflow.inputs",
   ),
   dotenv: z
     .string()
@@ -117,7 +117,7 @@ export const definitionSchema = z.strictObject({
       }
     })
     .optional()
-    .describe("Path of a dotenv file, relative to the project root, that script steps read"),
+    .describe("Path of a dotenv file, relative to the project root, that script and AI steps read"),
   start: stepIdSchema,
   steps: z.record(stepIdSchema, stepSchema),
 });

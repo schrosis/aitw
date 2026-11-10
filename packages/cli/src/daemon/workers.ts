@@ -3,9 +3,11 @@ import { join } from "node:path";
 
 import { createFileEventLog } from "@aitw/adapter-event-log-file";
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
+import { createAiRunner } from "@aitw/core";
 import { startWorker } from "@aitw/engine";
 import type { RunningWorker } from "@aitw/engine";
 
+import { createRegistry } from "../plugins.js";
 import { projectLogDirectory, projectTaskQueue } from "../state.js";
 import { aitwDirectory } from "../workflows.js";
 import type { DaemonProject } from "./client.js";
@@ -85,6 +87,7 @@ export const createProjectWorkers = ({
       prepareEngine();
       const running = await startProjectWorker({
         address,
+        aiRunner: createAiRunner({ cwd: root, plugins: createRegistry() }),
         eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
         onError: (error) => {
           log(

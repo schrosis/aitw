@@ -16,6 +16,7 @@ aitw は、AI、人間、スクリプトのステップを Temporal Workflow で
 - `@aitw/core`: 中間表現の型と Port を持つ。Temporal に依存しない
 - `@aitw/definition`: 定義オブジェクトの検証、中間表現への Build、YAML の読み込みを担当する
 - `@aitw/engine`: Workflow、Activity、Worker を持つ。`@aitw/core` のみに依存し、`@aitw/definition` と具体的な Adapter に依存しない
+- `@aitw/dotenv`: dotenv ファイルの読み込みを担当する。Adapter から使う
 - `@aitw/adapter-*`: Port の実装。実装ごとに個別パッケージとし、名前は `adapter-<種類>-<実装>` とする
 - `aitw`: CLI。Adapter の組み立てを担当する
 

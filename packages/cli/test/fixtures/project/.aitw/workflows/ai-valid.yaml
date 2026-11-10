@@ -1,0 +1,19 @@
+version: v0.1
+start: review
+steps:
+  review:
+    type: ai
+    provider: claude-code
+    model: claude-opus-5-5
+    prompt: Review the change
+    schema:
+      type: object
+      properties:
+        verdict:
+          type: string
+    with:
+      allowedTools: [Read, Grep]
+      maxBudgetUsd: 2
+    outputs:
+      verdict: ${{ result.data.verdict }}
+    next: end

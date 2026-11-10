@@ -1,3 +1,4 @@
+import { claudeCodePlugin } from "@aitw/adapter-ai-claude-code";
 import { createTerminalPlugin, terminalPlugin } from "@aitw/adapter-wait-terminal";
 import type { TerminalIO } from "@aitw/adapter-wait-terminal";
 import { createPluginRegistry } from "@aitw/core";
@@ -11,5 +12,8 @@ import type { PluginRegistry } from "@aitw/core";
  */
 export const createRegistry = (terminal?: TerminalIO): PluginRegistry =>
   createPluginRegistry({
-    builtins: [terminal === undefined ? terminalPlugin : createTerminalPlugin(terminal)],
+    builtins: [
+      terminal === undefined ? terminalPlugin : createTerminalPlugin(terminal),
+      claudeCodePlugin,
+    ],
   });

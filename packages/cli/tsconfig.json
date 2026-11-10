@@ -13,6 +13,7 @@
     { "path": "../engine" },
     { "path": "../adapter-event-log-file" },
     { "path": "../adapter-script-local" },
-    { "path": "../adapter-wait-terminal" }
+    { "path": "../adapter-wait-terminal" },
+    { "path": "../adapter-ai-claude-code" }
   ]
 }

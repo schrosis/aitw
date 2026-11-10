@@ -1,10 +1,9 @@
 import { spawn } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
-import { isAbsolute, relative, resolve as resolvePath, sep } from "node:path";
-import { parseEnv } from "node:util";
 
 import { ScriptTimeoutError } from "@aitw/core";
 import type { ScriptResult, ScriptRunner } from "@aitw/core";
+import { readDotenv } from "@aitw/dotenv";
+import type { DotenvResult } from "@aitw/dotenv";
 
 /** Process groups of the scripts that run now, in every runner of this process. */
 const runningGroups = new Set<number>();
@@ -32,35 +31,6 @@ const listenForExit = (): void => {
   if (!listening) {
     process.on("exit", killRunningGroups);
     listening = true;
-  }
-};
-
-type DotenvResult = { ok: true; values: NodeJS.Dict<string> } | { ok: false; message: string };
-
-/**
- * Reads a dotenv file, relative to the working directory.
- *
- * The file is read each time a script runs, so its values never enter the workflow history. A
- * file that a symbolic link puts outside of the working directory is not read.
- */
-const readDotenv = (cwd: string, path: string): DotenvResult => {
-  const failure = (reason: string): DotenvResult => ({
-    message: `Failed to read the dotenv file ${path}: ${reason}`,
-    ok: false,
-  });
-  let file: string;
-  try {
-    const root = realpathSync(cwd);
-    file = realpathSync(resolvePath(cwd, path));
-    const inside = relative(root, file);
-    // Segments are compared, so that a file such as ..env in the root is inside.
-    if (inside === "" || inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
-      return failure("it is outside of the project root");
-    }
-    return { ok: true, values: parseEnv(readFileSync(file, "utf8")) };
-  } catch (error) {
-    // The reason is kept in the message, so that it is reported with the step.
-    return failure(error instanceof Error ? error.message : String(error));
   }
 };
 

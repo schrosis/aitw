@@ -2,6 +2,7 @@ import { AiTimeoutError, ScriptTimeoutError } from "@aitw/core";
 import type {
   AiRequest,
   AiResult,
+  EnvironmentReader,
   EventLog,
   ScriptRequest,
   ScriptResult,
@@ -13,7 +14,7 @@ import { describe, expect, it } from "vitest";
 
 import { maxValueBytes } from "../limits.ts";
 import { createActivities } from "./index.ts";
-import type { AiStepRequest, ScriptStepRequest } from "./index.ts";
+import type { AiStepRequest, BranchingScriptStepRequest, ScriptStepRequest } from "./index.ts";
 
 /** An event log that collects the events of every run. */
 const logTo = (events: WorkflowEvent[]): EventLog => ({
@@ -461,5 +462,142 @@ describe("executeAiStep", () => {
         },
       ),
     ).rejects.toMatchObject({ type: "AiRunnerUnavailable" });
+  });
+});
+
+const branches = (condition: string): BranchingScriptStepRequest["branches"] => [
+  { if: condition, to: { step: "yes", type: "step" } },
+  { to: { type: "end" } },
+];
+
+const dotenvEcho: EnvironmentReader = (dotenv) => ({ FILE: String(dotenv), SET: "file" });
+
+const unreadableEnvironment: EnvironmentReader = () => {
+  throw new Error("Failed to read the dotenv file .env");
+};
+
+describe("branches", () => {
+  const scriptRunner: ScriptRunner = {
+    run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "ok\n" }),
+  };
+
+  const runBranching = async (
+    condition: string,
+    {
+      readEnvironment,
+      ...request
+    }: Partial<BranchingScriptStepRequest> & { readEnvironment?: EnvironmentReader } = {},
+  ) =>
+    new MockActivityEnvironment().run(
+      createActivities({ readEnvironment, scriptRunner }).executeBranchingScriptStep,
+      {
+        branches: branches(condition),
+        inputs: {},
+        outputs: { value: "${{ result.stdout }}" },
+        references: {},
+        run: "./run.sh",
+        step: "check",
+        timeoutMs: 1000,
+        ...request,
+      },
+    );
+
+  it("goes to the first branch that holds, from the result and outputs", async () => {
+    await expect(runBranching("${{ result.stdout == 'ok' }}")).resolves.toEqual({
+      next: "yes",
+      outputs: { value: "ok" },
+    });
+    await expect(runBranching("${{ outputs.value == 'no' }}")).resolves.toEqual({
+      next: null,
+      outputs: { value: "ok" },
+    });
+  });
+
+  it("reads earlier steps, and a step that did not run as null", async () => {
+    const references = { steps: { fetch: { outputs: { count: 3 } } } };
+
+    await expect(
+      runBranching("${{ steps.fetch.outputs.count == 3 }}", { references }),
+    ).resolves.toMatchObject({ next: "yes" });
+    await expect(
+      runBranching("${{ steps.other.outputs.count == null }}", { references }),
+    ).resolves.toMatchObject({ next: "yes" });
+  });
+
+  it("reads the environment with the variables of the definition on top", async () => {
+    await expect(
+      runBranching("${{ env.FILE == '.env' && env.SET == 'step' && env.LEVEL == 'info' }}", {
+        dotenv: ".env",
+        readEnvironment: dotenvEcho,
+        stepEnv: { SET: "step" },
+        workflowEnv: { LEVEL: "info" },
+      }),
+    ).resolves.toMatchObject({ next: "yes" });
+  });
+
+  it("reads a variable that is not set as null", async () => {
+    await expect(
+      runBranching("${{ env.MISSING == null }}", { readEnvironment: () => ({}) }),
+    ).resolves.toMatchObject({ next: "yes" });
+  });
+
+  it("does not read the environment for conditions that do not need it", async () => {
+    await expect(
+      runBranching("${{ outputs.value == 'ok' }}", { readEnvironment: unreadableEnvironment }),
+    ).resolves.toMatchObject({ next: "yes" });
+  });
+
+  it("fails when the environment cannot be read", async () => {
+    await expect(
+      runBranching("${{ env.A == null }}", {
+        readEnvironment: unreadableEnvironment,
+      }),
+    ).rejects.toMatchObject({
+      message: "Failed to read the dotenv file .env",
+      nonRetryable: true,
+      type: "EnvironmentUnreadable",
+    });
+    await expect(runBranching("${{ env.A == null }}")).rejects.toMatchObject({
+      type: "EnvironmentUnavailable",
+    });
+  });
+
+  it("fails when a condition is not true or false", async () => {
+    await expect(runBranching("${{ outputs.value }}")).rejects.toMatchObject({
+      message: "next[0].if: Expected true or false but found string",
+      nonRetryable: true,
+      type: "InvalidCondition",
+    });
+  });
+
+  it("chooses a branch for a step without an activity", async () => {
+    await expect(
+      new MockActivityEnvironment().run(createActivities({ scriptRunner }).chooseBranch, {
+        branches: branches("${{ result.go == true }}"),
+        values: { outputs: {}, result: { go: true } },
+      }),
+    ).resolves.toBe("yes");
+  });
+
+  it("chooses a branch of an AI step from its data", async () => {
+    await expect(
+      new MockActivityEnvironment().run(
+        createActivities({
+          aiRunner: { run: async () => ({ data: { verdict: "changes" } }) },
+          scriptRunner,
+        }).executeAiStep,
+        {
+          branches: branches("${{ result.data.verdict == 'changes' }}"),
+          inputs: {},
+          options: {},
+          outputs: {},
+          prompt: "Review",
+          provider: "claude-code",
+          references: {},
+          step: "review",
+          timeoutMs: 1000,
+        },
+      ),
+    ).resolves.toMatchObject({ next: "yes" });
   });
 });

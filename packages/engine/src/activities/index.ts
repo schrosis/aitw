@@ -1,9 +1,18 @@
-import { AiTimeoutError, embedValue, evaluateExpression, ScriptTimeoutError } from "@aitw/core";
+import {
+  AiTimeoutError,
+  conditionReferences,
+  embedValue,
+  evaluateCondition,
+  evaluateExpression,
+  parseCondition,
+  ScriptTimeoutError,
+} from "@aitw/core";
 import type {
   AiRequest,
   AiResult,
   AiRunner,
   AiRunOptions,
+  EnvironmentReader,
   EventLog,
   ScriptOutput,
   ScriptRequest,
@@ -11,6 +20,7 @@ import type {
   ScriptRunner,
   ScriptRunOptions,
   StepOutcome,
+  Transition,
   WorkflowEvent,
 } from "@aitw/core";
 import { ApplicationFailure, Context } from "@temporalio/activity";
@@ -22,6 +32,8 @@ export interface ActivityDependencies {
   scriptRunner: ScriptRunner;
   /** Runs AI steps. A step fails when it is omitted, such as in a Worker only for cancelling. */
   aiRunner?: AiRunner | undefined;
+  /** Reads the environment for conditions. A condition that reads `env` fails without it. */
+  readEnvironment?: EnvironmentReader | undefined;
   /** Stores progress events, keyed by the workflow ID. Events are discarded when it is omitted. */
   eventLog?: EventLog | undefined;
   /**
@@ -50,6 +62,30 @@ export interface ScriptStepRequest extends Omit<ScriptRequest, "env"> {
   references: Readonly<Record<string, unknown>>;
 }
 
+/** The branches of a step. The first whose condition holds is taken. */
+export type Branches = Extract<Transition, { type: "branch" }>["branches"];
+
+/** Input of {@link Activities.executeBranchingScriptStep}. */
+export interface BranchingScriptStepRequest extends ScriptStepRequest {
+  branches: Branches;
+}
+
+/** Result of a step with branches. */
+export interface BranchedStepResult {
+  outputs: StepOutput;
+  /** ID of the step to go to, or `null` to finish the workflow. */
+  next: string | null;
+}
+
+/** Input of {@link Activities.chooseBranch}. */
+export interface ChooseBranchRequest {
+  branches: Branches;
+  dotenv?: string | undefined;
+  workflowEnv?: Readonly<Record<string, string>> | undefined;
+  /** Values that the conditions can read: `outputs`, `result`, `steps`, and `workflow`. */
+  values: Readonly<Record<string, unknown>>;
+}
+
 /** Input of {@link Activities.executeAiStep}. */
 export interface AiStepRequest extends Omit<AiRequest, "env"> {
   /** ID of the step in the workflow definition. */
@@ -64,6 +100,8 @@ export interface AiStepRequest extends Omit<AiRequest, "env"> {
   outputs: Readonly<Record<string, string>>;
   /** Values of earlier steps and of the workflow input that the step references. */
   references: Readonly<Record<string, unknown>>;
+  /** Branches of the step, when it has them. */
+  branches?: Branches | undefined;
 }
 
 /** Result of {@link Activities.executeAiStep}. */
@@ -71,6 +109,8 @@ export interface AiStepResult {
   outputs: StepOutput;
   /** Session that a later run of the step can continue. */
   sessionId?: string | undefined;
+  /** ID of the step to go to, or `null` to finish, when the step has branches. */
+  next?: string | null | undefined;
 }
 
 /** Values that a step publishes to later steps, keyed by name. */
@@ -133,6 +173,39 @@ const evaluateOutput = (
   }
   return output;
 };
+
+/** Returns the step that the first branch that holds goes to, or `null` to finish. */
+const chooseNext = (
+  branches: Branches,
+  values: Readonly<Record<string, unknown>>,
+): string | null => {
+  for (const [index, { if: condition, to }] of branches.entries()) {
+    if (condition !== undefined) {
+      const parsed = parseCondition(condition);
+      const evaluated = parsed.ok ? evaluateCondition(parsed.condition, values) : parsed;
+      if (!evaluated.ok) {
+        throw ApplicationFailure.nonRetryable(
+          `next[${index}].if: ${evaluated.message}`,
+          "InvalidCondition",
+        );
+      }
+      if (!evaluated.value) {
+        continue;
+      }
+    }
+    return to.type === "step" ? to.step : null;
+  }
+  // Validation requires a last branch without a condition.
+  throw ApplicationFailure.nonRetryable("No branch can be taken", "InvalidCondition");
+};
+
+const readsEnvironment = (branches: Branches): boolean =>
+  branches.some(({ if: condition }) => {
+    const parsed = condition === undefined ? undefined : parseCondition(condition);
+    return (
+      parsed?.ok === true && conditionReferences(parsed.condition).some(([root]) => root === "env")
+    );
+  });
 
 const discardEvents: EventLog = {
   append: () => {},
@@ -208,6 +281,7 @@ export const createActivities = ({
   aiRunner,
   eventLog = discardEvents,
   heartbeatIntervalMs = 5000,
+  readEnvironment,
   scriptRunner,
 }: ActivityDependencies) => {
   /**
@@ -269,6 +343,93 @@ export const createActivities = ({
     }
   };
 
+  /**
+   * Chooses where a step goes next.
+   *
+   * The environment is read only for a condition that needs it, so that a file that cannot be
+   * read fails only the steps that depend on it.
+   */
+  const choose = (
+    branches: Branches,
+    values: Readonly<Record<string, unknown>>,
+    dotenv: string | undefined,
+    env: Readonly<Record<string, string>>,
+  ): string | null => {
+    if (!readsEnvironment(branches)) {
+      return chooseNext(branches, values);
+    }
+    if (readEnvironment === undefined) {
+      throw ApplicationFailure.nonRetryable(
+        "This Worker cannot read the environment",
+        "EnvironmentUnavailable",
+      );
+    }
+    let inherited: Readonly<Record<string, string | undefined>>;
+    try {
+      inherited = readEnvironment(dotenv);
+    } catch (error) {
+      throw ApplicationFailure.nonRetryable(
+        error instanceof Error ? error.message : String(error),
+        "EnvironmentUnreadable",
+      );
+    }
+    return chooseNext(branches, { ...values, env: { ...inherited, ...env } });
+  };
+
+  /** Runs a script step, and chooses where it goes next when it has branches. */
+  const runScriptStep = async ({
+    branches,
+    dotenv,
+    inputs,
+    outputs: outputExpressions,
+    references,
+    run: runTemplate,
+    step,
+    stepEnv,
+    timeoutMs,
+    workflowEnv,
+  }: ScriptStepRequest & { branches?: Branches }): Promise<BranchedStepResult> => {
+    // The step inputs are added last, so that references cannot replace them.
+    const values = { ...references, inputs };
+    const env = evaluateEnv(stepEnv, workflowEnv, values);
+    const expanded = evaluateExpression(runTemplate, values);
+    const run = expanded.ok ? embedValue(expanded.value) : runTemplate;
+
+    return trackStep(step, { run }, async (onOutput) => {
+      if (!env.ok) {
+        throw env.error;
+      }
+      if (!expanded.ok) {
+        throw invalidExpression("run", expanded.message);
+      }
+      const { exitCode, stderr, stdout } = await runScript(
+        scriptRunner,
+        {
+          // A step without variables sends none, as before they existed.
+          ...(dotenv === undefined ? {} : { dotenv }),
+          ...(Object.keys(env.value).length > 0 ? { env: env.value } : {}),
+          inputs,
+          run,
+          timeoutMs,
+        },
+        { onOutput, signal: Context.current().cancellationSignal },
+      );
+      const result = {
+        exitCode,
+        stderr: trimTrailingNewline(stderr),
+        stdout: trimTrailingNewline(stdout),
+      };
+      const outputs = evaluateOutput(outputExpressions, values, result);
+      return {
+        next:
+          branches === undefined
+            ? null
+            : choose(branches, { ...values, outputs, result }, dotenv, env.value),
+        outputs,
+      };
+    });
+  };
+
   return {
     /**
      * Stores a progress event of the workflow, such as the start of a wait step.
@@ -294,55 +455,27 @@ export const createActivities = ({
      * The `${{ }}` references in `run` are expanded as plain text. Only the declared output
      * values are returned, because the workflow history stores the result.
      */
-    executeScriptStep: async ({
+    executeScriptStep: async (request: ScriptStepRequest): Promise<StepOutput> =>
+      (await runScriptStep(request)).outputs,
+    /** Runs a script step with branches, and returns the step that it goes to. */
+    executeBranchingScriptStep: async (
+      request: BranchingScriptStepRequest,
+    ): Promise<BranchedStepResult> => runScriptStep(request),
+    /** Chooses where a step goes next, for a step that does not run in an activity. */
+    chooseBranch: async ({
+      branches,
       dotenv,
-      inputs,
-      outputs: outputExpressions,
-      references,
-      run: runTemplate,
-      step,
-      stepEnv,
-      timeoutMs,
-      workflowEnv,
-    }: ScriptStepRequest): Promise<StepOutput> => {
-      // The step inputs are added last, so that references cannot replace them.
-      const values = { ...references, inputs };
-      const env = evaluateEnv(stepEnv, workflowEnv, values);
-      const expanded = evaluateExpression(runTemplate, values);
-      const run = expanded.ok ? embedValue(expanded.value) : runTemplate;
-
-      return trackStep(step, { run }, async (onOutput) => {
-        if (!env.ok) {
-          throw env.error;
-        }
-        if (!expanded.ok) {
-          throw invalidExpression("run", expanded.message);
-        }
-        const { exitCode, stderr, stdout } = await runScript(
-          scriptRunner,
-          {
-            // A step without variables sends none, as before they existed.
-            ...(dotenv === undefined ? {} : { dotenv }),
-            ...(Object.keys(env.value).length > 0 ? { env: env.value } : {}),
-            inputs,
-            run,
-            timeoutMs,
-          },
-          { onOutput, signal: Context.current().cancellationSignal },
-        );
-        return evaluateOutput(outputExpressions, values, {
-          exitCode,
-          stderr: trimTrailingNewline(stderr),
-          stdout: trimTrailingNewline(stdout),
-        });
-      });
-    },
+      values,
+      workflowEnv = {},
+    }: ChooseBranchRequest): Promise<string | null> =>
+      choose(branches, values, dotenv, workflowEnv),
     /**
      * Runs an AI step. It is not retried, because it may have changed files before it failed.
      *
      * Only the declared output values are returned, because the workflow history stores the result.
      */
     executeAiStep: async ({
+      branches,
       dotenv,
       inputs,
       model,
@@ -388,9 +521,21 @@ export const createActivities = ({
             signal: Context.current().cancellationSignal,
           },
         );
+        const aiResult = { data: result.data };
+        const stepOutputs = evaluateOutput(outputExpressions, values, aiResult);
         return {
-          outputs: evaluateOutput(outputExpressions, values, { data: result.data }),
+          outputs: stepOutputs,
           ...(result.sessionId === undefined ? {} : { sessionId: result.sessionId }),
+          ...(branches === undefined
+            ? {}
+            : {
+                next: choose(
+                  branches,
+                  { ...values, outputs: stepOutputs, result: aiResult },
+                  dotenv,
+                  env.value,
+                ),
+              }),
         };
       });
     },

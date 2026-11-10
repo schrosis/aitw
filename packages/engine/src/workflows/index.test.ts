@@ -66,6 +66,7 @@ describe("aitw", () => {
     });
     const worker = await Worker.create({
       activities: {
+        ...activities,
         // Records what the workflow sends, which the history stores.
         executeScriptStep: async (request: ScriptStepRequest) => {
           stepRequests.push(request);
@@ -186,22 +187,63 @@ describe("aitw", () => {
     expect(scriptRequests.map(({ run: command }) => command)).toEqual(["echo approve"]);
   }, 60_000);
 
-  it("fails a step with branches, which are not supported yet", async () => {
+  it.each([
+    ["yes", ["./check.sh", "./then.sh", "./join.sh"]],
+    ["no", ["./check.sh", "./else.sh", "./join.sh"]],
+  ])(
+    "follows the branch for %s and joins again",
+    async (stdout, expected) => {
+      const { requests, result } = await run(
+        {
+          ...intermediate,
+          start: "check",
+          steps: {
+            check: {
+              ...step("./check.sh", null),
+              next: {
+                branches: [
+                  { if: "${{ result.stdout == 'yes' }}", to: { step: "matched", type: "step" } },
+                  { to: { step: "other", type: "step" } },
+                ],
+                type: "branch",
+              },
+            },
+            other: step("./else.sh", "join"),
+            join: step("./join.sh", null),
+            matched: step("./then.sh", "join"),
+          },
+        },
+        {},
+        { "./check.sh": `${stdout}\n` },
+      );
+
+      expect(result).toMatchObject({ ok: true });
+      expect(requests.map(({ run: command }) => command)).toEqual(expected);
+    },
+    60_000,
+  );
+
+  it("finishes on a branch to end", async () => {
     const { requests, result } = await run({
       ...intermediate,
+      start: "check",
       steps: {
-        fetch: {
-          ...step("./fetch.sh", null),
-          next: { branches: [{ to: { type: "end" } }], type: "branch" },
+        check: {
+          ...step("./check.sh", null),
+          next: {
+            branches: [
+              { if: "${{ result.exitCode == 0 }}", to: { type: "end" } },
+              { to: { step: "after", type: "step" } },
+            ],
+            type: "branch",
+          },
         },
+        after: step("./after.sh", null),
       },
     });
 
-    expect(result).toMatchObject({
-      error: { cause: { message: "steps.fetch.next: Branches are not supported yet" } },
-      ok: false,
-    });
-    expect(requests).toEqual([]);
+    expect(result).toMatchObject({ ok: true });
+    expect(requests.map(({ run: command }) => command)).toEqual(["./check.sh"]);
   }, 60_000);
 
   it("runs the steps in order", async () => {

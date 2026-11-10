@@ -80,20 +80,30 @@ describe("evaluateExpression", () => {
     });
   });
 
+  it("reads a step that did not run as null", () => {
+    expect(evaluateExpression("${{ steps.report.outputs.title }}", context)).toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(evaluateExpression("[${{ steps.report.outputs.title }}]", context)).toEqual({
+      ok: true,
+      value: "[]",
+    });
+  });
+
   it("returns text without references as it is", () => {
     expect(evaluateExpression("plain", context)).toEqual({ ok: true, value: "plain" });
   });
 
-  it.each([
-    "${{ inputs.missing }}",
-    "${{ steps.report.outputs.title }}",
-    "${{ inputs.title.length }}",
-  ])("reports the unknown reference %j", (text) => {
-    expect(evaluateExpression(text, context)).toEqual({
-      message: `Unknown reference: ${text}`,
-      ok: false,
-    });
-  });
+  it.each(["${{ inputs.missing }}", "${{ inputs.title.length }}"])(
+    "reports the unknown reference %j",
+    (text) => {
+      expect(evaluateExpression(text, context)).toEqual({
+        message: `Unknown reference: ${text}`,
+        ok: false,
+      });
+    },
+  );
 
   it("does not read prototype members", () => {
     expect(evaluateExpression("${{ inputs.constructor }}", context)).toMatchObject({ ok: false });

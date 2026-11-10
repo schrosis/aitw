@@ -1,0 +1,20 @@
+version: v0.1
+start: ask
+steps:
+  ask:
+    type: wait
+    method: terminal
+    with:
+      message: Continue?
+      schema:
+        go:
+          type: boolean
+          required: true
+    next:
+      - if: ${{ result.go == true }}
+        to: continued
+      - to: end
+  continued:
+    type: script
+    run: echo continued
+    next: end

@@ -203,6 +203,12 @@ describe("claude-code provider", () => {
     ).rejects.toThrow("Claude Code failed: Not logged in");
   });
 
+  it("fails when the AI finishes without the structured result of a schema", async () => {
+    await expect(
+      runner([success()]).run(request({ schema: { type: "object" } }), { signal }),
+    ).rejects.toThrow("Claude Code finished without a structured result");
+  });
+
   it("fails without a result", async () => {
     await expect(runner([]).run(request(), { signal })).rejects.toThrow(
       "Claude Code finished without a result",

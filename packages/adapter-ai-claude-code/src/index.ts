@@ -165,6 +165,10 @@ const createProvider = (query: ClaudeQuery): AiProvider<z.output<typeof optionsS
             if (message.subtype !== "success" || message.is_error) {
               throw new Error(describeFailure(message));
             }
+            // The AI can finish without returning the result, such as in a session that it continues.
+            if (schema !== undefined && message.structured_output === undefined) {
+              throw new Error("Claude Code finished without a structured result");
+            }
             result = {
               data: schema === undefined ? (message.result ?? "") : message.structured_output,
               sessionId: message.session_id,

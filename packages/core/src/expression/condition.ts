@@ -19,6 +19,7 @@ type Token =
   | { kind: "literal"; value: boolean | number | string | null }
   | { kind: "reference"; path: string[] };
 
+// Names can start with _, unlike those of a template, because environment variables can.
 const tokenPattern =
   /\s*(?:(?<operator>==|!=|&&|\|\||!|\(|\))|'(?<text>(?:[^']|'')*)'|(?<number>-?\d+(?:\.\d+)?)|(?<name>[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*))/uy;
 

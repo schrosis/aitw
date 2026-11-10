@@ -392,9 +392,35 @@ describe("compileDefinition for branches", () => {
   });
 
   it("explains what next can be", () => {
-    expect(compileDefinition(branchSource("      - to: end\n        when: x"))).toMatchObject({
+    expect(compileDefinition(branchSource("      1"))).toMatchObject({
       errors: [
-        { message: "Must be the name of a step, end, or a list of branches with if and to" },
+        {
+          message: "Must be the name of a step, end, or a list of branches with if and to",
+          path: ["steps", "check", "next"],
+        },
+      ],
+      ok: false,
+    });
+  });
+
+  it("reports the problem inside of a branch", () => {
+    expect(compileDefinition(branchSource("      - to: end\n        when: x"))).toMatchObject({
+      errors: [{ message: "Unknown field: when", path: ["steps", "check", "next", 0, "when"] }],
+      ok: false,
+    });
+    expect(compileDefinition(branchSource("      - to: 1"))).toMatchObject({
+      errors: [{ path: ["steps", "check", "next", 0, "to"] }],
+      ok: false,
+    });
+  });
+
+  it("reports the problem of a name", () => {
+    expect(compileDefinition(branchSource("      fix-1"))).toMatchObject({
+      errors: [
+        {
+          message: expect.stringContaining("Must start with a letter") as unknown,
+          path: ["steps", "check", "next"],
+        },
       ],
       ok: false,
     });

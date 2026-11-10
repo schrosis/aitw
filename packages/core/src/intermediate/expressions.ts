@@ -163,6 +163,10 @@ const describeScope = ({ env, inputs, outputs, result }: Scope): string => {
  * step, and `outputs` can read the declared inputs of their own step. `outputs` can read the
  * result: `exitCode`, `stdout`, and `stderr` of a script, the declared answers of a wait step, or
  * `data` of an AI step.
+ *
+ * A step can reference any step that can run before it. One on another branch reads as `null`
+ * when it did not run. A condition of a branch can read `outputs`, `result`, the steps before it,
+ * the input of the workflow, and `env`, whose names are not checked.
  */
 export const validateExpressions = (intermediate: Intermediate): ValidationError[] => {
   const order = reachableSteps(intermediate);

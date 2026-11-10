@@ -104,6 +104,7 @@ describe("createDefinitionJsonSchema", () => {
                 required: ["type", "run", "next"],
               },
               { required: ["type", "method", "next"] },
+              { required: ["type", "provider", "prompt", "next"] },
             ],
           },
         },

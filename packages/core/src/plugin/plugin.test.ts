@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import {
   createPluginRegistry,
+  defineAiProvider,
   definePlugin,
   defineWaitMethod,
   validateWithSchema,
@@ -38,6 +39,37 @@ describe("createPluginRegistry", () => {
 
   it("is empty without plugins", () => {
     expect(createPluginRegistry().waitMethodNames()).toEqual([]);
+    expect(createPluginRegistry().aiProviderNames()).toEqual([]);
+  });
+
+  it("registers AI providers like wait methods", () => {
+    const claude = defineAiProvider({ name: "claude-code", with: z.strictObject({}) });
+    const registry = createPluginRegistry({
+      builtins: [definePlugin({ aiProviders: [claude], name: "claude" })],
+      plugins: [definePlugin({ aiProviders: [{ ...claude }], name: "acme" })],
+    });
+
+    expect(registry.aiProviderNames()).toEqual(["claude-code", "acme/claude-code"]);
+    expect(registry.aiProvider("claude-code")).toBe(claude);
+    expect(registry.aiProvider("codex")).toBeUndefined();
+  });
+
+  it("rejects duplicate and invalid AI provider names", () => {
+    const claude = defineAiProvider({ name: "claude-code", with: z.strictObject({}) });
+
+    expect(() =>
+      createPluginRegistry({
+        builtins: [
+          definePlugin({ aiProviders: [claude], name: "a" }),
+          definePlugin({ aiProviders: [claude], name: "b" }),
+        ],
+      }),
+    ).toThrow("Duplicate AI provider: claude-code");
+    expect(() =>
+      createPluginRegistry({
+        builtins: [definePlugin({ aiProviders: [{ ...claude, name: "1bad" }], name: "a" })],
+      }),
+    ).toThrow("Invalid AI provider name: 1bad");
   });
 
   it("rejects duplicate wait method names", () => {

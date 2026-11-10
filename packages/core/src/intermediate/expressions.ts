@@ -6,6 +6,47 @@ import type { ValidationError } from "./validate.js";
 /** Fields of the script result that `outputs` can read. */
 const scriptResultFields: ReadonlySet<string> = new Set(["exitCode", "stdout", "stderr"]);
 
+/** Fields of the result of an AI step that `outputs` can read. */
+const aiResultFields: ReadonlySet<string> = new Set(["data"]);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Checks a reference to the result of an AI step against its JSON Schema.
+ *
+ * Only `properties` are followed. What other keywords describe, such as `$ref` or `oneOf`, is
+ * known only when the step runs, so references into them are allowed.
+ *
+ * @param path The reference after `result`, such as `["data", "verdict"]`.
+ */
+const checkAiResult = (
+  id: string,
+  schema: Readonly<Record<string, unknown>> | undefined,
+  [field, ...path]: readonly string[],
+  unsupported: string,
+): string | undefined => {
+  if (field !== "data") {
+    return unsupported;
+  }
+  if (schema === undefined) {
+    return path.length === 0 ? undefined : `Step ${id} has no schema, so result.data is text`;
+  }
+  let current: unknown = schema;
+  for (const segment of path) {
+    if (!isRecord(current) || !isRecord(current.properties)) {
+      return undefined;
+    }
+    if (!Object.hasOwn(current.properties, segment)) {
+      const open =
+        current.additionalProperties !== undefined && current.additionalProperties !== false;
+      return open ? undefined : `The schema of step ${id} does not declare the property ${segment}`;
+    }
+    current = current.properties[segment];
+  }
+  return undefined;
+};
+
 /** Returns every string in a JSON value with its path, such as the strings of `with`. */
 const stringLeaves = (
   value: unknown,
@@ -75,9 +116,10 @@ const describeScope = ({ inputs, result }: Scope): string => {
  * The environment of the workflow can read only the declared input of the workflow.
  *
  * Every field of a step can read the declared output of a step that runs before it, and the declared
- * input of the workflow. In addition, `run`, the strings of `with`, and `outputs` can read the
- * declared inputs of their own step, and so can the environment of a script step. `outputs` can read the result: `exitCode`, `stdout`, and
- * `stderr` of a script, or the declared answers of a wait step.
+ * input of the workflow. In addition, `run`, `prompt`, the strings of `with`, the environment of a
+ * step, and `outputs` can read the declared inputs of their own step. `outputs` can read the
+ * result: `exitCode`, `stdout`, and `stderr` of a script, the declared answers of a wait step, or
+ * `data` of an AI step.
  */
 export const validateExpressions = (intermediate: Intermediate): ValidationError[] => {
   const order = executionOrder(intermediate);
@@ -143,6 +185,10 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
           if (scope.result === "any") {
             return undefined;
           }
+          if (step.type === "ai") {
+            const path = [first, second, third, ...rest].filter((part) => part !== undefined);
+            return checkAiResult(id, step.schema, path, unsupported);
+          }
           if (step.type === "wait" && !scope.result.has(first)) {
             return `Step ${id} does not declare the answer ${first}`;
           }
@@ -158,22 +204,34 @@ export const validateExpressions = (intermediate: Intermediate): ValidationError
     }
     if (step.type === "script") {
       errors.push(...checkExpression(step.run, ["steps", id, "run"], check({ inputs: true })));
+    }
+    if (step.type === "ai") {
+      errors.push(
+        ...checkExpression(step.prompt, ["steps", id, "prompt"], check({ inputs: true })),
+      );
+    }
+    if (step.type !== "wait") {
       for (const [name, expression] of Object.entries(step.env ?? {})) {
         errors.push(
           ...checkExpression(expression, ["steps", id, "env", name], check({ inputs: true })),
         );
       }
-    } else {
+    }
+    if (step.type !== "script") {
       for (const { path, text } of stringLeaves(step.with, ["steps", id, "with"])) {
         errors.push(...checkExpression(text, path, check({ inputs: true })));
       }
     }
-    const result =
-      step.type === "script"
-        ? scriptResultFields
-        : step.answers === undefined
-          ? "any"
-          : new Set(Object.keys(step.answers));
+    const resultOf = (): NonNullable<Scope["result"]> => {
+      if (step.type === "script") {
+        return scriptResultFields;
+      }
+      if (step.type === "ai") {
+        return aiResultFields;
+      }
+      return step.answers === undefined ? "any" : new Set(Object.keys(step.answers));
+    };
+    const result = resultOf();
     for (const [name, expression] of Object.entries(step.outputs)) {
       errors.push(
         ...checkExpression(

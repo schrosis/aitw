@@ -282,6 +282,13 @@ export const aitw = async (
       workflow: { inputs: resolved.inputs },
     };
 
+    if (step.type === "ai") {
+      throw ApplicationFailure.nonRetryable(
+        `steps.${id}: AI steps are not supported yet`,
+        "UnsupportedStep",
+      );
+    }
+
     if (step.type === "wait") {
       if (step.answers === undefined) {
         throw ApplicationFailure.nonRetryable(

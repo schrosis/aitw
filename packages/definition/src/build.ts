@@ -39,6 +39,20 @@ const buildStep = (
       type: "script",
     };
   }
+  if (step.type === "ai") {
+    return {
+      ...common,
+      ...(step.env === undefined ? {} : { env: step.env }),
+      ...(step.model === undefined ? {} : { model: step.model }),
+      ...(step.schema === undefined ? {} : { schema: step.schema }),
+      prompt: step.prompt,
+      provider: step.provider,
+      session: step.session,
+      timeoutMs: toMilliseconds(step.timeout),
+      type: "ai",
+      with: step.with ?? {},
+    };
+  }
   const stepAnswers = answers[id];
   return {
     ...common,

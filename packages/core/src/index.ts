@@ -11,6 +11,7 @@ export {
   validateIntermediate,
 } from "./intermediate/index.js";
 export type {
+  AiStep,
   InputDeclaration,
   Intermediate,
   IntermediateStep,
@@ -55,11 +56,13 @@ export {
 } from "./identifier.js";
 export {
   createPluginRegistry,
+  defineAiProvider,
   definePlugin,
   defineWaitMethod,
   validateWithSchema,
 } from "./plugin/index.js";
 export type {
+  AiProvider,
   Plugin,
   PluginRegistry,
   PluginRegistryOptions,

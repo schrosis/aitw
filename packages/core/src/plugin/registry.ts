@@ -1,5 +1,5 @@
 import { identifierPattern } from "../identifier.js";
-import type { Plugin, WaitMethod } from "./types.js";
+import type { AiProvider, Plugin, WaitMethod } from "./types.js";
 
 /** Plugins that the CLI or a Worker loads, from which extensions are looked up by name. */
 export interface PluginRegistry {
@@ -7,6 +7,10 @@ export interface PluginRegistry {
   waitMethod: (name: string) => WaitMethod | undefined;
   /** Names of every wait method, in registration order. */
   waitMethodNames: () => string[];
+  /** Returns an AI provider by the name that a definition uses, such as `claude-code`. */
+  aiProvider: (name: string) => AiProvider | undefined;
+  /** Names of every AI provider, in registration order. */
+  aiProviderNames: () => string[];
 }
 
 /** Options of {@link createPluginRegistry}. */
@@ -25,6 +29,17 @@ const checkName = (kind: string, name: string): void => {
   }
 };
 
+// Providers are named after products, such as claude-code.
+const providerNamePattern = /^[A-Za-z][A-Za-z0-9_-]*$/u;
+
+const checkProviderName = (name: string): void => {
+  if (!providerNamePattern.test(name)) {
+    throw new Error(
+      `Invalid AI provider name: ${name}. It must start with a letter and contain only letters, digits, _, or -`,
+    );
+  }
+};
+
 /**
  * Creates a registry of plugins.
  *
@@ -38,6 +53,7 @@ export const createPluginRegistry = ({
 }: PluginRegistryOptions = {}): PluginRegistry => {
   const pluginNames = new Set<string>();
   const waitMethods = new Map<string, WaitMethod>();
+  const aiProviders = new Map<string, AiProvider>();
   const register = (plugin: Plugin, builtin: boolean): void => {
     checkName("plugin", plugin.name);
     // The name of a plugin is the namespace of its extensions, including for built-in plugins.
@@ -53,6 +69,14 @@ export const createPluginRegistry = ({
       }
       waitMethods.set(name, method);
     }
+    for (const provider of plugin.aiProviders ?? []) {
+      checkProviderName(provider.name);
+      const name = builtin ? provider.name : `${plugin.name}/${provider.name}`;
+      if (aiProviders.has(name)) {
+        throw new Error(`Duplicate AI provider: ${name}`);
+      }
+      aiProviders.set(name, provider);
+    }
   };
   for (const plugin of builtins) {
     register(plugin, true);
@@ -62,6 +86,8 @@ export const createPluginRegistry = ({
   }
 
   return {
+    aiProvider: (name) => aiProviders.get(name),
+    aiProviderNames: () => [...aiProviders.keys()],
     waitMethod: (name) => waitMethods.get(name),
     waitMethodNames: () => [...waitMethods.keys()],
   };

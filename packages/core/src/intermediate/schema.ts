@@ -53,6 +53,26 @@ const waitStepSchema = z.strictObject({
   outputs: expressionMapSchema,
 });
 
+const aiStepSchema = z.strictObject({
+  type: z.literal("ai"),
+  /** Name of the provider that runs the step, such as `claude-code`. */
+  provider: z.string().min(1),
+  /** Model to use, passed to the provider as it is. The provider chooses one when it is omitted. */
+  model: z.string().min(1).optional(),
+  prompt: z.string().min(1),
+  /** JSON Schema of the result. Without it, the result is text. */
+  schema: z.record(z.string(), z.json()).optional(),
+  /** Whether a step that runs again continues its previous session. */
+  session: z.enum(["reuse", "new"]),
+  /** Options of the provider as the definition writes them. Strings may contain expressions. */
+  with: z.record(z.string(), z.json()),
+  next: transitionSchema,
+  timeoutMs: z.int().positive(),
+  inputs: expressionMapSchema,
+  outputs: expressionMapSchema,
+  env: envSchema,
+});
+
 /** Schema of the intermediate representation that the engine executes. */
 export const intermediateSchema = z.strictObject({
   version: z.literal(intermediateVersion),
@@ -71,7 +91,10 @@ export const intermediateSchema = z.strictObject({
     })
     .optional(),
   start: stepIdSchema,
-  steps: z.record(stepIdSchema, z.discriminatedUnion("type", [scriptStepSchema, waitStepSchema])),
+  steps: z.record(
+    stepIdSchema,
+    z.discriminatedUnion("type", [scriptStepSchema, waitStepSchema, aiStepSchema]),
+  ),
 });
 
 /** A workflow in the intermediate representation. */
@@ -88,3 +111,6 @@ export type ScriptStep = Extract<IntermediateStep, { type: "script" }>;
 
 /** A wait step in the intermediate representation. */
 export type WaitStep = Extract<IntermediateStep, { type: "wait" }>;
+
+/** An AI step in the intermediate representation. */
+export type AiStep = Extract<IntermediateStep, { type: "ai" }>;

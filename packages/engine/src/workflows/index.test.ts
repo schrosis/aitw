@@ -118,6 +118,32 @@ describe("aitw", () => {
     ]);
   }, 60_000);
 
+  it("fails an AI step, which is not supported yet", async () => {
+    const { requests, result } = await run({
+      ...intermediate,
+      start: "review",
+      steps: {
+        review: {
+          inputs: {},
+          next: { type: "end" },
+          outputs: {},
+          prompt: "Review",
+          provider: "claude-code",
+          session: "reuse",
+          timeoutMs: 5000,
+          type: "ai",
+          with: {},
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      error: { cause: { message: "steps.review: AI steps are not supported yet" } },
+      ok: false,
+    });
+    expect(requests).toEqual([]);
+  }, 60_000);
+
   it("runs the steps in order", async () => {
     const { requests, result } = await run(intermediate);
 

@@ -433,3 +433,73 @@ describe("compileDefinition for branches", () => {
     });
   });
 });
+
+describe("compileDefinition for loops", () => {
+  it("does not let a step be named start", () => {
+    expect(
+      compileDefinition(
+        validSource.replace("  fetch:", "  start:").replace("start: fetch", "start: start"),
+      ),
+    ).toMatchObject({
+      errors: expect.arrayContaining([
+        expect.objectContaining({
+          message: expect.stringContaining("not be a reserved word: end or start") as unknown,
+          path: ["steps", "start"],
+        }),
+      ]) as unknown,
+      ok: false,
+    });
+  });
+
+  it("does not take start as a target", () => {
+    expect(compileDefinition(validSource.replace("next: end", "next: start"))).toMatchObject({
+      errors: expect.arrayContaining([
+        expect.objectContaining({
+          message: "Unknown step: start",
+          path: ["steps", "fetch", "next"],
+        }),
+      ]) as unknown,
+      ok: false,
+    });
+  });
+
+  it("builds a loop back to the step that start names, with maxVisits", () => {
+    const source = `version: v0.1
+start: implement
+steps:
+  implement:
+    type: script
+    run: echo "\${{ steps.review.outputs.summary }}"
+    maxVisits: 3
+    next: review
+  review:
+    type: script
+    run: ./review.sh
+    outputs:
+      summary: \${{ result.stdout }}
+    next:
+      - if: \${{ result.stdout == 'changes' }}
+        to: implement
+      - to: end
+`;
+
+    expect(compileDefinition(source)).toMatchObject({
+      intermediate: { steps: { implement: { maxVisits: 3 } } },
+      ok: true,
+    });
+  });
+
+  it("locates a loop that cannot finish", () => {
+    const source = validSource.replace("next: end", "next: fetch");
+
+    expect(compileDefinition(source)).toMatchObject({
+      errors: [
+        {
+          message: "Step fetch cannot reach end, so the workflow could never finish",
+          path: ["steps", "fetch", "next"],
+        },
+      ],
+      ok: false,
+    });
+  });
+});

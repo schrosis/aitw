@@ -91,6 +91,26 @@ describe("evaluateExpression", () => {
     });
   });
 
+  it("takes an index only in brackets", () => {
+    expect(parseTemplate("${{ steps.a.visits.0.outputs.v }}")).toMatchObject({ ok: false });
+    expect(parseTemplate("${{ steps.a.visits[x].outputs.v }}")).toMatchObject({ ok: false });
+  });
+
+  it("reads an index of a list", () => {
+    const visits = {
+      steps: { a: { visits: [{ outputs: { v: "first" } }, { outputs: { v: "second" } }] } },
+    };
+
+    expect(evaluateExpression("${{ steps.a.visits[1].outputs.v }}", visits)).toEqual({
+      ok: true,
+      value: "second",
+    });
+    expect(evaluateExpression("${{ steps.a.visits[2].outputs.v }}", visits)).toEqual({
+      ok: true,
+      value: null,
+    });
+  });
+
   it("returns text without references as it is", () => {
     expect(evaluateExpression("plain", context)).toEqual({ ok: true, value: "plain" });
   });

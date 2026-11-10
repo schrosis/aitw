@@ -82,30 +82,68 @@ describe("validateIntermediate for branches", () => {
     ]);
   });
 
-  it("reports an unknown target and a transition to the start", () => {
+  it("reports an unknown target", () => {
     expect(
-      errorsOf({ a: script(branch({ if: condition, to: "x" }, { to: "a" }), { outputs }) }),
+      errorsOf({ a: script(branch({ if: condition, to: "x" }, { to: "end" }), { outputs }) }),
     ).toEqual([
       { message: "Unknown step: x", path: ["steps", "a", "next", "branches", 0, "to", "step"] },
-      {
-        message: "Cannot transition to the start step: a",
-        path: ["steps", "a", "next", "branches", 1, "to", "step"],
-      },
     ]);
   });
 
-  it("rejects a loop through a branch", () => {
+  it("accepts a loop through a branch, and lets its steps read each other", () => {
+    expect(
+      errorsOf({
+        a: script(toStep("b"), { run: "${{ steps.c.outputs.ok }}" }),
+        b: script(toStep("c"), { run: "${{ steps.c.visits[0].outputs.ok }}" }),
+        c: script(branch({ if: condition, to: "a" }, { to: "end" }), { outputs }),
+      }),
+    ).toEqual([]);
+  });
+
+  it("reports a loop whose every branch stays in the loop", () => {
     expect(
       errorsOf({
         a: script(toStep("b")),
-        b: script(toStep("c")),
-        c: script(branch({ if: condition, to: "b" }, { to: "end" }), { outputs }),
+        b: script(branch({ if: condition, to: "a" }, { to: "b" }), { outputs }),
       }),
-    ).toEqual([
-      {
-        message: "Cannot transition back to step b: loops are not supported yet",
-        path: ["steps", "c", "next", "branches", 0, "to", "step"],
-      },
+    ).toMatchObject([
+      { message: "Step a cannot reach end, so the workflow could never finish" },
+      { message: "Step b cannot reach end, so the workflow could never finish" },
+    ]);
+  });
+
+  it.each([
+    ["${{ steps.a.visits.x.outputs.value }}", "Can reference only"],
+    ["${{ steps.a.visits[0].other.value }}", "Can reference only"],
+    ["${{ steps.a.visits[0].outputs.missing }}", "Step a does not declare the output missing"],
+    ["${{ steps.a.visits[0].outputs.value.field }}", "Cannot reference a field of an output value"],
+  ])("reports the visit reference %s", (text, message) => {
+    expect(
+      errorsOf({
+        a: script(toStep("b"), { outputs: { value: "x" } }),
+        b: script(end, { run: text }),
+      }),
+    ).toMatchObject([{ message: expect.stringContaining(message) as unknown }]);
+  });
+
+  it("lets a condition read a visit", () => {
+    expect(
+      errorsOf({
+        a: script(toStep("b"), { outputs: { value: "x" } }),
+        b: script(
+          branch(
+            { if: "${{ steps.a.visits[1].outputs.value == null }}", to: "end" },
+            { to: "end" },
+          ),
+        ),
+      }),
+    ).toEqual([]);
+  });
+
+  it("accepts maxVisits only as a positive integer", () => {
+    expect(errorsOf({ a: script(end, { maxVisits: 3 }) })).toEqual([]);
+    expect(errorsOf({ a: script(end, { maxVisits: 0 }) })).toMatchObject([
+      { path: ["steps", "a", "maxVisits"] },
     ]);
   });
 

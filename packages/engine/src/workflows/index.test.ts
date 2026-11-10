@@ -223,6 +223,52 @@ describe("aitw", () => {
     60_000,
   );
 
+  it("fails when a step runs again, which is not supported yet", async () => {
+    const { requests, result } = await run({
+      ...intermediate,
+      start: "first",
+      steps: {
+        again: {
+          ...step("./again.sh", null),
+          next: {
+            branches: [
+              { if: "${{ result.exitCode == 0 }}", to: { step: "first", type: "step" } },
+              { to: { type: "end" } },
+            ],
+            type: "branch",
+          },
+        },
+        first: step("./first.sh", "again"),
+      },
+    });
+
+    expect(result).toMatchObject({
+      error: { cause: { message: "steps.first: Running a step again is not supported yet" } },
+      ok: false,
+    });
+    expect(requests.map(({ run: command }) => command)).toEqual(["./first.sh", "./again.sh"]);
+  }, 60_000);
+
+  it("reads a visit of an earlier step", async () => {
+    const { requests, result } = await run(
+      {
+        ...intermediate,
+        steps: {
+          fetch: { ...step("./fetch.sh", "report"), outputs: { title: "${{ result.stdout }}" } },
+          report: step(
+            "echo [${{ steps.fetch.visits[0].outputs.title }}][${{ steps.fetch.visits[1].outputs.title }}]",
+            null,
+          ),
+        },
+      },
+      {},
+      { "./fetch.sh": "hello\n" },
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh", "echo [hello][]"]);
+  }, 60_000);
+
   it("finishes on a branch to end", async () => {
     const { requests, result } = await run({
       ...intermediate,

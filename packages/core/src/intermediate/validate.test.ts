@@ -58,17 +58,33 @@ describe("validateIntermediate", () => {
     ]);
   });
 
-  it("rejects a transition to the start step", () => {
-    expect(errorsOf(intermediate("a", { a: "b", b: "a" }))).toEqual([
-      { message: "Cannot transition to the start step: a", path: ["steps", "b", "next", "step"] },
-    ]);
+  it("accepts a transition back to the start step when the workflow can finish", () => {
+    const steps = {
+      a: step("b"),
+      b: {
+        ...step(null),
+        next: {
+          branches: [
+            { if: "${{ result.stdout == 'x' }}", to: { step: "a", type: "step" as const } },
+            { to: { type: "end" as const } },
+          ],
+          type: "branch" as const,
+        },
+      },
+    };
+
+    expect(errorsOf({ ...intermediate("a", {}), steps })).toEqual([]);
   });
 
-  it("rejects a transition back to a step on its path", () => {
-    expect(errorsOf(intermediate("a", { a: "b", b: "c", c: "b" }))).toEqual([
+  it("reports every step of a loop that cannot reach the end", () => {
+    expect(errorsOf(intermediate("a", { a: "b", b: "a" }))).toEqual([
       {
-        message: "Cannot transition back to step b: loops are not supported yet",
-        path: ["steps", "c", "next", "step"],
+        message: "Step a cannot reach end, so the workflow could never finish",
+        path: ["steps", "a", "next"],
+      },
+      {
+        message: "Step b cannot reach end, so the workflow could never finish",
+        path: ["steps", "b", "next"],
       },
     ]);
   });

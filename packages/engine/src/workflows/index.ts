@@ -82,7 +82,9 @@ export interface WorkflowResult {
 
 /** Values that every field of a step can reference: earlier outputs and the workflow input. */
 type SharedContext = Readonly<{
-  steps: Readonly<Record<string, { outputs: StepOutput }>>;
+  steps: Readonly<
+    Record<string, { outputs: StepOutput; visits: readonly { outputs: StepOutput }[] }>
+  >;
   workflow: Readonly<{ inputs: Readonly<WorkflowInput> }>;
 }>;
 
@@ -312,6 +314,8 @@ export const aitw = async (
   const executedSteps: string[] = [];
   // The latest output of each step. Loops will keep every visit (B10b).
   const outputs: Record<string, StepOutput> = {};
+  // The outputs of every visit of each step, oldest first (B10b).
+  const visits: Record<string, { outputs: StepOutput }[]> = {};
 
   let id: string | null = start;
   while (id !== null) {
@@ -321,10 +325,20 @@ export const aitw = async (
     }
     const context: SharedContext = {
       steps: Object.fromEntries(
-        Object.entries(outputs).map(([stepId, output]) => [stepId, { outputs: output }]),
+        Object.entries(outputs).map(([stepId, output]) => [
+          stepId,
+          { outputs: output, visits: visits[stepId] ?? [] },
+        ]),
       ),
       workflow: { inputs: resolved.inputs },
     };
+
+    if (executedSteps.includes(id)) {
+      throw ApplicationFailure.nonRetryable(
+        `steps.${id}: Running a step again is not supported yet`,
+        "UnsupportedStep",
+      );
+    }
 
     // Where a step with branches goes, which its activity tells.
     let chosen: string | null = null;
@@ -455,6 +469,7 @@ export const aitw = async (
       }
     }
     executedSteps.push(id);
+    visits[id] = [...(visits[id] ?? []), { outputs: outputs[id] ?? {} }];
 
     id = step.next.type === "branch" ? chosen : step.next.type === "step" ? step.next.step : null;
   }

@@ -88,7 +88,7 @@ describe("validateIntermediate expressions", () => {
       expect(errorsOf(withField("inputs", expression))).toEqual([
         {
           message: expect.stringContaining(
-            "Can reference only steps.<id>.outputs.<name>, or workflow.inputs.<name>:",
+            "Can reference only steps.<id>.outputs.<name>, steps.<id>.visits[n].outputs.<name>, or workflow.inputs.<name>:",
           ) as unknown,
           path: pathOf("inputs"),
         },

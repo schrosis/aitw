@@ -8,7 +8,7 @@ import {
 } from "@aitw/core";
 import { z } from "zod";
 
-const stepIdPattern = new RegExp(`^(?!end$)${identifierSource}$`, "u");
+const stepIdPattern = new RegExp(`^(?!(?:end|start)$)${identifierSource}$`, "u");
 const durationPattern = /^[1-9][0-9]*(?:s|m|h)$/u;
 
 /** Definition format version supported by this package. */
@@ -25,7 +25,7 @@ const stepIdSchema = z
   .string()
   .regex(
     stepIdPattern,
-    "Must start with a letter, contain only letters, digits, or _, and not be the reserved word end",
+    "Must start with a letter, contain only letters, digits, or _, and not be a reserved word: end or start",
   );
 
 /** Where a step goes next: a step, or branches of which the first that holds is taken. */
@@ -44,6 +44,12 @@ const nextSchema = z.union(
   { error: "Must be the name of a step, end, or a list of branches with if and to" },
 );
 
+const maxVisitsSchema = z
+  .int()
+  .positive()
+  .optional()
+  .describe("Times that the step can run in a run. It has no limit by default");
+
 const expressionMapSchema = z.record(identifierSchema, z.string().min(1));
 
 /**
@@ -61,6 +67,7 @@ const scriptStepSchema = z.strictObject({
   type: z.literal("script"),
   run: z.string().min(1),
   next: nextSchema,
+  maxVisits: maxVisitsSchema,
   timeout: z
     .string()
     .regex(durationPattern, "Must be a positive duration such as 30s, 5m, or 1h")
@@ -79,6 +86,7 @@ const waitStepSchema = z.strictObject({
     .optional()
     .describe("Options of the method. Strings may contain expressions"),
   next: nextSchema,
+  maxVisits: maxVisitsSchema,
   inputs: expressionMapSchema.optional(),
   outputs: expressionMapSchema.optional(),
 });
@@ -101,6 +109,7 @@ const aiStepSchema = z.strictObject({
     .optional()
     .describe("Options of the provider. Strings may contain expressions"),
   next: nextSchema,
+  maxVisits: maxVisitsSchema,
   timeout: z
     .string()
     .regex(durationPattern, "Must be a positive duration such as 30s, 5m, or 1h")

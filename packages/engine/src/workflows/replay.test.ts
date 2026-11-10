@@ -60,6 +60,34 @@ const scenarios: Record<
       version: intermediateVersion,
     },
   },
+  loop: {
+    inputs: {},
+    intermediate: {
+      inputs: {},
+      start: "implement",
+      steps: {
+        implement: script("echo [${{ steps.review.visits[0].outputs.note }}]", "review", {
+          maxVisits: 5,
+          outputs: { value: "${{ result.stdout }}" },
+        }),
+        // It goes back once, until the second visit of implement has an output.
+        review: script("echo review", null, {
+          next: {
+            branches: [
+              {
+                if: "${{ steps.implement.visits[1].outputs.value == null }}",
+                to: { step: "implement", type: "step" },
+              },
+              { to: { type: "end" } },
+            ],
+            type: "branch",
+          },
+          outputs: { note: "${{ result.stdout }}" },
+        }),
+      },
+      version: intermediateVersion,
+    },
+  },
   branch: {
     drive: async (handle) => {
       await waitForStep(handle);

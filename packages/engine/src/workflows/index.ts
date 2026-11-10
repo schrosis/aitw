@@ -25,6 +25,7 @@ import {
   proxyActivities,
   proxyLocalActivities,
   setHandler,
+  workflowInfo,
 } from "@temporalio/workflow";
 
 import type {
@@ -34,7 +35,7 @@ import type {
   ScriptStepRequest,
   StepOutput,
 } from "../activities/index.js";
-import { jsonBytes, maxValueBytes } from "../limits.js";
+import { historyLimitMessage, jsonBytes, maxValueBytes } from "../limits.js";
 import { answerUpdateName, waitingQueryName } from "../messages.js";
 import type { Answer, WaitingStep } from "../messages.js";
 
@@ -333,11 +334,18 @@ export const aitw = async (
       workflow: { inputs: resolved.inputs },
     };
 
-    if (executedSteps.includes(id)) {
+    const visited = visits[id]?.length ?? 0;
+    if (step.maxVisits !== undefined && visited >= step.maxVisits) {
       throw ApplicationFailure.nonRetryable(
-        `steps.${id}: Running a step again is not supported yet`,
-        "UnsupportedStep",
+        `steps.${id}: The step already ran ${visited} times, which is its maxVisits`,
+        "MaxVisitsExceeded",
       );
+    }
+    // Temporal terminates a run at its limits, and the step would not be told why.
+    const info = workflowInfo();
+    const historyLimit = historyLimitMessage(info.historyLength, info.historySize);
+    if (historyLimit !== undefined) {
+      throw ApplicationFailure.nonRetryable(`steps.${id}: ${historyLimit}`, "HistoryTooLong");
     }
 
     // Where a step with branches goes, which its activity tells.

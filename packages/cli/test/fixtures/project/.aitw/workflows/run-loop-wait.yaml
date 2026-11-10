@@ -1,0 +1,17 @@
+version: v0.1
+start: ask
+steps:
+  ask:
+    type: wait
+    method: terminal
+    maxVisits: 5
+    with:
+      message: Again?
+      schema:
+        again:
+          type: boolean
+          required: true
+    next:
+      - if: ${{ result.again == true }}
+        to: ask
+      - to: end

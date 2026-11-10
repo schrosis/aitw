@@ -3,7 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { intermediateVersion } from "@aitw/core";
-import type { AiRequest, Intermediate, ScriptRequest, ScriptResult } from "@aitw/core";
+import type { AiRequest, Intermediate, ScriptRequest, ScriptResult, ScriptStep } from "@aitw/core";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
@@ -28,6 +28,38 @@ const intermediate: Intermediate = {
   inputs: {},
 };
 
+/** Returns the output of a script. A list gives the outputs of each time it runs, in order. */
+const nextStdout = (stdout: string | string[] | undefined): string =>
+  Array.isArray(stdout) ? (stdout.shift() ?? "") : (stdout ?? "");
+
+/** A loop that runs ./implement.sh and ./review.sh until the review prints something else. */
+const reviewLoop = (implement: Partial<ScriptStep> = {}): Intermediate => ({
+  ...intermediate,
+  start: "implement",
+  steps: {
+    implement: {
+      inputs: {},
+      next: { step: "review", type: "step" },
+      outputs: {},
+      run: "./implement.sh",
+      timeoutMs: 5000,
+      type: "script",
+      ...implement,
+    },
+    review: {
+      ...step("./review.sh", null),
+      next: {
+        branches: [
+          { if: "${{ outputs.note == 'changes' }}", to: { step: "implement", type: "step" } },
+          { to: { type: "end" } },
+        ],
+        type: "branch",
+      },
+      outputs: { note: "${{ result.stdout }}" },
+    },
+  },
+});
+
 describe("aitw", () => {
   let environment: TestWorkflowEnvironment;
 
@@ -44,7 +76,7 @@ describe("aitw", () => {
   const run = async (
     input: unknown,
     exitCodes: Record<string, number> = {},
-    stdouts: Record<string, string> = {},
+    stdouts: Record<string, string | string[]> = {},
     workflowInput?: unknown,
   ) => {
     const requests: ScriptRequest[] = [];
@@ -59,7 +91,7 @@ describe("aitw", () => {
             exitCode: exitCodes[request.run] ?? 0,
             signal: null,
             stderr: "",
-            stdout: stdouts[request.run] ?? "",
+            stdout: nextStdout(stdouts[request.run]),
           };
         },
       },
@@ -223,31 +255,160 @@ describe("aitw", () => {
     60_000,
   );
 
-  it("fails when a step runs again, which is not supported yet", async () => {
-    const { requests, result } = await run({
-      ...intermediate,
-      start: "first",
-      steps: {
-        again: {
-          ...step("./again.sh", null),
-          next: {
-            branches: [
-              { if: "${{ result.exitCode == 0 }}", to: { step: "first", type: "step" } },
-              { to: { type: "end" } },
-            ],
-            type: "branch",
-          },
-        },
-        first: step("./first.sh", "again"),
-      },
-    });
+  it("goes back to an earlier step until a branch leaves the loop", async () => {
+    const { requests, result } = await run(
+      reviewLoop({
+        run: "./implement.sh [${{ steps.review.outputs.note }}][${{ steps.review.visits[0].outputs.note }}]",
+      }),
+      {},
+      { "./review.sh": ["changes\n", "changes\n", "fine\n"] },
+    );
 
     expect(result).toMatchObject({
-      error: { cause: { message: "steps.first: Running a step again is not supported yet" } },
+      ok: true,
+      value: {
+        executedSteps: ["implement", "review", "implement", "review", "implement", "review"],
+      },
+    });
+    expect(requests.map(({ run: command }) => command)).toEqual([
+      "./implement.sh [][]",
+      "./review.sh",
+      "./implement.sh [changes][changes]",
+      "./review.sh",
+      "./implement.sh [changes][changes]",
+      "./review.sh",
+    ]);
+  }, 60_000);
+
+  it("reads the outputs of each visit", async () => {
+    const { requests, result } = await run(
+      reviewLoop({
+        run: "./implement.sh [${{ steps.review.visits[0].outputs.note }}][${{ steps.review.visits[1].outputs.note }}]",
+      }),
+      {},
+      { "./review.sh": ["changes\n", "changes\n", "fine\n"] },
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(requests.filter(({ run: command }) => command.startsWith("./implement"))).toMatchObject([
+      { run: "./implement.sh [][]" },
+      { run: "./implement.sh [changes][]" },
+      { run: "./implement.sh [changes][changes]" },
+    ]);
+  }, 60_000);
+
+  it("fails before a step runs more than its maxVisits", async () => {
+    const { requests, result } = await run(
+      reviewLoop({ maxVisits: 2 }),
+      {},
+      {
+        "./review.sh": "changes\n",
+      },
+    );
+
+    expect(result).toMatchObject({
+      error: {
+        cause: {
+          message: "steps.implement: The step already ran 2 times, which is its maxVisits",
+          type: "MaxVisitsExceeded",
+        },
+      },
       ok: false,
     });
-    expect(requests.map(({ run: command }) => command)).toEqual(["./first.sh", "./again.sh"]);
+    expect(requests.map(({ run: command }) => command)).toEqual([
+      "./implement.sh",
+      "./review.sh",
+      "./implement.sh",
+      "./review.sh",
+    ]);
   }, 60_000);
+
+  it.each([
+    ["reuse", ["none", "session-review-1"]],
+    ["new", ["none", "none"]],
+  ] as const)(
+    "uses sessions for session: %s, one for each step",
+    async (session, resumed) => {
+      const aiRequests: AiRequest[] = [];
+      const taskQueue = randomUUID();
+      let reviews = 0;
+      const worker = await Worker.create({
+        activities: createActivities({
+          aiRunner: {
+            run: async (request) => {
+              aiRequests.push(request);
+              if (request.prompt === "Review") {
+                reviews += 1;
+                return {
+                  data: { again: reviews === 1 },
+                  sessionId: `session-review-${reviews}`,
+                };
+              }
+              return { data: "done", sessionId: "session-implement" };
+            },
+          },
+          scriptRunner: {
+            run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }),
+          },
+        }),
+        connection: environment.nativeConnection,
+        taskQueue,
+        workflowsPath: fileURLToPath(new URL("./index.ts", import.meta.url)),
+      });
+      const ai = {
+        inputs: {},
+        outputs: {},
+        provider: "claude-code",
+        timeoutMs: 5000,
+        type: "ai" as const,
+        with: {},
+      };
+      const input: Intermediate = {
+        ...intermediate,
+        start: "implement",
+        steps: {
+          implement: {
+            ...ai,
+            next: { step: "review", type: "step" },
+            prompt: "Implement",
+            session: "new",
+          },
+          review: {
+            ...ai,
+            next: {
+              branches: [
+                { if: "${{ result.data.again == true }}", to: { step: "implement", type: "step" } },
+                { to: { type: "end" } },
+              ],
+              type: "branch",
+            },
+            prompt: "Review",
+            schema: { type: "object" },
+            session,
+          },
+        },
+      };
+
+      await worker.runUntil(
+        environment.client.workflow.execute(aitw, {
+          args: [input],
+          taskQueue,
+          workflowId: randomUUID(),
+        }),
+      );
+
+      expect(
+        aiRequests
+          .filter(({ prompt }) => prompt === "Review")
+          .map(({ sessionId }) => sessionId ?? "none"),
+      ).toEqual(resumed);
+      // The other step does not continue the session of the review.
+      expect(
+        aiRequests.filter(({ prompt }) => prompt === "Implement").map(({ sessionId }) => sessionId),
+      ).toEqual([undefined, undefined]);
+    },
+    60_000,
+  );
 
   it("reads a visit of an earlier step", async () => {
     const { requests, result } = await run(

@@ -175,6 +175,13 @@ describe("run", () => {
     60_000,
   );
 
+  it("asks a wait step again when a loop comes back to it", async () => {
+    const result = await execute("run-loop-wait", undefined, undefined, undefined, "y\ny\nn\n");
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(result.stdout).toContain("run-loop-wait: completed (ask, ask, ask)\n");
+  }, 60_000);
+
   it("reports a failed script", async () => {
     const result = await execute("run-failure");
 

@@ -1,4 +1,4 @@
-import { createPluginRegistry, definePlugin, defineWaitMethod } from "@aitw/core";
+import { createPluginRegistry, defineAiProvider, definePlugin, defineWaitMethod } from "@aitw/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -189,5 +189,127 @@ describe("compileDefinition wait steps", () => {
         },
       ),
     ).toMatchObject({ errors: [{ line: 8, path: ["steps", "ask", "with"] }], ok: false });
+  });
+});
+
+const aiSource = (fields: string): string => `version: v0.1
+start: review
+steps:
+  review:
+    type: ai
+    prompt: Review the change
+${fields}
+    next: end
+`;
+
+describe("compileDefinition for AI steps", () => {
+  const plugins = createPluginRegistry({
+    builtins: [
+      definePlugin({
+        aiProviders: [
+          defineAiProvider({
+            name: "claude-code",
+            with: z.strictObject({ allowedTools: z.array(z.string()).optional() }),
+          }),
+        ],
+        name: "claude",
+      }),
+    ],
+  });
+
+  it("builds a step with its defaults", () => {
+    const result = compileDefinition(aiSource("    provider: claude-code"), { plugins });
+
+    expect(result).toMatchObject({
+      intermediate: {
+        steps: {
+          review: {
+            prompt: "Review the change",
+            provider: "claude-code",
+            session: "reuse",
+            timeoutMs: 1_800_000,
+            type: "ai",
+            with: {},
+          },
+        },
+      },
+      ok: true,
+    });
+    expect(result.ok && result.intermediate.steps.review).not.toHaveProperty("model");
+    expect(result.ok && result.intermediate.steps.review).not.toHaveProperty("schema");
+  });
+
+  it("builds every field", () => {
+    const source = aiSource(`    provider: claude-code
+    model: claude-opus-5-5
+    session: new
+    timeout: 5m
+    env:
+      PORT: 3000
+    with:
+      allowedTools: [Read]
+    schema:
+      type: object
+      properties:
+        verdict:
+          type: string
+    outputs:
+      verdict: \${{ result.data.verdict }}`);
+
+    expect(compileDefinition(source, { plugins })).toMatchObject({
+      intermediate: {
+        steps: {
+          review: {
+            env: { PORT: "3000" },
+            model: "claude-opus-5-5",
+            outputs: { verdict: "${{ result.data.verdict }}" },
+            schema: { properties: { verdict: { type: "string" } }, type: "object" },
+            session: "new",
+            timeoutMs: 300_000,
+            with: { allowedTools: ["Read"] },
+          },
+        },
+      },
+      ok: true,
+    });
+  });
+
+  it("locates an unknown provider", () => {
+    expect(compileDefinition(aiSource("    provider: codex"), { plugins })).toEqual({
+      errors: [
+        {
+          column: 15,
+          line: 7,
+          message: "Unknown AI provider: codex. Available providers: claude-code",
+          path: ["steps", "review", "provider"],
+        },
+      ],
+      ok: false,
+    });
+    expect(compileDefinition(aiSource("    provider: codex"))).toMatchObject({
+      errors: [{ message: "Unknown AI provider: codex. No providers are available" }],
+      ok: false,
+    });
+  });
+
+  it("locates invalid options of the provider", () => {
+    const source = aiSource(`    provider: claude-code
+    with:
+      allowedTools: Read`);
+
+    expect(compileDefinition(source, { plugins })).toMatchObject({
+      errors: [{ line: 9, path: ["steps", "review", "with", "allowedTools"] }],
+      ok: false,
+    });
+  });
+
+  it("rejects an unknown session", () => {
+    const source = aiSource(`    provider: claude-code
+    session: always`);
+
+    expect(compileDefinition(source, { plugins })).toMatchObject({
+      errors: [{ path: ["steps", "review", "session"] }],
+      ok: false,
+    });
   });
 });

@@ -14,7 +14,7 @@ const durationPattern = /^[1-9][0-9]*(?:s|m|h)$/u;
 /** Definition format version supported by this package. */
 export const definitionVersion = "v0.1";
 
-/** Timeout applied to a script step that does not specify one. */
+/** Timeout applied to a script or AI step that does not specify one. */
 export const defaultStepTimeout = "30m";
 
 const identifierSchema = z
@@ -67,7 +67,35 @@ const waitStepSchema = z.strictObject({
   outputs: expressionMapSchema.optional(),
 });
 
-const stepSchema = z.discriminatedUnion("type", [scriptStepSchema, waitStepSchema]);
+const aiStepSchema = z.strictObject({
+  type: z.literal("ai"),
+  provider: z.string().min(1).describe("Provider that runs the step, such as claude-code"),
+  model: z.string().min(1).optional().describe("Model to use. The provider chooses one by default"),
+  prompt: z.string().min(1).describe("Instructions of the step. It may contain expressions"),
+  schema: z
+    .record(z.string(), z.json())
+    .optional()
+    .describe("JSON Schema of the result, which is text without it"),
+  session: z
+    .enum(["reuse", "new"])
+    .default("reuse")
+    .describe("Whether a step that runs again continues its previous session"),
+  with: z
+    .record(z.string(), z.json())
+    .optional()
+    .describe("Options of the provider. Strings may contain expressions"),
+  next: identifierSchema,
+  timeout: z
+    .string()
+    .regex(durationPattern, "Must be a positive duration such as 30s, 5m, or 1h")
+    .default(defaultStepTimeout)
+    .describe("Maximum duration of the step"),
+  inputs: expressionMapSchema.optional(),
+  outputs: expressionMapSchema.optional(),
+  env: envSchema.describe("Environment variables of the step. Values may contain expressions"),
+});
+
+const stepSchema = z.discriminatedUnion("type", [scriptStepSchema, waitStepSchema, aiStepSchema]);
 
 /** Schema for a workflow definition object, independent of its file format. */
 export const definitionSchema = z.strictObject({

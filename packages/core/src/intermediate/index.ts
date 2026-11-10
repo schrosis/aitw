@@ -1,5 +1,12 @@
 export { intermediateSchema, intermediateVersion } from "./schema.js";
-export type { Intermediate, IntermediateStep, ScriptStep, Transition, WaitStep } from "./schema.js";
+export type {
+  AiStep,
+  Intermediate,
+  IntermediateStep,
+  ScriptStep,
+  Transition,
+  WaitStep,
+} from "./schema.js";
 export {
   checkInputDeclarations,
   inputDeclarationDefinitionSchema,

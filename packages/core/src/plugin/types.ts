@@ -48,6 +48,18 @@ export interface WaitResponseContext<Options> {
   signal: AbortSignal;
 }
 
+/** A provider that runs `ai` steps, such as `claude-code`. */
+export interface AiProvider<Options = unknown> {
+  /**
+   * Name of the provider within its plugin, such as `claude-code`.
+   *
+   * It must start with a letter and contain only letters, digits, `_`, or `-`.
+   */
+  name: string;
+  /** Schema of the `with` field of a step. It must validate synchronously. */
+  with: StandardSchemaV1<unknown, Options>;
+}
+
 /** A package that extends aitw. */
 export interface Plugin {
   /**
@@ -58,10 +70,15 @@ export interface Plugin {
    */
   name: string;
   waitMethods?: readonly WaitMethod[];
+  aiProviders?: readonly AiProvider[];
 }
 
 /** Declares a plugin. It only checks the type. */
 export const definePlugin = (plugin: Plugin): Plugin => plugin;
+
+/** Declares an AI provider, inferring the type of its options from the schema of `with`. */
+export const defineAiProvider = <Options>(provider: AiProvider<Options>): AiProvider<Options> =>
+  provider;
 
 /** Declares a wait method, inferring the type of its options from the schema of `with`. */
 export const defineWaitMethod = <Options>(method: WaitMethod<Options>): WaitMethod<Options> =>

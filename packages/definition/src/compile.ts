@@ -14,7 +14,7 @@ export type CompileResult =
 
 /** Options of {@link compileDefinition}. */
 export interface CompileOptions {
-  /** Plugins that provide the methods of wait steps. Without it, no method is available. */
+  /** Plugins that provide wait methods and AI providers. Without it, none is available. */
   plugins?: PluginRegistry;
 }
 
@@ -70,6 +70,39 @@ const resolveWaitSteps = (
 };
 
 /**
+ * Validates the provider and `with` of every AI step.
+ *
+ * The paths of the errors are definition paths.
+ */
+const checkAiSteps = (definition: Definition, plugins: PluginRegistry): ValidationError[] =>
+  Object.entries(definition.steps).flatMap(([id, step]): ValidationError[] => {
+    if (step.type !== "ai") {
+      return [];
+    }
+    const provider = plugins.aiProvider(step.provider);
+    if (provider === undefined) {
+      const names = plugins.aiProviderNames();
+      return [
+        {
+          message: `Unknown AI provider: ${step.provider}. ${
+            names.length > 0
+              ? `Available providers: ${names.join(", ")}`
+              : "No providers are available"
+          }`,
+          path: ["steps", id, "provider"],
+        },
+      ];
+    }
+    const options = validateWithSchema(provider.with, step.with ?? {});
+    return options.ok
+      ? []
+      : options.errors.map(({ message, path }) => ({
+          message,
+          path: ["steps", id, "with", ...path],
+        }));
+  });
+
+/**
  * Parses, builds, and validates a YAML workflow definition.
  *
  * Errors in the intermediate representation are reported at their YAML locations.
@@ -87,6 +120,7 @@ export const compileDefinition = (
   const validation = validateIntermediate(buildIntermediate(parsed.definition, waits.answers));
   const errors = [
     ...waits.errors,
+    ...checkAiSteps(parsed.definition, plugins),
     ...(validation.ok
       ? []
       : validation.errors.map(({ message, path }) => ({ message, path: toDefinitionPath(path) }))),

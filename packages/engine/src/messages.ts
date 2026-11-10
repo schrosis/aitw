@@ -16,6 +16,8 @@ export const answerUpdateName = "aitw.answer";
 export interface WaitingStep {
   /** ID of the step. */
   step: string;
+  /** How many times the step ran before, which tells the visits of a loop apart. */
+  visit: number;
   /** Name of the wait method, as the definition writes it. */
   method: string;
   /** Options from `with`, after its expressions are evaluated. */
@@ -28,6 +30,8 @@ export interface WaitingStep {
 export interface Answer {
   /** ID of the step that the answer is for, so that an old answer cannot answer a later step. */
   step: string;
+  /** Visit of the step that the answer is for, so that it cannot answer a later visit. */
+  visit?: number | undefined;
   /** Values of the answers, keyed by name. Defaults are applied by the workflow. */
   values: Readonly<Record<string, unknown>>;
 }

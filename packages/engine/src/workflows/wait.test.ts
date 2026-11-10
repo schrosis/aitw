@@ -112,6 +112,7 @@ describe("aitw wait steps", () => {
         method: "terminal",
         options: { message: "Hello, who are you?", tags: ["Hello"] },
         step: "ask",
+        visit: 0,
       });
 
       await answer(handle, { step: "ask", values: { name: "aitw" } });

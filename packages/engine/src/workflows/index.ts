@@ -25,6 +25,7 @@ import {
   proxyActivities,
   proxyLocalActivities,
   setHandler,
+  workflowInfo,
 } from "@temporalio/workflow";
 
 import type {
@@ -34,7 +35,7 @@ import type {
   ScriptStepRequest,
   StepOutput,
 } from "../activities/index.js";
-import { jsonBytes, maxValueBytes } from "../limits.js";
+import { historyLimitMessage, jsonBytes, maxValueBytes } from "../limits.js";
 import { answerUpdateName, waitingQueryName } from "../messages.js";
 import type { Answer, WaitingStep } from "../messages.js";
 
@@ -276,9 +277,13 @@ export const aitw = async (
     },
     {
       // A rejected answer leaves no trace in the history, and the caller can answer again.
-      validator: ({ step, values }) => {
+      validator: ({ step, values, visit }) => {
         const current = waiting;
-        if (current === null || current.step !== step) {
+        if (
+          current === null ||
+          current.step !== step ||
+          (visit !== undefined && current.visit !== visit)
+        ) {
           throw new Error(`Step ${step} is not waiting for an answer`);
         }
         const accepted = resolveWorkflowInput(current.answers, values);
@@ -312,7 +317,7 @@ export const aitw = async (
     workflowEnv[name] = embedValue(evaluated.value);
   }
   const executedSteps: string[] = [];
-  // The latest output of each step. Loops will keep every visit (B10b).
+  // The latest output of each step.
   const outputs: Record<string, StepOutput> = {};
   // The outputs of every visit of each step, oldest first (B10b).
   const visits: Record<string, { outputs: StepOutput }[]> = {};
@@ -333,11 +338,18 @@ export const aitw = async (
       workflow: { inputs: resolved.inputs },
     };
 
-    if (executedSteps.includes(id)) {
+    const visited = visits[id]?.length ?? 0;
+    if (step.maxVisits !== undefined && visited >= step.maxVisits) {
       throw ApplicationFailure.nonRetryable(
-        `steps.${id}: Running a step again is not supported yet`,
-        "UnsupportedStep",
+        `steps.${id}: The step already ran ${visited} times, which is its maxVisits`,
+        "MaxVisitsExceeded",
       );
+    }
+    // Temporal terminates a run at its limits, and the step would not be told why.
+    const info = workflowInfo();
+    const historyLimit = historyLimitMessage(info.historyLength, info.historySize);
+    if (historyLimit !== undefined) {
+      throw ApplicationFailure.nonRetryable(`steps.${id}: ${historyLimit}`, "HistoryTooLong");
     }
 
     // Where a step with branches goes, which its activity tells.
@@ -410,6 +422,7 @@ export const aitw = async (
         method: step.method,
         options: typeof options === "object" && options !== null ? { ...options } : {},
         step: id,
+        visit: visited,
       };
       answer = undefined;
       try {

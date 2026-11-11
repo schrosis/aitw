@@ -2,12 +2,24 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadProjectConfig } from "../config.ts";
 import { createOutput } from "../testing.ts";
 import { init } from "./init.ts";
 import { validate } from "./validate.ts";
+
+/** Whether writing the JSON Schemas fails, such as on a full disk. */
+const schemas = vi.hoisted(() => ({ fail: false }));
+
+vi.mock("./schema.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./schema.ts")>();
+  return {
+    ...actual,
+    writeSchemas: async (...args: Parameters<typeof actual.writeSchemas>) =>
+      schemas.fail ? Promise.reject(new Error("The disk is full")) : actual.writeSchemas(...args),
+  };
+});
 
 describe("init", () => {
   let cwd: string;
@@ -17,6 +29,7 @@ describe("init", () => {
   });
 
   afterEach(() => {
+    schemas.fail = false;
     rmSync(cwd, { force: true, recursive: true });
   });
 
@@ -63,5 +76,17 @@ describe("init", () => {
       stdout: "",
     });
     expect(existsSync(join(cwd, ".aitw", "config.yaml"))).toBe(false);
+  });
+
+  it("removes what it created when it fails, so that it can run again", async () => {
+    schemas.fail = true;
+    const output = createOutput();
+
+    await expect(init({ cwd, ...output })).resolves.toBe(1);
+
+    expect(output.written).toEqual({ stderr: "The disk is full\n", stdout: "" });
+    expect(existsSync(join(cwd, ".aitw"))).toBe(false);
+    schemas.fail = false;
+    await expect(init({ cwd, ...createOutput() })).resolves.toBe(0);
   });
 });

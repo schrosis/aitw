@@ -1,4 +1,4 @@
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
 import { aitwDirectory } from "../workflows.js";
@@ -25,17 +25,8 @@ steps:
     next: end
 `;
 
-const exists = async (path: string): Promise<boolean> => {
-  try {
-    await stat(path);
-    return true;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
-};
+const isAlreadyExists = (error: unknown): boolean =>
+  error instanceof Error && "code" in error && error.code === "EEXIST";
 
 /**
  * Creates `.aitw` in the current directory, with the configuration file, a sample workflow, and
@@ -48,29 +39,38 @@ const exists = async (path: string): Promise<boolean> => {
  */
 export const init = async (context: CommandContext): Promise<number> => {
   const directory = join(context.cwd, aitwDirectory);
+  // Creating the directory also tells whether it exists, so that a project that another process
+  // creates in the meantime is not mixed with this one.
   try {
-    if (await exists(directory)) {
-      context.stderr(`${aitwDirectory} already exists in ${context.cwd}\n`);
-      return 1;
-    }
+    await mkdir(directory);
+  } catch (error) {
+    context.stderr(
+      isAlreadyExists(error)
+        ? `${aitwDirectory} already exists in ${context.cwd}\n`
+        : `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return 1;
+  }
+  const written: string[] = [];
+  try {
     const workflows = join(directory, "workflows");
-    await mkdir(workflows, { recursive: true });
-    const written: string[] = [];
+    await mkdir(workflows);
     for (const [file, source] of [
       [join(directory, "config.yaml"), configSource],
       [join(workflows, "hello.yaml"), helloSource],
     ] as const) {
-      // Another process could create the file in the meantime, which must not be replaced.
       await writeFile(file, source, { flag: "wx" });
       written.push(relative(context.cwd, file));
     }
     written.push(...(await writeSchemas(context.cwd, context.cwd)));
-    for (const file of written) {
-      context.stdout(`wrote ${file}\n`);
-    }
   } catch (error) {
+    // This command created the directory, so removing it lets the command run again.
+    await rm(directory, { force: true, recursive: true });
     context.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
+  }
+  for (const file of written) {
+    context.stdout(`wrote ${file}\n`);
   }
   context.stdout(`
 Next:

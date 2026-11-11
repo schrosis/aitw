@@ -16,7 +16,15 @@ export type CompileResult =
 export interface CompileOptions {
   /** Plugins that provide wait methods and AI providers. Without it, none is available. */
   plugins?: PluginRegistry;
+  /**
+   * Returns how to get a wait method or an AI provider that no plugin provides, such as which
+   * package to install. It replaces the list of the available names in the message.
+   */
+  missingHint?: MissingHint;
 }
+
+/** Returns how to get an extension that no plugin provides, or `undefined` when unknown. */
+export type MissingHint = (kind: "aiProvider" | "waitMethod", name: string) => string | undefined;
 
 /**
  * Validates the method and `with` of every wait step, and collects the answers that the
@@ -27,6 +35,7 @@ export interface CompileOptions {
 const resolveWaitSteps = (
   definition: Definition,
   plugins: PluginRegistry,
+  missingHint: MissingHint,
 ): { answers: WaitAnswers; errors: ValidationError[] } => {
   const answers: Record<string, WaitAnswers[string]> = {};
   const errors: ValidationError[] = [];
@@ -39,7 +48,8 @@ const resolveWaitSteps = (
       const names = plugins.waitMethodNames();
       errors.push({
         message: `Unknown wait method: ${step.method}. ${
-          names.length > 0 ? `Available methods: ${names.join(", ")}` : "No methods are available"
+          missingHint("waitMethod", step.method) ??
+          (names.length > 0 ? `Available methods: ${names.join(", ")}` : "No methods are available")
         }`,
         path: ["steps", id, "method"],
       });
@@ -74,7 +84,11 @@ const resolveWaitSteps = (
  *
  * The paths of the errors are definition paths.
  */
-const checkAiSteps = (definition: Definition, plugins: PluginRegistry): ValidationError[] =>
+const checkAiSteps = (
+  definition: Definition,
+  plugins: PluginRegistry,
+  missingHint: MissingHint,
+): ValidationError[] =>
   Object.entries(definition.steps).flatMap(([id, step]): ValidationError[] => {
     if (step.type !== "ai") {
       return [];
@@ -85,9 +99,10 @@ const checkAiSteps = (definition: Definition, plugins: PluginRegistry): Validati
       return [
         {
           message: `Unknown AI provider: ${step.provider}. ${
-            names.length > 0
+            missingHint("aiProvider", step.provider) ??
+            (names.length > 0
               ? `Available providers: ${names.join(", ")}`
-              : "No providers are available"
+              : "No providers are available")
           }`,
           path: ["steps", id, "provider"],
         },
@@ -109,18 +124,18 @@ const checkAiSteps = (definition: Definition, plugins: PluginRegistry): Validati
  */
 export const compileDefinition = (
   source: string,
-  { plugins = createPluginRegistry() }: CompileOptions = {},
+  { missingHint = () => undefined, plugins = createPluginRegistry() }: CompileOptions = {},
 ): CompileResult => {
   const parsed = parseDefinition(source);
   if (!parsed.ok) {
     return parsed;
   }
 
-  const waits = resolveWaitSteps(parsed.definition, plugins);
+  const waits = resolveWaitSteps(parsed.definition, plugins, missingHint);
   const validation = validateIntermediate(buildIntermediate(parsed.definition, waits.answers));
   const errors = [
     ...waits.errors,
-    ...checkAiSteps(parsed.definition, plugins),
+    ...checkAiSteps(parsed.definition, plugins, missingHint),
     ...(validation.ok
       ? []
       : validation.errors.map(({ message, path }) => ({ message, path: toDefinitionPath(path) }))),

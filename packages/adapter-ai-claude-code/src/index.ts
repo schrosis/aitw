@@ -200,3 +200,6 @@ export const createClaudeCodePlugin = ({
 
 /** The plugin that runs `ai` steps with Claude Code, through the Claude Agent SDK. */
 export const claudeCodePlugin: Plugin = createClaudeCodePlugin();
+
+// aitw loads the default export of the packages that `plugins` in `.aitw/config.yaml` names.
+export default claudeCodePlugin;

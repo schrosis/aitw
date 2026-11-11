@@ -94,10 +94,13 @@ describe("loadProjectPlugins", () => {
     expect(loaded?.plugin.name).toBe("imported");
   });
 
-  it("does not load a plugin that aitw has built in again", async () => {
+  it("loads the official Claude Code plugin, whose provider keeps its short name", async () => {
+    // The plugin is installed next to aitw, as a development dependency here.
     configure(["@aitw/adapter-ai-claude-code"]);
 
-    await expect(loadProjectPlugins(root, root)).resolves.toEqual([]);
+    const registry = createRegistry(undefined, await loadProjectPlugins(root, root));
+
+    expect(registry.aiProviderNames()).toEqual(["claude-code"]);
   });
 
   it("tells how to install a plugin that is missing", async () => {
@@ -167,5 +170,19 @@ describe("loadProjectPlugins", () => {
 
     await expect(validate("approve", { cwd: root, ...output })).resolves.toBe(1);
     expect(output.written.stderr).toContain("Plugin @acme/aitw-missing is not installed");
+  });
+
+  it("tells which package provides an official AI provider that is not loaded", async () => {
+    mkdirSync(join(root, ".aitw", "workflows"));
+    writeFileSync(
+      join(root, ".aitw", "workflows", "review.yaml"),
+      "version: v0.1\nstart: review\nsteps:\n  review:\n    type: ai\n    provider: claude-code\n    prompt: Review\n    next: end\n",
+    );
+    const output = createOutput();
+
+    await expect(validate("review", { cwd: root, ...output })).resolves.toBe(1);
+    expect(output.written.stderr).toBe(
+      ".aitw/workflows/review.yaml:6:15 steps.review.provider: Unknown AI provider: claude-code. Install @aitw/adapter-ai-claude-code and add it to plugins in .aitw/config.yaml\n",
+    );
   });
 });

@@ -50,6 +50,13 @@ const maxVisitsSchema = z
   .optional()
   .describe("Times that the step can run in a run. It has no limit by default");
 
+const continueOnErrorSchema = z
+  .boolean()
+  .optional()
+  .describe(
+    "Whether the workflow goes on when the step fails, with result.ok set to false. It stops by default",
+  );
+
 const expressionMapSchema = z.record(identifierSchema, z.string().min(1));
 
 /**
@@ -68,6 +75,7 @@ const scriptStepSchema = z.strictObject({
   run: z.string().min(1),
   next: nextSchema,
   maxVisits: maxVisitsSchema,
+  continueOnError: continueOnErrorSchema,
   timeout: z
     .string()
     .regex(durationPattern, "Must be a positive duration such as 30s, 5m, or 1h")
@@ -110,6 +118,7 @@ const aiStepSchema = z.strictObject({
     .describe("Options of the provider. Strings may contain expressions"),
   next: nextSchema,
   maxVisits: maxVisitsSchema,
+  continueOnError: continueOnErrorSchema,
   timeout: z
     .string()
     .regex(durationPattern, "Must be a positive duration such as 30s, 5m, or 1h")

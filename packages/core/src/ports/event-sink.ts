@@ -31,6 +31,8 @@ export type WorkflowEvent =
       durationMs: number;
       /** Reason of a failure, absent when the step succeeded. */
       message?: string | undefined;
+      /** Whether the workflow goes on after the step failed, as `continueOnError` asks. */
+      continued?: boolean | undefined;
     };
 
 /**
@@ -65,5 +67,6 @@ export const workflowEventSchema: z.ZodType<WorkflowEvent> = z.discriminatedUnio
     outcome: z.enum(["succeeded", "failed", "cancelled"]),
     durationMs: z.number(),
     message: z.string().optional(),
+    continued: z.boolean().optional(),
   }),
 ]);

@@ -4,11 +4,19 @@ import { earlierSteps, reachableSteps } from "./order.js";
 import type { Intermediate } from "./schema.js";
 import type { ValidationError } from "./validate.js";
 
+/** Fields that the result of every script and AI step has: whether it succeeded, and why not. */
+const outcomeFields = ["ok", "error"] as const;
+
 /** Fields of the script result that `outputs` can read. */
-const scriptResultFields: ReadonlySet<string> = new Set(["exitCode", "stdout", "stderr"]);
+const scriptResultFields: ReadonlySet<string> = new Set([
+  "exitCode",
+  "stdout",
+  "stderr",
+  ...outcomeFields,
+]);
 
 /** Fields of the result of an AI step that `outputs` can read. */
-const aiResultFields: ReadonlySet<string> = new Set(["data"]);
+const aiResultFields: ReadonlySet<string> = new Set(["data", ...outcomeFields]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -48,7 +56,9 @@ const checkAiResult = (
   unsupported: string,
 ): string | undefined => {
   if (field !== "data") {
-    return unsupported;
+    return outcomeFields.some((name) => name === field) && path.length === 0
+      ? undefined
+      : unsupported;
   }
   if (schema === undefined) {
     return path.length === 0 ? undefined : `Step ${id} has no schema, so result.data is text`;
@@ -163,7 +173,8 @@ const describeScope = ({ env, inputs, outputs, result }: Scope): string => {
  * input of the workflow. In addition, `run`, `prompt`, the strings of `with`, the environment of a
  * step, and `outputs` can read the declared inputs of their own step. `outputs` can read the
  * result: `exitCode`, `stdout`, and `stderr` of a script, the declared answers of a wait step, or
- * `data` of an AI step.
+ * `data` of an AI step. The result of a script or an AI step also has `ok` and `error`, which
+ * tell whether it succeeded.
  *
  * A step can reference any step that can run before it. One on another branch reads as `null`
  * when it did not run. A condition of a branch can read `outputs`, `result`, the steps before it,

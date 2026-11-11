@@ -49,6 +49,8 @@ export interface ActivityDependencies {
 export interface ScriptStepRequest extends Omit<ScriptRequest, "env"> {
   /** ID of the step in the workflow definition. */
   step: string;
+  /** Whether a failure of the step is returned as its result instead of failing the activity. */
+  continueOnError?: boolean | undefined;
   /** Environment variables of the step, keyed by name. Values may contain expressions. */
   stepEnv?: Readonly<Record<string, string>> | undefined;
   /** Environment variables of the workflow, after their expressions are evaluated. */
@@ -90,6 +92,8 @@ export interface ChooseBranchRequest {
 export interface AiStepRequest extends Omit<AiRequest, "env"> {
   /** ID of the step in the workflow definition. */
   step: string;
+  /** Whether a failure of the step is returned as its result instead of failing the activity. */
+  continueOnError?: boolean | undefined;
   /** Environment variables of the step, keyed by name. Values may contain expressions. */
   stepEnv?: Readonly<Record<string, string>> | undefined;
   /** Environment variables of the workflow, after their expressions are evaluated. */
@@ -168,11 +172,61 @@ const evaluateOutput = (
   if (bytes > maxValueBytes) {
     throw ApplicationFailure.nonRetryable(
       `Output is ${bytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
-      "OutputTooLarge",
+      outputTooLarge,
     );
   }
   return output;
 };
+
+/** Type of the failure of outputs that exceed the size limit. */
+const outputTooLarge = "OutputTooLarge";
+
+/**
+ * Evaluates the outputs of a script or an AI step, whose result tells whether it succeeded.
+ *
+ * Outputs that exceed the size limit fail the step. When the step continues on errors, they are
+ * then all `null`, because they cannot be stored.
+ *
+ * @param result The result of the step, without `ok` and `error`.
+ * @param failure Why the step failed, or `null` when it succeeded.
+ * @returns The outputs, the result with `ok` and `error`, and why the step failed.
+ */
+const evaluateStepOutput = <Result extends Record<string, unknown>>(
+  expressions: Readonly<Record<string, string>>,
+  context: Readonly<Record<string, unknown>>,
+  result: Result,
+  failure: string | null,
+  continueOnError: boolean,
+): { error: string | null; outputs: StepOutput; result: Result & StepOutcomeFields } => {
+  const evaluated = { ...result, error: failure, ok: failure === null };
+  try {
+    return {
+      error: failure,
+      outputs: evaluateOutput(expressions, context, evaluated),
+      result: evaluated,
+    };
+  } catch (error) {
+    if (
+      !continueOnError ||
+      !(error instanceof ApplicationFailure) ||
+      error.type !== outputTooLarge
+    ) {
+      throw error;
+    }
+    return {
+      error: error.message,
+      outputs: Object.fromEntries(Object.keys(expressions).map((name) => [name, null])),
+      result: { ...result, error: error.message, ok: false },
+    };
+  }
+};
+
+/** Fields that tell whether a script or an AI step succeeded, which its result has. */
+interface StepOutcomeFields {
+  ok: boolean;
+  /** Why the step failed, or `null` when it succeeded. */
+  error: string | null;
+}
 
 /** Returns the step that the first branch that holds goes to, or `null` to finish. */
 const chooseNext = (
@@ -230,19 +284,30 @@ const failureOutcome = (signal: AbortSignal): StepOutcome => {
   return reason instanceof Error && failedAbortReasons.has(reason.message) ? "failed" : "cancelled";
 };
 
+/**
+ * Runs a script, and returns why it failed along with what it wrote.
+ *
+ * A script that did not run, such as one whose dotenv file cannot be read, throws.
+ */
 const runScript = async (
   scriptRunner: ScriptRunner,
   request: ScriptRequest,
   options: ScriptRunOptions,
-): Promise<ScriptResult> => {
-  const result = await scriptRunner.run(request, options).catch((error: unknown) => {
+): Promise<{ result: ScriptResult; failure: ApplicationFailure | null }> => {
+  let result: ScriptResult;
+  try {
+    result = await scriptRunner.run(request, options);
+  } catch (error) {
     if (error instanceof ScriptTimeoutError) {
-      throw ApplicationFailure.nonRetryable(error.message, "ScriptTimedOut", {
-        timeoutMs: error.timeoutMs,
-      });
+      return {
+        failure: ApplicationFailure.nonRetryable(error.message, "ScriptTimedOut", {
+          timeoutMs: error.timeoutMs,
+        }),
+        result: { exitCode: null, signal: null, stderr: "", stdout: "" },
+      };
     }
     throw error;
-  });
+  }
 
   const { exitCode, signal: stopSignal } = result;
   if (exitCode !== 0) {
@@ -250,12 +315,41 @@ const runScript = async (
       exitCode === null
         ? `Script was stopped by ${stopSignal ?? "an unknown signal"}`
         : `Script exited with code ${exitCode}`;
-    throw ApplicationFailure.nonRetryable(message, "ScriptFailed", {
-      exitCode,
-      signal: stopSignal,
-    });
+    return {
+      failure: ApplicationFailure.nonRetryable(message, "ScriptFailed", {
+        exitCode,
+        signal: stopSignal,
+      }),
+      result,
+    };
   }
-  return result;
+  return { failure: null, result };
+};
+
+/** Types of failures that come from the definition or the Worker, not from the step itself. */
+const fatalFailureTypes: ReadonlySet<string> = new Set([
+  "AiRunnerUnavailable",
+  "InvalidCondition",
+  "InvalidExpression",
+]);
+
+/**
+ * Returns why a step failed when its failure can be returned as its result, or rethrows it.
+ *
+ * Mistakes in the definition and a Worker that cannot run the step stop the workflow, and so
+ * does a cancelled step.
+ */
+const continuableFailure = (error: unknown, signal: AbortSignal): string => {
+  if (
+    signal.aborted ||
+    (error instanceof ApplicationFailure &&
+      error.type !== undefined &&
+      error.type !== null &&
+      fatalFailureTypes.has(error.type))
+  ) {
+    throw error;
+  }
+  return error instanceof Error ? error.message : String(error);
 };
 
 const runAi = async (
@@ -287,12 +381,15 @@ export const createActivities = ({
   /**
    * Reports the start and the end of a step around its work, and keeps the activity alive.
    *
-   * @param body Does the work, and receives a function that reports its output.
+   * @param body Does the work, and receives a function that reports its output. It returns the
+   *   result, and why the step failed when the workflow goes on after the failure.
    */
   const trackStep = async <Result>(
     step: string,
     started: { provider?: string; run?: string },
-    body: (onOutput: (output: ScriptOutput) => void) => Promise<Result>,
+    body: (
+      onOutput: (output: ScriptOutput) => void,
+    ) => Promise<{ error: string | null; value: Result }>,
   ): Promise<Result> => {
     const context = Context.current();
     // Progress is only observed, so a failing log must not change the result of the step.
@@ -315,7 +412,7 @@ export const createActivities = ({
     const heartbeat = setInterval(() => context.heartbeat(), heartbeatIntervalMs);
 
     try {
-      const result = await body((output) => {
+      const { error, value } = await body((output) => {
         if (!settled) {
           emit({ ...output, step, type: "stepOutput" });
         }
@@ -323,11 +420,13 @@ export const createActivities = ({
       settled = true;
       emit({
         durationMs: Math.round(performance.now() - startedAt),
-        outcome: "succeeded",
+        ...(error === null
+          ? { outcome: "succeeded" }
+          : { continued: true, message: error, outcome: "failed" }),
         step,
         type: "stepFinished",
       });
-      return result;
+      return value;
     } catch (error) {
       settled = true;
       emit({
@@ -379,6 +478,7 @@ export const createActivities = ({
   /** Runs a script step, and chooses where it goes next when it has branches. */
   const runScriptStep = async ({
     branches,
+    continueOnError = false,
     dotenv,
     inputs,
     outputs: outputExpressions,
@@ -402,30 +502,54 @@ export const createActivities = ({
       if (!expanded.ok) {
         throw invalidExpression("run", expanded.message);
       }
-      const { exitCode, stderr, stdout } = await runScript(
-        scriptRunner,
+      const signal = Context.current().cancellationSignal;
+      let ran: Awaited<ReturnType<typeof runScript>>;
+      try {
+        ran = await runScript(
+          scriptRunner,
+          {
+            // A step without variables sends none, as before they existed.
+            ...(dotenv === undefined ? {} : { dotenv }),
+            ...(Object.keys(env.value).length > 0 ? { env: env.value } : {}),
+            inputs,
+            run,
+            timeoutMs,
+          },
+          { onOutput, signal },
+        );
+      } catch (error) {
+        if (!continueOnError) {
+          throw error;
+        }
+        // The script did not run, so it has no output.
+        ran = {
+          failure: ApplicationFailure.nonRetryable(continuableFailure(error, signal)),
+          result: { exitCode: null, signal: null, stderr: "", stdout: "" },
+        };
+      }
+      if (ran.failure !== null && !continueOnError) {
+        throw ran.failure;
+      }
+      const { error, outputs, result } = evaluateStepOutput(
+        outputExpressions,
+        values,
         {
-          // A step without variables sends none, as before they existed.
-          ...(dotenv === undefined ? {} : { dotenv }),
-          ...(Object.keys(env.value).length > 0 ? { env: env.value } : {}),
-          inputs,
-          run,
-          timeoutMs,
+          exitCode: ran.result.exitCode,
+          stderr: trimTrailingNewline(ran.result.stderr),
+          stdout: trimTrailingNewline(ran.result.stdout),
         },
-        { onOutput, signal: Context.current().cancellationSignal },
+        ran.failure?.message ?? null,
+        continueOnError,
       );
-      const result = {
-        exitCode,
-        stderr: trimTrailingNewline(stderr),
-        stdout: trimTrailingNewline(stdout),
-      };
-      const outputs = evaluateOutput(outputExpressions, values, result);
       return {
-        next:
-          branches === undefined
-            ? null
-            : choose(branches, { ...values, outputs, result }, dotenv, env.value),
-        outputs,
+        error,
+        value: {
+          next:
+            branches === undefined
+              ? null
+              : choose(branches, { ...values, outputs, result }, dotenv, env.value),
+          outputs,
+        },
       };
     });
   };
@@ -476,6 +600,7 @@ export const createActivities = ({
      */
     executeAiStep: async ({
       branches,
+      continueOnError = false,
       dotenv,
       inputs,
       model,
@@ -503,39 +628,49 @@ export const createActivities = ({
         if (!prompt.ok) {
           throw invalidExpression("prompt", prompt.message);
         }
-        const result = await runAi(
-          aiRunner,
-          {
-            ...(dotenv === undefined ? {} : { dotenv }),
-            ...(Object.keys(env.value).length > 0 ? { env: env.value } : {}),
-            ...(model === undefined ? {} : { model }),
-            ...(schema === undefined ? {} : { schema }),
-            ...(sessionId === undefined ? {} : { sessionId }),
-            options,
-            prompt: embedValue(prompt.value),
-            provider,
-            timeoutMs,
-          },
-          {
-            onProgress: (text) => onOutput({ stream: "stdout", text }),
-            signal: Context.current().cancellationSignal,
-          },
+        const signal = Context.current().cancellationSignal;
+        let ran: { failure: string | null; result: AiResult };
+        try {
+          ran = {
+            failure: null,
+            result: await runAi(
+              aiRunner,
+              {
+                ...(dotenv === undefined ? {} : { dotenv }),
+                ...(Object.keys(env.value).length > 0 ? { env: env.value } : {}),
+                ...(model === undefined ? {} : { model }),
+                ...(schema === undefined ? {} : { schema }),
+                ...(sessionId === undefined ? {} : { sessionId }),
+                options,
+                prompt: embedValue(prompt.value),
+                provider,
+                timeoutMs,
+              },
+              { onProgress: (text) => onOutput({ stream: "stdout", text }), signal },
+            ),
+          };
+        } catch (error) {
+          if (!continueOnError) {
+            throw error;
+          }
+          ran = { failure: continuableFailure(error, signal), result: { data: null } };
+        }
+        const { error, outputs, result } = evaluateStepOutput(
+          outputExpressions,
+          values,
+          { data: ran.result.data },
+          ran.failure,
+          continueOnError,
         );
-        const aiResult = { data: result.data };
-        const stepOutputs = evaluateOutput(outputExpressions, values, aiResult);
         return {
-          outputs: stepOutputs,
-          ...(result.sessionId === undefined ? {} : { sessionId: result.sessionId }),
-          ...(branches === undefined
-            ? {}
-            : {
-                next: choose(
-                  branches,
-                  { ...values, outputs: stepOutputs, result: aiResult },
-                  dotenv,
-                  env.value,
-                ),
-              }),
+          error,
+          value: {
+            outputs,
+            ...(ran.result.sessionId === undefined ? {} : { sessionId: ran.result.sessionId }),
+            ...(branches === undefined
+              ? {}
+              : { next: choose(branches, { ...values, outputs, result }, dotenv, env.value) }),
+          },
         };
       });
     },

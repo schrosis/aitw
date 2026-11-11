@@ -42,9 +42,16 @@ const transitionSchema = z.discriminatedUnion("type", [
 /** Times that a step can run in a run. A step without it has no limit. */
 const maxVisitsSchema = z.int().positive().optional();
 
+/**
+ * Whether the workflow goes on when the step fails, with `result.ok` set to `false`. A step
+ * without it stops the workflow when it fails.
+ */
+const continueOnErrorSchema = z.boolean().optional();
+
 const scriptStepSchema = z.strictObject({
   type: z.literal("script"),
   maxVisits: maxVisitsSchema,
+  continueOnError: continueOnErrorSchema,
   run: z.string().min(1),
   next: transitionSchema,
   timeoutMs: z.int().positive(),
@@ -72,6 +79,7 @@ const waitStepSchema = z.strictObject({
 const aiStepSchema = z.strictObject({
   type: z.literal("ai"),
   maxVisits: maxVisitsSchema,
+  continueOnError: continueOnErrorSchema,
   /** Name of the provider that runs the step, such as `claude-code`. */
   provider: z.string().min(1),
   /** Model to use, passed to the provider as it is. The provider chooses one when it is omitted. */

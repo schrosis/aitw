@@ -116,6 +116,8 @@ describe("validateIntermediate expressions", () => {
 
   it("lets only output reference the script result", () => {
     expect(errorsOf(withField("outputs", "${{ result.stdout }}"))).toEqual([]);
+    expect(errorsOf(withField("outputs", "${{ result.ok }}"))).toEqual([]);
+    expect(errorsOf(withField("outputs", "${{ result.error }}"))).toEqual([]);
     expect(errorsOf(withField("run", "${{ result.stdout }}"))).toMatchObject([
       { path: pathOf("run") },
     ]);
@@ -123,7 +125,7 @@ describe("validateIntermediate expressions", () => {
       expect(errorsOf(withField("outputs", expression))).toEqual([
         {
           message: expect.stringContaining(
-            "result.exitCode, result.stdout, or result.stderr",
+            "result.exitCode, result.stdout, result.stderr, result.ok, or result.error",
           ) as unknown,
           path: pathOf("outputs"),
         },

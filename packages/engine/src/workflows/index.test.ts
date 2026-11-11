@@ -543,6 +543,49 @@ describe("aitw", () => {
     expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh"]);
   }, 60_000);
 
+  it("goes on after a step that continues on errors fails", async () => {
+    const { requests, result } = await run(
+      {
+        inputs: {},
+        start: "check",
+        steps: {
+          check: {
+            continueOnError: true,
+            inputs: {},
+            next: {
+              branches: [
+                { if: "${{ !result.ok }}", to: { step: "fix", type: "step" } },
+                { to: { type: "end" } },
+              ],
+              type: "branch",
+            },
+            outputs: { error: "${{ result.error }}", log: "${{ result.stdout }}" },
+            run: "./check.sh",
+            timeoutMs: 5000,
+            type: "script",
+          },
+          fix: {
+            inputs: {},
+            next: { type: "end" },
+            outputs: {},
+            run: "./fix.sh '${{ steps.check.outputs.error }}' '${{ steps.check.outputs.log }}'",
+            timeoutMs: 5000,
+            type: "script",
+          },
+        },
+        version: intermediateVersion,
+      },
+      { "./check.sh": 1 },
+      { "./check.sh": "2 tests failed\n" },
+    );
+
+    expect(result).toMatchObject({ ok: true, value: { executedSteps: ["check", "fix"] } });
+    expect(requests.map(({ run: command }) => command)).toEqual([
+      "./check.sh",
+      "./fix.sh 'Script exited with code 1' '2 tests failed'",
+    ]);
+  }, 60_000);
+
   it("stops a running script when the workflow is cancelled", async () => {
     const taskQueue = randomUUID();
     let started!: () => void;

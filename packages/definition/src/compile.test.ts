@@ -489,6 +489,57 @@ steps:
     });
   });
 
+  it("builds continueOnError, and branches on result.ok", () => {
+    const source = `version: v0.1
+start: check
+steps:
+  check:
+    type: script
+    run: pnpm check
+    continueOnError: true
+    outputs:
+      log: \${{ result.stdout }}
+    next:
+      - if: \${{ !result.ok }}
+        to: fix
+      - to: end
+  fix:
+    type: script
+    run: echo "\${{ steps.check.outputs.log }}"
+    next: end
+`;
+
+    expect(compileDefinition(source)).toMatchObject({
+      intermediate: { steps: { check: { continueOnError: true }, fix: {} } },
+      ok: true,
+    });
+    const compiled = compileDefinition(source);
+    expect(compiled.ok && "continueOnError" in (compiled.intermediate.steps.fix ?? {})).toBe(false);
+  });
+
+  it("does not take continueOnError on a wait step", () => {
+    const source = `version: v0.1
+start: ask
+steps:
+  ask:
+    type: wait
+    method: terminal
+    continueOnError: true
+    next: end
+`;
+
+    expect(compileDefinition(source)).toMatchObject({
+      errors: [
+        {
+          line: 7,
+          message: "Unknown field: continueOnError",
+          path: ["steps", "ask", "continueOnError"],
+        },
+      ],
+      ok: false,
+    });
+  });
+
   it("locates a loop that cannot finish", () => {
     const source = validSource.replace("next: end", "next: fetch");
 

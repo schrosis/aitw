@@ -366,6 +366,7 @@ export const aitw = async (
       checkValueSize(id, { ...prepared, options, workflowEnv });
       const result: AiStepResult = await executeAiStep({
         ...prepared,
+        ...(step.continueOnError === true ? { continueOnError: true } : {}),
         ...(step.next.type === "branch" ? { branches: step.next.branches } : {}),
         dotenv,
         model: step.model,
@@ -461,6 +462,7 @@ export const aitw = async (
       const { executeBranchingScriptStep, executeScriptStep } = stepActivities(step.timeoutMs);
       const request: ScriptStepRequest = {
         ...prepareStep(id, step, context, workflowEnv),
+        ...(step.continueOnError === true ? { continueOnError: true } : {}),
         dotenv,
         outputs: step.outputs,
         run: step.run,

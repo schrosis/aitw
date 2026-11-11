@@ -258,7 +258,7 @@ describe("aitw daemon", () => {
     expect(run).toEqual({
       exitCode: 1,
       output:
-        'run-success: failed: aitw daemon is not running. Run "aitw daemon start", or choose a server with --dev or --address\n',
+        'run-success: failed: aitw daemon is not running. Run "aitw daemon start", choose a server with --dev or --address, or set temporal.address in .aitw/config.yaml\n',
     });
   });
 });

@@ -11,11 +11,11 @@ import { connectDaemon, DaemonUnavailableError, openCommandServer } from "./conn
 import { daemonPaths } from "./paths.ts";
 
 /** Opens the server of a command for a project without server options. */
-const open = async (root: string) =>
+const open = async (root: string, output = createOutput()) =>
   openCommandServer(
     { version: "1.2.3" },
     root,
-    { cwd: root, ...createOutput() },
+    { cwd: root, ...output },
     new AbortController().signal,
   );
 
@@ -148,14 +148,36 @@ describe("connectDaemon", () => {
       });
     });
 
-    it("runs its own Worker when the resident process uses another server", async () => {
+    it("runs its own Worker when the resident process uses another server, and says why", async () => {
       await serve("1.2.3");
+      const output = createOutput();
 
-      await expect(open(project("temporal.example.com:7233"))).resolves.toMatchObject({
+      await expect(open(project("temporal.example.com:7233"), output)).resolves.toMatchObject({
         server: { address: "temporal.example.com:7233" },
         servedTaskQueue: undefined,
       });
       expect(requests.map(({ url }) => url)).toEqual(["/status"]);
+      expect(output.written.stderr).toBe(
+        "aitw daemon: uses the Temporal Server at 127.0.0.1:7233, and temporal.address of the project is temporal.example.com:7233, so this command runs its own Worker\n",
+      );
+    });
+
+    it("runs its own Worker when the resident process has another version, and says why", async () => {
+      await serve("0.9.0");
+      const output = createOutput();
+
+      await expect(open(project("127.0.0.1:7233"), output)).resolves.toMatchObject({
+        servedTaskQueue: undefined,
+      });
+      expect(output.written.stderr).toContain("runs aitw 0.9.0, and this is aitw 1.2.3");
+    });
+
+    it("says nothing when no resident process runs", async () => {
+      const output = createOutput();
+
+      await open(project("temporal.example.com:7233"), output);
+
+      expect(output.written).toEqual({ stderr: "", stdout: "" });
     });
 
     it("prefers the options of the command", async () => {

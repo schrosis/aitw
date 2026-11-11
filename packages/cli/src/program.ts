@@ -107,8 +107,9 @@ const devUiDescription =
 const temporalBinDescription =
   "Temporal CLI to start the development server with, as a path or a name in PATH";
 const daemonHelp = `
-Without server options, the resident process that "aitw daemon start" starts runs the steps on
-its Temporal Server, so the run keeps going after this command exits.`;
+Without server options, the command uses temporal.address in .aitw/config.yaml, or the
+Temporal Server of the resident process that "aitw daemon start" starts. When the resident
+process uses that server, it runs the steps, so the run keeps going after this command exits.`;
 const interruptHelp = `
 Press Ctrl+C to detach: the run waits in Temporal, and "aitw resume" continues it.
 A running script finishes first. Press Ctrl+C again to exit now, which fails the running

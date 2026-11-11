@@ -12,7 +12,7 @@ import { daemonPaths } from "./paths.js";
 export class DaemonUnavailableError extends Error {
   constructor(reason: string) {
     super(
-      `aitw daemon ${reason}. Run "aitw daemon start", or choose a server with --dev or --address`,
+      `aitw daemon ${reason}. Run "aitw daemon start", choose a server with --dev or --address, or set temporal.address in .aitw/config.yaml`,
     );
     this.name = "DaemonUnavailableError";
   }
@@ -80,22 +80,42 @@ export interface CommandServer {
  * Asks the resident process to serve a project on a server that the project names, when it runs
  * with the same version on that server.
  *
+ * The project names its server, so the command runs its own Worker without the resident process.
+ * When the resident process runs but is not used, the command says why, because a run then stops
+ * with the command.
+ *
  * @returns The task queue that it serves, or `undefined` when the command runs its own Worker.
  */
 const daemonOn = async (
   address: string,
   root: string,
   version: string,
+  context: CommandContext,
 ): Promise<string | undefined> => {
   const paths = daemonPaths();
-  // The project names its server, so the command runs its own Worker without the resident process.
-  const status = await getDaemonStatus(paths).catch(() => undefined);
-  if (
-    status === undefined ||
-    status.address !== address ||
-    status.version !== version ||
-    status.workflowCodeVersion !== workflowCodeVersion
-  ) {
+  let status;
+  try {
+    status = await getDaemonStatus(paths);
+  } catch (error) {
+    context.stderr(
+      `aitw daemon: cannot be reached, so this command runs its own Worker: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return undefined;
+  }
+  if (status === undefined) {
+    return undefined;
+  }
+  if (status.address !== address) {
+    // Addresses are compared as written, so localhost and 127.0.0.1 differ.
+    context.stderr(
+      `aitw daemon: uses the Temporal Server at ${status.address}, and temporal.address of the project is ${address}, so this command runs its own Worker\n`,
+    );
+    return undefined;
+  }
+  if (status.version !== version || status.workflowCodeVersion !== workflowCodeVersion) {
+    context.stderr(
+      `aitw daemon: runs aitw ${status.version}, and this is aitw ${version}, so this command runs its own Worker. Run "aitw daemon stop" and start it again to use it\n`,
+    );
     return undefined;
   }
   return (await registerProject(paths, root)).taskQueue;
@@ -128,7 +148,7 @@ export const openCommandServer = async (
     return {
       // Later commands read the configuration file again.
       server: { ...opened, options: "" },
-      servedTaskQueue: await daemonOn(address, root, version),
+      servedTaskQueue: await daemonOn(address, root, version, context),
     };
   }
   const daemon = await connectDaemon(root, version, context);

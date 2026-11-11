@@ -313,7 +313,7 @@ importers:
         version: link:../engine
       '@commander-js/extra-typings':
         specifier: ^15.0.0
-        version: 15.0.0(commander@15.1.0)
+        version: 15.1.0(commander@15.1.0)
       commander:
         specifier: ^15.0.0
         version: 15.1.0
@@ -458,10 +458,10 @@ packages:
     resolution: {integrity: sha512-v+oN26xP4YIlQsbQ/CbTH1WG5m/l/DjKKZNy/Kp3f/AFvbgt7Em/D0FeMM3O2hX0YzeN2M16W8lOpyhIkfCBcQ==}
     engines: {node: '>=6.9.0'}
 
-  '@commander-js/extra-typings@15.0.0':
-    resolution: {integrity: sha512-yeJlba62xqmkgELUsn7356MEnzLLu/fw2x4lofFqGnXh6YysRdEs2BaLeLtg1+KU0AXvMeqQvTTp+3hBEBK+EA==}
+  '@commander-js/extra-typings@15.1.0':
+    resolution: {integrity: sha512-FsI7l5tFON52RyyDKyCkvwFl+peHZuP5TZ7AhxbDFGo/5T6KQd4+KE48aJ8jrDSSAQDvZ8hYKX47fmwZ5bGFNw==}
     peerDependencies:
-      commander: ~15.0.0
+      commander: ~15.1.0
 
   '@commitlint/cli@21.2.4':
     resolution: {integrity: sha512-g3M/wrQdElqGH5vROIeL2QiYIxrzqUkhCgsDyDlWfKEyQdCt10OyMB28W2cJtpZ+VNGMvmaN923infr1hOfyrg==}
@@ -2738,7 +2738,7 @@ snapshots:
 
   '@babel/runtime@7.29.13': {}
 
-  '@commander-js/extra-typings@15.0.0(commander@15.1.0)':
+  '@commander-js/extra-typings@15.1.0(commander@15.1.0)':
     dependencies:
       commander: 15.1.0
 

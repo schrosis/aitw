@@ -30,6 +30,11 @@ export interface DaemonProject {
    * file of the project, or the server of the resident process.
    */
   address?: string | undefined;
+  /**
+   * Servers that the project named before, whose Workers keep serving the runs there until the
+   * resident process stops.
+   */
+  previousAddresses?: string[] | undefined;
   /** Whether its Worker runs. A Worker that failed is started again on the next request. */
   running?: boolean;
 }

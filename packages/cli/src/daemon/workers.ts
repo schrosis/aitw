@@ -64,12 +64,6 @@ const readRoots = (file: string): string[] => {
 
 const isProject = (root: string): boolean => existsSync(join(root, aitwDirectory));
 
-/** A Worker of a project, and the Temporal Server that it uses. */
-interface ServedWorker {
-  address: string;
-  worker: Promise<RunningWorker>;
-}
-
 /**
  * Creates the Workers of projects, one for each project on the task queue of the project.
  *
@@ -85,20 +79,25 @@ export const createProjectWorkers = ({
 }: ProjectWorkersOptions): ProjectWorkers => {
   // Projects to serve, which the file keeps also while their Workers cannot run.
   const roots = new Set<string>();
-  // Workers that run or start, keyed by project root, so that a project gets one Worker.
-  const workers = new Map<string, ServedWorker>();
-  // Workers on servers that their projects no longer name. They keep serving the runs that
-  // started there until the resident process stops.
-  const previous: Promise<RunningWorker>[] = [];
+  // Workers that run or start, keyed by project root and then by server, so that a project gets
+  // one Worker on each server. A Worker on a server that the project no longer names keeps
+  // serving the runs that started there until the resident process stops.
+  const workers = new Map<string, Map<string, Promise<RunningWorker>>>();
+  // The server that each project names now.
+  const servers = new Map<string, string>();
+  // The latest request to serve each project. A request waits for the previous one, so that
+  // concurrent requests start one Worker.
+  const pending = new Map<string, Promise<string>>();
 
   const save = (): void => {
     writeFileSync(file, `${JSON.stringify([...roots], null, 2)}\n`, { mode: 0o600 });
   };
 
-  const forget = (root: string, worker: Promise<RunningWorker>): void => {
-    // A later Worker of the same project is kept.
-    if (workers.get(root)?.worker === worker) {
-      workers.delete(root);
+  const forget = (root: string, serverAddress: string, worker: Promise<RunningWorker>): void => {
+    // A later Worker of the same project and server is kept.
+    const byServer = workers.get(root);
+    if (byServer?.get(serverAddress) === worker) {
+      byServer.delete(serverAddress);
     }
   };
 
@@ -120,7 +119,7 @@ export const createProjectWorkers = ({
             `Worker of ${root} failed: ${error instanceof Error ? error.message : String(error)}`,
           );
           // The next request for the project starts a new Worker.
-          forget(root, worker);
+          forget(root, serverAddress, worker);
         },
         readEnvironment: createEnvironmentReader(root),
         scriptRunner: createLocalScriptRunner({ cwd: root }),
@@ -131,32 +130,51 @@ export const createProjectWorkers = ({
       );
       return running;
     })();
-    workers.set(root, { address: serverAddress, worker });
+    const byServer = workers.get(root) ?? new Map<string, Promise<RunningWorker>>();
+    byServer.set(serverAddress, worker);
+    workers.set(root, byServer);
     // A Worker that fails to start is forgotten, so that a later request can try again.
-    worker.catch(() => forget(root, worker));
+    worker.catch(() => forget(root, serverAddress, worker));
     return worker;
   };
 
   /**
-   * Starts the Worker of a project on its server, unless it runs there.
+   * Starts the Worker of a project on the server that it names now, unless one runs there.
    *
    * @returns The address of the server.
    */
-  const ensure = async (root: string): Promise<string> => {
+  const serve = async (root: string): Promise<string> => {
     const serverAddress = await serverOf(root);
-    const current = workers.get(root);
-    if (current?.address === serverAddress) {
-      await current.worker;
-      return serverAddress;
-    }
-    if (current !== undefined) {
+    const previousAddress = servers.get(root);
+    servers.set(root, serverAddress);
+    if (
+      previousAddress !== undefined &&
+      previousAddress !== serverAddress &&
+      workers.get(root)?.has(previousAddress) === true
+    ) {
       log(
-        `${root} now uses ${serverAddress}. Its Worker at ${current.address} keeps serving the runs there until aitw daemon stops`,
+        `${root} now uses ${serverAddress}. Its Worker at ${previousAddress} keeps serving the runs there until aitw daemon stops`,
       );
-      previous.push(current.worker);
     }
-    await start(root, serverAddress);
+    // A Worker that the project used before on the same server is used again.
+    await (workers.get(root)?.get(serverAddress) ?? start(root, serverAddress));
     return serverAddress;
+  };
+
+  /** Serves a project after the requests that came before for the same project. */
+  const ensure = async (root: string): Promise<string> => {
+    const request = (pending.get(root) ?? Promise.resolve(""))
+      // A failed request does not keep later ones from trying again.
+      .catch(() => "")
+      .then(async () => serve(root));
+    pending.set(root, request);
+    try {
+      return await request;
+    } finally {
+      if (pending.get(root) === request) {
+        pending.delete(root);
+      }
+    }
   };
 
   return {
@@ -171,11 +189,16 @@ export const createProjectWorkers = ({
     },
     list: () =>
       [...roots].map((root) => {
-        const served = workers.get(root);
+        const serverAddress = servers.get(root);
+        const byServer = workers.get(root);
+        const previousAddresses = [...(byServer?.keys() ?? [])].filter(
+          (served) => served !== serverAddress,
+        );
         return {
-          ...(served === undefined ? {} : { address: served.address }),
+          ...(serverAddress === undefined ? {} : { address: serverAddress }),
+          ...(previousAddresses.length === 0 ? {} : { previousAddresses }),
           root,
-          running: served !== undefined,
+          running: serverAddress !== undefined && byServer?.has(serverAddress) === true,
           taskQueue: projectTaskQueue(root),
         };
       }),
@@ -197,10 +220,9 @@ export const createProjectWorkers = ({
       save();
     },
     stopAll: async () => {
-      const running = await Promise.allSettled([
-        ...[...workers.values()].map(({ worker }) => worker),
-        ...previous,
-      ]);
+      const running = await Promise.allSettled(
+        [...workers.values()].flatMap((byServer) => [...byServer.values()]),
+      );
       await Promise.all(
         running.map(async (result) =>
           result.status === "fulfilled" ? result.value.stop() : undefined,

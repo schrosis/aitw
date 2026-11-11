@@ -44,14 +44,14 @@ describe("loadProjectConfig", () => {
   );
 
   it("reports unknown fields and invalid values with their locations", async () => {
-    write("config.yaml", "temporal:\n  address: 7233\n  namespace: default\nplugins: []\n");
+    write("config.yaml", "temporal:\n  address: 7233\n  namespace: default\nworkers: 2\n");
 
     await expect(loadProjectConfig(root, root)).rejects.toThrow(
       new ProjectConfigError(
         [
           ".aitw/config.yaml:2:12 temporal.address: Invalid input: expected string, received number",
           ".aitw/config.yaml:3:3 temporal.namespace: Unknown field: namespace",
-          ".aitw/config.yaml:4:1 plugins: Unknown field: plugins",
+          ".aitw/config.yaml:4:1 workers: Unknown field: workers",
         ].join("\n"),
       ),
     );
@@ -70,5 +70,33 @@ describe("loadProjectConfig", () => {
     write("config.yaml", "temporal: [\n");
 
     await expect(loadProjectConfig(root, root)).rejects.toBeInstanceOf(ProjectConfigError);
+  });
+
+  it("reads the plugins in order, keyed by package name", async () => {
+    write(
+      "config.yaml",
+      'plugins:\n  "@aitw/adapter-ai-claude-code":\n  "@acme/aitw-slack": {}\n  aitw-plain:\n',
+    );
+
+    const { plugins = {} } = await loadProjectConfig(root, root);
+
+    expect(Object.keys(plugins)).toEqual([
+      "@aitw/adapter-ai-claude-code",
+      "@acme/aitw-slack",
+      "aitw-plain",
+    ]);
+  });
+
+  it("rejects settings of plugins and names that are not packages", async () => {
+    write("config.yaml", 'plugins:\n  "@acme/aitw-slack":\n    channel: deploy\n  ./local:\n');
+
+    await expect(loadProjectConfig(root, root)).rejects.toThrow(
+      new ProjectConfigError(
+        [
+          ".aitw/config.yaml:3:5 plugins.@acme/aitw-slack: Settings of plugins are not supported yet",
+          ".aitw/config.yaml:4:3 plugins../local: Must be the name of an npm package, such as @acme/aitw-slack",
+        ].join("\n"),
+      ),
+    );
   });
 });

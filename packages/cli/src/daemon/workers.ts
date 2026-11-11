@@ -10,7 +10,7 @@ import type { RunningWorker } from "@aitw/engine";
 import { loadProjectConfig } from "../config.js";
 import { loadEncryptionKey } from "../encryption.js";
 import { createEnvironmentReader } from "../environment.js";
-import { createRegistry } from "../plugins.js";
+import { createRegistry, loadProjectPlugins } from "../plugins.js";
 import { projectLogDirectory, projectTaskQueue } from "../state.js";
 import { aitwDirectory } from "../workflows.js";
 import type { DaemonProject } from "./client.js";
@@ -108,10 +108,11 @@ export const createProjectWorkers = ({
   const start = (root: string, serverAddress: string): Promise<RunningWorker> => {
     const taskQueue = projectTaskQueue(root);
     const worker: Promise<RunningWorker> = (async () => {
+      const loaded = await loadProjectPlugins(root, root);
       prepareEngine();
       const running = await startProjectWorker({
         address: serverAddress,
-        aiRunner: createAiRunner({ cwd: root, plugins: createRegistry() }),
+        aiRunner: createAiRunner({ cwd: root, plugins: createRegistry(undefined, loaded) }),
         encryptionKey: loadEncryptionKey(),
         eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
         onError: (error) => {

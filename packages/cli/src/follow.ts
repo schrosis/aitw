@@ -11,7 +11,7 @@ import { loadEncryptionKey } from "./encryption.js";
 import { createEnvironmentReader } from "./environment.js";
 import { createLineReader } from "./lines.js";
 import type { LineReader } from "./lines.js";
-import { createRegistry } from "./plugins.js";
+import { createRegistry, loadProjectPlugins } from "./plugins.js";
 import { createProgressPrinter } from "./progress.js";
 import type { OpenedServer } from "./server.js";
 import { projectLogDirectory } from "./state.js";
@@ -131,14 +131,16 @@ export const followRun = async (
   interrupt.addEventListener("abort", onInterrupt, { once: true });
 
   try {
+    // Plugins load before the run starts, so that a broken one stops nothing.
+    const loaded = await loadProjectPlugins(root, context.cwd);
     const outcome = await follow({
       address: server.address,
       eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
       eventSink,
       onWarning: (message) => context.stderr(`${name}: warning: ${message}\n`),
-      aiRunner: createAiRunner({ cwd: root, plugins: createRegistry() }),
+      aiRunner: createAiRunner({ cwd: root, plugins: createRegistry(undefined, loaded) }),
       encryptionKey: loadEncryptionKey(),
-      plugins: createRegistry(terminal),
+      plugins: createRegistry(terminal, loaded),
       readEnvironment: createEnvironmentReader(root),
       scriptRunner: createLocalScriptRunner({ cwd: root }),
       ...(server.durable ? { detach: detach.signal } : { signal: interrupt }),

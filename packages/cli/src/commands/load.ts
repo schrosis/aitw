@@ -5,7 +5,7 @@ import type { Intermediate } from "@aitw/core";
 import { compileDefinition } from "@aitw/definition";
 import type { DefinitionError } from "@aitw/definition";
 
-import { createRegistry } from "../plugins.js";
+import { createRegistry, loadProjectPlugins } from "../plugins.js";
 import { resolveWorkflow } from "../workflows.js";
 
 /** Environment that a command runs in. */
@@ -69,7 +69,15 @@ export const loadWorkflow = async (
     return undefined;
   }
 
-  const result = compileDefinition(source, { plugins: createRegistry() });
+  let plugins;
+  try {
+    plugins = createRegistry(undefined, await loadProjectPlugins(resolved.root, context.cwd));
+  } catch (error) {
+    context.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+    return undefined;
+  }
+
+  const result = compileDefinition(source, { plugins });
   if (!result.ok) {
     for (const error of result.errors) {
       context.stderr(formatError(file, error));

@@ -8,6 +8,7 @@ import {
   defineAiProvider,
   definePlugin,
   defineWaitMethod,
+  toJsonSchema,
   validatePluginConfig,
   validateWithSchema,
 } from "./index.ts";
@@ -309,5 +310,36 @@ describe("plugin settings", () => {
     const undeclared = definePlugin({ name: "undeclared", waitMethods: [reader] });
 
     expect([declared.name, undeclared.name]).toEqual(["declared", "undeclared"]);
+  });
+});
+
+describe("toJsonSchema", () => {
+  it("converts a schema that implements Standard JSON Schema, without $schema", () => {
+    expect(toJsonSchema(z.strictObject({ channel: z.string() }))).toEqual({
+      additionalProperties: false,
+      properties: { channel: { type: "string" } },
+      required: ["channel"],
+      type: "object",
+    });
+  });
+
+  it("returns nothing for a schema that cannot be converted", () => {
+    const plain: StandardSchemaV1 = {
+      "~standard": { validate: (value) => ({ value }), vendor: "test", version: 1 },
+    };
+    const failing = {
+      "~standard": {
+        ...plain["~standard"],
+        jsonSchema: {
+          input: () => {
+            throw new Error("Not supported");
+          },
+          output: () => ({}),
+        },
+      },
+    };
+
+    expect(toJsonSchema(plain)).toBeUndefined();
+    expect(toJsonSchema(failing)).toBeUndefined();
   });
 });

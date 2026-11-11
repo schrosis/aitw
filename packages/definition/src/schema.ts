@@ -5,7 +5,9 @@ import {
   identifierPattern,
   identifierSource,
   inputDeclarationDefinitionSchema,
+  toJsonSchema,
 } from "@aitw/core";
+import type { PluginRegistry, WaitMethod } from "@aitw/core";
 import { z } from "zod";
 
 const stepIdPattern = new RegExp(`^(?!(?:end|start)$)${identifierSource}$`, "u");
@@ -133,6 +135,10 @@ const stepSchema = z.discriminatedUnion("type", [scriptStepSchema, waitStepSchem
 
 /** Schema for a workflow definition object, independent of its file format. */
 export const definitionSchema = z.strictObject({
+  $schema: z
+    .string()
+    .optional()
+    .describe("JSON Schema of the file for editors, such as ../schemas/workflow.schema.json"),
   version: z.literal(definitionVersion),
   inputs: z
     .record(identifierSchema, inputDeclarationDefinitionSchema)
@@ -159,7 +165,86 @@ export const definitionSchema = z.strictObject({
 /** A workflow definition that has passed {@link definitionSchema}. */
 export type Definition = z.infer<typeof definitionSchema>;
 
-/** Creates the JSON Schema of a workflow definition for editors and other tools. */
-export const createDefinitionJsonSchema = () => {
-  return z.toJSONSchema(definitionSchema, { io: "input" });
+/** Options of {@link createDefinitionJsonSchema}. */
+export interface DefinitionJsonSchemaOptions {
+  /**
+   * Plugins whose wait methods and AI providers a definition can use. With it, `method` and
+   * `provider` take only their names, and `with` follows the schema of each.
+   */
+  plugins?: PluginRegistry;
+}
+
+type JsonObject = Record<string, unknown>;
+
+const isJsonObject = (value: unknown): value is JsonObject =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Restricts the extension of the steps of a type to the names that plugins provide, and the
+ * `with` of each name to its schema.
+ *
+ * A schema that cannot be converted to JSON Schema accepts any `with`.
+ */
+const constrainExtensions = (
+  steps: readonly JsonObject[],
+  type: "ai" | "wait",
+  field: "method" | "provider",
+  extensions: readonly { name: string; with: WaitMethod["with"] }[],
+): void => {
+  const step = steps.find(
+    (candidate) =>
+      isJsonObject(candidate.properties) &&
+      isJsonObject(candidate.properties.type) &&
+      candidate.properties.type.const === type,
+  );
+  if (step === undefined || !isJsonObject(step.properties)) {
+    throw new Error(`The JSON Schema has no ${type} step`);
+  }
+  step.properties[field] = {
+    ...(isJsonObject(step.properties[field]) ? step.properties[field] : {}),
+    enum: extensions.map(({ name }) => name),
+  };
+  step.allOf = extensions.map(({ name, with: schema }) => ({
+    if: { properties: { [field]: { const: name } }, required: [field] },
+    // oxlint-disable-next-line unicorn/no-thenable -- `then` is a keyword of JSON Schema.
+    then: { properties: { with: toJsonSchema(schema) ?? {} } },
+  }));
+};
+
+/**
+ * Creates the JSON Schema of a workflow definition for editors and other tools.
+ *
+ * It follows draft-07, which editors for YAML support widely.
+ */
+export const createDefinitionJsonSchema = ({ plugins }: DefinitionJsonSchemaOptions = {}) => {
+  const schema: JsonObject = z.toJSONSchema(definitionSchema, { io: "input", target: "draft-7" });
+  if (plugins === undefined) {
+    return schema;
+  }
+  const steps =
+    isJsonObject(schema.properties) &&
+    isJsonObject(schema.properties.steps) &&
+    isJsonObject(schema.properties.steps.additionalProperties) &&
+    Array.isArray(schema.properties.steps.additionalProperties.oneOf)
+      ? schema.properties.steps.additionalProperties.oneOf.filter(isJsonObject)
+      : [];
+  constrainExtensions(
+    steps,
+    "wait",
+    "method",
+    plugins.waitMethodNames().flatMap((name) => {
+      const method = plugins.waitMethod(name);
+      return method === undefined ? [] : [{ name, with: method.with }];
+    }),
+  );
+  constrainExtensions(
+    steps,
+    "ai",
+    "provider",
+    plugins.aiProviderNames().flatMap((name) => {
+      const provider = plugins.aiProvider(name);
+      return provider === undefined ? [] : [{ name, with: provider.with }];
+    }),
+  );
+  return schema;
 };

@@ -1,4 +1,6 @@
+import { createPluginRegistry, defineAiProvider, definePlugin, defineWaitMethod } from "@aitw/core";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
   createDefinitionJsonSchema,
@@ -118,5 +120,51 @@ describe("createDefinitionJsonSchema", () => {
       required: ["version", "start", "steps"],
       type: "object",
     });
+  });
+});
+
+describe("createDefinitionJsonSchema with plugins", () => {
+  const plugins = createPluginRegistry({
+    builtins: [
+      definePlugin({
+        aiProviders: [
+          defineAiProvider({
+            name: "echo",
+            run: async () => ({ data: "" }),
+            with: z.strictObject({ tone: z.string() }),
+          }),
+        ],
+        name: "test",
+        waitMethods: [defineWaitMethod({ name: "manual", with: z.strictObject({}) })],
+      }),
+    ],
+  });
+
+  it("takes only the extensions of the plugins, and the with of each", () => {
+    const schema = createDefinitionJsonSchema({ plugins });
+    const steps = "properties.steps.additionalProperties.oneOf";
+
+    expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(schema).toHaveProperty(`${steps}.1.properties.method.enum`, ["manual"]);
+    expect(schema).toHaveProperty(`${steps}.1.allOf.0.if.properties.method.const`, "manual");
+    expect(schema).toHaveProperty(
+      `${steps}.1.allOf.0.then.properties.with.additionalProperties`,
+      false,
+    );
+    expect(schema).toHaveProperty(`${steps}.2.properties.provider.enum`, ["echo"]);
+    expect(schema).toHaveProperty(`${steps}.2.allOf.0.then.properties.with.required`, ["tone"]);
+    // Script steps have no extensions.
+    expect(schema).not.toHaveProperty(`${steps}.0.allOf`);
+  });
+
+  it("accepts $schema in a definition", () => {
+    expect(
+      definitionSchema.safeParse({
+        $schema: "../schemas/workflow.schema.json",
+        start: "a",
+        steps: { a: { next: "end", run: "true", type: "script" } },
+        version: definitionVersion,
+      }).success,
+    ).toBe(true);
   });
 });

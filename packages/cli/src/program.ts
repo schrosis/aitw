@@ -10,6 +10,7 @@ import { showDaemonStatus, startDaemon, stopDaemon } from "./daemon/commands.js"
 import { runDaemon } from "./daemon/process.js";
 import type { ServerOptions } from "./server.js";
 import { docs } from "./commands/docs.js";
+import { schema } from "./commands/schema.js";
 import { validate } from "./commands/validate.js";
 
 const readVersion = (): string => {
@@ -164,6 +165,23 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .argument("[workflow]", "workflow name, such as deploy or release/notes. Defaults to all")
     .action(async (workflow) => {
       context.setExitCode(await docs(workflow, context));
+    });
+
+  program
+    .command("schema")
+    .description(
+      "Generate the JSON Schemas of the workflows and .aitw/config.yaml in .aitw/schemas, with the plugins of the project",
+    )
+    .addHelpText(
+      "after",
+      `
+Refer to them with $schema at the top of each file, which editors use for completion:
+  $schema: ../schemas/workflow.schema.json   (in .aitw/workflows/deploy.yaml)
+  $schema: ./schemas/config.schema.json      (in .aitw/config.yaml)
+Run it again after changing plugins.`,
+    )
+    .action(async () => {
+      context.setExitCode(await schema(context));
     });
 
   program

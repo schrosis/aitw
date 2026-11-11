@@ -16,6 +16,10 @@ const packageNamePattern = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$
 /** Schema of the configuration file of a project. Unknown fields are rejected. */
 export const projectConfigSchema = z
   .strictObject({
+    $schema: z
+      .string()
+      .optional()
+      .describe("JSON Schema of the file for editors, such as ./schemas/config.schema.json"),
     plugins: z
       .record(
         z

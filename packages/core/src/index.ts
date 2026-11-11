@@ -69,6 +69,8 @@ export {
   defineAiProvider,
   definePlugin,
   defineWaitMethod,
+  jsonSchemaTarget,
+  toJsonSchema,
   validatePluginConfig,
   validateWithSchema,
 } from "./plugin/index.js";

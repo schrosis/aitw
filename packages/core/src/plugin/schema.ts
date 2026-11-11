@@ -1,4 +1,4 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec";
 
 import type { ValidationError } from "../intermediate/index.js";
 import type { Plugin } from "./types.js";
@@ -80,4 +80,39 @@ export const validatePluginConfig = (
   }
   // A plugin with settings receives an empty object when nothing is written.
   return validateWithSchema(plugin.config, settings ?? {});
+};
+
+/** Version of JSON Schema that aitw generates, which editors for YAML support widely. */
+export const jsonSchemaTarget = "draft-07";
+
+const hasJsonSchema = (
+  standard: StandardSchemaV1.Props,
+): standard is StandardSchemaV1.Props & StandardJSONSchemaV1.Props =>
+  "jsonSchema" in standard &&
+  typeof standard.jsonSchema === "object" &&
+  standard.jsonSchema !== null &&
+  "input" in standard.jsonSchema &&
+  typeof standard.jsonSchema.input === "function";
+
+/**
+ * Converts the input of a schema of a plugin to JSON Schema, such as for editors.
+ *
+ * It uses Standard JSON Schema, which libraries such as Zod implement.
+ *
+ * @returns The JSON Schema without `$schema`, or `undefined` when the schema cannot be converted.
+ */
+export const toJsonSchema = (schema: StandardSchemaV1): Record<string, unknown> | undefined => {
+  const standard = schema["~standard"];
+  if (!hasJsonSchema(standard)) {
+    return undefined;
+  }
+  try {
+    const { $schema: _version, ...converted } = standard.jsonSchema.input({
+      target: jsonSchemaTarget,
+    });
+    return converted;
+  } catch {
+    // A library may not convert every schema, such as one with a custom check.
+    return undefined;
+  }
 };

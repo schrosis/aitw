@@ -7,8 +7,7 @@ import { cancelledExitCode, followRun, rootMessage } from "../follow.js";
 import { readWorkflowInput } from "../input.js";
 import { acquireRunLock } from "../lock.js";
 import type { RunLock } from "../lock.js";
-import { connectDaemon } from "../daemon/connect.js";
-import { openServer } from "../server.js";
+import { openCommandServer } from "../daemon/connect.js";
 import type { OpenedServer, ServerOptions } from "../server.js";
 import { projectHash, projectLockDirectory, projectMemoKey, workflowMemoKey } from "../state.js";
 import { loadWorkflow } from "./load.js";
@@ -18,8 +17,11 @@ import type { CommandContext } from "./load.js";
 export interface RunOptions {
   /** Value of `--input`: a JSON object, or the path of a `.json` file. */
   input?: string | undefined;
-  /** Temporal Server that runs the workflow. */
-  server: ServerOptions;
+  /**
+   * Temporal Server that runs the workflow. Without it, the resident process of this host runs
+   * the steps.
+   */
+  server?: ServerOptions | undefined;
   /**
    * Aborted when the user interrupts. It detaches the run, or cancels it on a server that does
    * not keep its runs.
@@ -28,10 +30,10 @@ export interface RunOptions {
   /** Called after the workflow is validated and before it starts. */
   prepareEngine?: () => void;
   /**
-   * Version of this aitw. With it, a resident process of the same version runs the workflow
-   * when the server options are not given.
+   * Version of this aitw. When the server is not given, a resident process of the same version
+   * runs the steps.
    */
-  daemonVersion?: string | undefined;
+  version: string;
 }
 
 /**
@@ -43,7 +45,7 @@ export interface RunOptions {
  */
 export const run = async (
   name: string,
-  { daemonVersion, input: inputOption, prepareEngine, server, signal }: RunOptions,
+  { input: inputOption, prepareEngine, server, signal, version }: RunOptions,
   context: CommandContext,
 ): Promise<number> => {
   const workflow = await loadWorkflow(name, context);
@@ -78,9 +80,13 @@ export const run = async (
   let opened: OpenedServer | undefined;
   try {
     const root = await realpath(workflow.root);
-    const daemon =
-      daemonVersion === undefined ? undefined : await connectDaemon(root, daemonVersion, context);
-    opened = daemon?.server ?? (await openServer(server, context, signal));
+    const { server: commandServer, servedTaskQueue } = await openCommandServer(
+      { server, version },
+      root,
+      context,
+      signal,
+    );
+    opened = commandServer;
     if (signal.aborted) {
       context.stderr(`${name}: cancelled\n`);
       return cancelledExitCode;
@@ -104,13 +110,13 @@ export const run = async (
                 lock = acquireRunLock(projectLockDirectory(root), workflowId);
               },
               // The resident process runs the steps on the task queue of the project.
-              ...(daemon === undefined
+              ...(servedTaskQueue === undefined
                 ? {}
-                : { startWorker: false, taskQueue: daemon.project.taskQueue }),
+                : { startWorker: false, taskQueue: servedTaskQueue }),
             }),
           interrupt: signal,
           name,
-          ownsWorker: daemon === undefined,
+          ownsWorker: servedTaskQueue === undefined,
           root,
           server: opened,
         },

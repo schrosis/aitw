@@ -15,8 +15,7 @@ import { loadEncryptionKey } from "../encryption.js";
 import { acquireRunLock, RunLockedError } from "../lock.js";
 import { chooseRun, listProjectRuns } from "../runs.js";
 import type { ProjectRun } from "../runs.js";
-import { connectDaemon } from "../daemon/connect.js";
-import { openServer } from "../server.js";
+import { openCommandServer } from "../daemon/connect.js";
 import type { OpenedServer, ServerOptions } from "../server.js";
 import { projectLockDirectory, projectLogDirectory } from "../state.js";
 import { aitwDirectory, findProjectRoot } from "../workflows.js";
@@ -26,8 +25,11 @@ import type { CommandContext } from "./load.js";
 export interface ResumeOptions {
   /** ID of the run. Without it, the command lists the runs of the project to choose from. */
   workflowId?: string | undefined;
-  /** Temporal Server that keeps the runs. */
-  server: ServerOptions;
+  /**
+   * Temporal Server that keeps the runs. Without it, the resident process of this host serves
+   * the command.
+   */
+  server?: ServerOptions | undefined;
   /** Aborted when the user interrupts. */
   signal: AbortSignal;
   /** Called before the command runs a Worker. */
@@ -35,10 +37,10 @@ export interface ResumeOptions {
   /** Resumes a run that another version of aitw started, which can fail. */
   force?: boolean | undefined;
   /**
-   * Version of this aitw. With it, a resident process of the same version continues the runs
-   * that it serves, when the server options are not given.
+   * Version of this aitw. When the server is not given, a resident process of the same version
+   * continues the runs that it serves.
    */
-  daemonVersion?: string | undefined;
+  version: string;
 }
 
 type Selected = { ok: true; run: ProjectRun } | { ok: false; exitCode: number };
@@ -54,7 +56,7 @@ const findRoot = async (
     context.stderr(`No ${aitwDirectory} directory found in ${context.cwd} or its parents\n`);
     return undefined;
   }
-  if (server.type === "dev" && server.dbFilename === undefined) {
+  if (server?.type === "dev" && server.dbFilename === undefined) {
     context.stderr(
       `aitw ${action} needs --dev-db with --dev, because a development server without it keeps no runs\n`,
     );
@@ -110,12 +112,9 @@ export const resume = async (options: ResumeOptions, context: CommandContext): P
   const terminal = createTerminal(context);
   let server: OpenedServer | undefined;
   try {
-    const daemon =
-      options.daemonVersion === undefined
-        ? undefined
-        : await connectDaemon(root, options.daemonVersion, context);
-    server = daemon?.server ?? (await openServer(options.server, context, signal));
-    const servedTaskQueue = daemon?.project.taskQueue;
+    const opened = await openCommandServer(options, root, context, signal);
+    server = opened.server;
+    const { servedTaskQueue } = opened;
     const selected = await selectRun(
       "resume",
       { address: server.address, root },
@@ -187,12 +186,9 @@ export const cancel = async (options: ResumeOptions, context: CommandContext): P
   const terminal = createTerminal(context);
   let server: OpenedServer | undefined;
   try {
-    const daemon =
-      options.daemonVersion === undefined
-        ? undefined
-        : await connectDaemon(root, options.daemonVersion, context);
-    server = daemon?.server ?? (await openServer(options.server, context, signal));
-    const servedTaskQueue = daemon?.project.taskQueue;
+    const opened = await openCommandServer(options, root, context, signal);
+    server = opened.server;
+    const { servedTaskQueue } = opened;
     const selected = await selectRun(
       "cancel",
       { address: server.address, root },

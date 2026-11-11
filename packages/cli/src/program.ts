@@ -8,7 +8,6 @@ import { cancel, resume } from "./commands/resume.js";
 import { run } from "./commands/run.js";
 import { showDaemonStatus, startDaemon, stopDaemon } from "./daemon/commands.js";
 import { runDaemon } from "./daemon/process.js";
-import { defaultAddress } from "./server.js";
 import type { ServerOptions } from "./server.js";
 import { docs } from "./commands/docs.js";
 import { validate } from "./commands/validate.js";
@@ -99,14 +98,17 @@ const processContext = (): ProgramContext => ({
   stdout: (text) => process.stdout.write(text),
 });
 
+/** Where the resident process keeps the runs of its development server by default. */
+const defaultDevDbHelp = "temporal.db in the state directory, such as ~/.local/state/aitw";
+
 const devDbDescription = "keep the state of the development server in a SQLite file";
 const devUiDescription =
   "also start the Web UI, which web pages that you open could use to run commands on this machine";
 const temporalBinDescription =
   "Temporal CLI to start the development server with, as a path or a name in PATH";
 const daemonHelp = `
-When "aitw daemon" runs and no server options are given, the resident process runs the steps,
-so the run keeps going after this command exits.`;
+Without server options, the resident process that "aitw daemon start" starts runs the steps on
+its Temporal Server, so the run keeps going after this command exits.`;
 const interruptHelp = `
 Press Ctrl+C to detach: the run waits in Temporal, and "aitw resume" continues it.
 A running script finishes first. Press Ctrl+C again to exit now, which fails the running
@@ -114,11 +116,14 @@ step so that the run cannot be resumed. A development server without --dev-db ke
 runs, so Ctrl+C cancels the run there. Use "aitw cancel" to stop a run.`;
 
 const addressOption = () =>
-  new Option("--address <address>", "address of the Temporal Server")
-    .default(defaultAddress)
-    .conflicts("dev");
+  new Option("--address <address>", "address of the Temporal Server").conflicts("dev");
 
-/** Builds the server options of a command, and rejects options that need --dev. */
+/**
+ * Builds the server options of a command, and rejects options that need --dev.
+ *
+ * @returns The server, or `undefined` when no option names one, so that the resident process
+ *   serves the command.
+ */
 const toServerOptions = (
   {
     address,
@@ -127,32 +132,22 @@ const toServerOptions = (
     devUi,
     temporalBin,
   }: {
-    address: string;
+    address?: string | undefined;
     dev?: true | undefined;
     devDb?: string | undefined;
     devUi?: true | undefined;
     temporalBin?: string | undefined;
   },
   command: { error: (message: string) => never },
-): ServerOptions => {
+): ServerOptions | undefined => {
   if (dev !== true && (devDb !== undefined || devUi !== undefined || temporalBin !== undefined)) {
     command.error("error: --dev-db, --dev-ui, and --temporal-bin require --dev");
   }
-  return dev === true
-    ? { dbFilename: devDb, temporalBin, type: "dev", ui: devUi }
-    : { address, type: "address" };
+  if (dev === true) {
+    return { dbFilename: devDb, temporalBin, type: "dev", ui: devUi };
+  }
+  return address === undefined ? undefined : { address, type: "address" };
 };
-
-/**
- * Returns the version that a resident process must have to serve the command, or `undefined`
- * when the command names its server and runs its own Worker.
- */
-const daemonVersionOf = (
-  { dev }: { dev?: true | undefined },
-  command: { getOptionValueSource: (key: string) => string | undefined },
-  version: string,
-): string | undefined =>
-  dev === true || command.getOptionValueSource("address") === "cli" ? undefined : version;
 
 /** Creates the `aitw` command line program. */
 export const createProgram = (context: ProgramContext = processContext()) => {
@@ -200,7 +195,7 @@ ${daemonHelp}`,
         await run(
           workflow,
           {
-            daemonVersion: daemonVersionOf(options, command, version),
+            version,
             input,
             prepareEngine: context.prepareEngine,
             server,
@@ -232,7 +227,7 @@ ${daemonHelp}`,
       context.setExitCode(
         await resume(
           {
-            daemonVersion: daemonVersionOf(options, command, version),
+            version,
             force,
             prepareEngine: context.prepareEngine,
             server,
@@ -259,7 +254,7 @@ ${daemonHelp}`,
       context.setExitCode(
         await cancel(
           {
-            daemonVersion: daemonVersionOf(options, command, version),
+            version,
             prepareEngine: context.prepareEngine,
             server,
             signal,
@@ -282,19 +277,36 @@ ${daemonHelp}`,
     .addHelpText(
       "after",
       `
+The resident process starts a Temporal development server, which keeps its runs in
+${defaultDevDbHelp}.
+With --address, it uses that Temporal Server instead.
+
 Scripts that the resident process runs inherit its environment variables as they were when it
 started, not those of the terminal that runs "aitw run". Pass the values that a workflow needs
 with env and dotenv in the definition.`,
     )
-    .addOption(addressOption())
-    .option("--dev", "start a Temporal development server, which needs --dev-db")
-    .option("--dev-db <path>", devDbDescription)
+    .addOption(
+      new Option(
+        "--address <address>",
+        "use the Temporal Server at this address instead of starting a development server",
+      ).conflicts(["devDb", "devUi", "temporalBin"]),
+    )
+    .option("--dev-db <path>", "SQLite file that keeps the state of the development server")
     .option("--temporal-bin <path>", temporalBinDescription)
     .option("--dev-ui", devUiDescription)
-    .action(async (options, command) => {
-      const server = toServerOptions(options, command);
+    .action(async ({ address, devDb, devUi, temporalBin }) => {
       context.setExitCode(
-        await startDaemon({ executable: context.executable ?? "aitw", server, version }, context),
+        await startDaemon(
+          {
+            executable: context.executable ?? "aitw",
+            server:
+              address === undefined
+                ? { dbFilename: devDb, temporalBin, type: "dev", ui: devUi }
+                : { address, type: "address" },
+            version,
+          },
+          context,
+        ),
       );
     });
 
@@ -322,6 +334,10 @@ with env and dotenv in the definition.`,
     .option("--dev-ui")
     .action(async (options, command) => {
       const server = toServerOptions(options, command);
+      if (server === undefined) {
+        command.error("error: aitw daemon run needs --dev or --address");
+        return;
+      }
       const signal = (context.stopSignal ?? context.interruptSignal)();
       context.setExitCode(
         await runDaemon({ prepareEngine: context.prepareEngine, server, signal, version }, context),

@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
@@ -19,10 +19,21 @@ describe("aitw daemon", () => {
     state = mkdtempSync("/tmp/aitw-daemon-");
   });
 
+  /** SQLite file that the resident process keeps its runs in by default. */
+  const defaultDb = (): string => join(state, "aitw", "temporal.db");
+
+  /**
+   * Pattern of the command line of the development server of the test.
+   *
+   * The resident process names the file by its real path, and /tmp is a link on macOS, so the
+   * pattern starts at the directory of the test.
+   */
+  const devServerPattern = (): string => `--db-filename .*${basename(state)}/aitw/temporal\\.db`;
+
   /** Returns the process IDs of the development servers that use the SQLite file of the test. */
   const devServers = (): string[] => {
     try {
-      return execFileSync("pgrep", ["-f", "--", `--db-filename ${join(state, "temporal.db")}`], {
+      return execFileSync("pgrep", ["-f", "--", devServerPattern()], {
         encoding: "utf8",
       })
         .trim()
@@ -50,7 +61,7 @@ describe("aitw daemon", () => {
   /** Stops processes that use the state of the test, such as a development server. */
   const stopLeftovers = (): void => {
     try {
-      execFileSync("pkill", ["-f", "--", `--db-filename ${join(state, "temporal.db")}`]);
+      execFileSync("pkill", ["-f", "--", devServerPattern()]);
     } catch {
       // No process was left.
     }
@@ -78,16 +89,7 @@ describe("aitw daemon", () => {
       child.on("exit", (exitCode) => resolve({ exitCode, stderr, stdout }));
     });
 
-  const start = async () =>
-    execute([
-      "daemon",
-      "start",
-      "--dev",
-      "--dev-db",
-      join(state, "temporal.db"),
-      "--temporal-bin",
-      inject("temporalCli"),
-    ]);
+  const start = async () => execute(["daemon", "start", "--temporal-bin", inject("temporalCli")]);
 
   it("starts, reports, and stops the resident process", async () => {
     await expect(execute(["daemon", "status"])).resolves.toMatchObject({
@@ -100,6 +102,9 @@ describe("aitw daemon", () => {
     expect(started.stdout).toMatch(
       /^aitw daemon: started \(pid \d+, server 127\.0\.0\.1:\d+, aitw \d+\.\d+\.\d+\)\n$/u,
     );
+    // The development server keeps its runs in the state directory, which only the owner reads.
+    expect(devServers()).toHaveLength(1);
+    expect(statSync(defaultDb()).mode & 0o777).toBe(0o600);
     await expect(start()).resolves.toMatchObject({
       exitCode: 0,
       stdout: expect.stringMatching(/^aitw daemon: already running \(pid \d+/u) as unknown,
@@ -195,7 +200,6 @@ describe("aitw daemon", () => {
     const options = [
       "daemon",
       "start",
-      "--dev",
       // A path that needs quotes on a command line.
       "--dev-db",
       join(state, "temporal db.sqlite"),
@@ -226,11 +230,35 @@ describe("aitw daemon", () => {
     }
   }, 60_000);
 
-  it("needs --dev-db with --dev", async () => {
-    await expect(execute(["daemon", "start", "--dev"])).resolves.toMatchObject({
+  it("does not take options of a development server with --address", async () => {
+    await expect(
+      execute(["daemon", "start", "--address", "localhost:7233", "--dev-db", "state.db"]),
+    ).resolves.toMatchObject({
       exitCode: 1,
-      stderr:
-        "aitw daemon needs --dev-db with --dev, because a development server without it keeps no runs\n",
+      stderr: expect.stringContaining("cannot be used with") as unknown,
+    });
+  });
+
+  it("tells how to choose a server when no resident process runs", async () => {
+    const run = await new Promise<{ exitCode: number | null; output: string }>((resolve) => {
+      const child = spawn(process.execPath, [bin, "run", "run-success"], {
+        cwd: fixtureProject,
+        env: { ...process.env, XDG_STATE_HOME: state },
+      });
+      let output = "";
+      child.stdout.on("data", (chunk: Buffer) => {
+        output += chunk.toString();
+      });
+      child.stderr.on("data", (chunk: Buffer) => {
+        output += chunk.toString();
+      });
+      child.on("exit", (exitCode) => resolve({ exitCode, output }));
+    });
+
+    expect(run).toEqual({
+      exitCode: 1,
+      output:
+        'run-success: failed: aitw daemon is not running. Run "aitw daemon start", or choose a server with --dev or --address\n',
     });
   });
 });

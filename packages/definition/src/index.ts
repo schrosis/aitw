@@ -4,7 +4,7 @@ export {
   definitionSchema,
   definitionVersion,
 } from "./schema.js";
-export type { Definition } from "./schema.js";
+export type { Definition, DefinitionJsonSchemaOptions } from "./schema.js";
 export { parseDefinition, parseYaml } from "./parse.js";
 export type { DefinitionError, DefinitionLocator, ParseResult, YamlParseResult } from "./parse.js";
 export { compileDefinition } from "./compile.js";

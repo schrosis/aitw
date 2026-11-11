@@ -161,6 +161,30 @@ describe("createDefinitionJsonSchema with plugins", () => {
     expect(schema).not.toHaveProperty(`${steps}.0.allOf`);
   });
 
+  it("accepts no AI provider when no plugin provides one", () => {
+    const schema = createDefinitionJsonSchema({
+      plugins: createPluginRegistry({
+        builtins: [
+          definePlugin({
+            name: "test",
+            waitMethods: [defineWaitMethod({ name: "manual", with: z.strictObject({}) })],
+          }),
+        ],
+      }),
+    });
+
+    // JSON Schema requires at least one value in an enum.
+    expect(schema).toHaveProperty(
+      "properties.steps.additionalProperties.oneOf.2.properties.provider.not",
+      {},
+    );
+    expect(schema).not.toHaveProperty(
+      "properties.steps.additionalProperties.oneOf.2.properties.provider.enum",
+    );
+    // An empty allOf is not valid JSON Schema either.
+    expect(schema).not.toHaveProperty("properties.steps.additionalProperties.oneOf.2.allOf");
+  });
+
   it("accepts $schema in a definition", () => {
     expect(
       definitionSchema.safeParse({

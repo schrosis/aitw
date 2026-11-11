@@ -100,8 +100,10 @@ export interface Plugin<Config = unknown> {
    * no settings.
    */
   config?: StandardSchemaV1<unknown, Config>;
-  waitMethods?: readonly WaitMethod<unknown, Config>[];
-  aiProviders?: readonly AiProvider<unknown, Config>[];
+  // The type of the settings comes only from `config`, so that an extension that reads settings
+  // which the plugin does not declare is a type error.
+  waitMethods?: readonly WaitMethod<unknown, NoInfer<Config>>[];
+  aiProviders?: readonly AiProvider<unknown, NoInfer<Config>>[];
 }
 
 /** Declares a plugin, inferring the type of its settings from the schema of `config`. */

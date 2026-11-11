@@ -72,7 +72,7 @@ export const loadProjectPlugins = async (root: string, cwd: string): Promise<Loa
 /**
  * Loads the plugins of a configuration file that was read, and validates their settings.
  *
- * @throws {ProjectConfigError} When the settings of a plugin are invalid.
+ * @throws {ProjectConfigError} When the settings of plugins are invalid, with every problem.
  * @throws {PluginLoadError} When a plugin cannot be loaded.
  */
 export const loadConfiguredPlugins = async (
@@ -80,18 +80,24 @@ export const loadConfiguredPlugins = async (
   root: string,
 ): Promise<LoadedPlugin[]> => {
   const loaded: LoadedPlugin[] = [];
+  // Invalid settings of every plugin are reported together, as problems of the file are.
+  const problems: { message: string; path: (number | string)[] }[] = [];
   for (const [packageName, settings] of Object.entries(config.plugins ?? {})) {
     const { plugin } = await loadPlugin(packageName, root);
     const validated = validatePluginConfig(plugin, settings);
-    if (!validated.ok) {
-      throw error(
-        validated.errors.map(({ message, path }) => ({
+    if (validated.ok) {
+      loaded.push({ config: validated.value, packageName, plugin });
+    } else {
+      problems.push(
+        ...validated.errors.map(({ message, path }) => ({
           message,
           path: ["plugins", packageName, ...path],
         })),
       );
     }
-    loaded.push({ config: validated.value, packageName, plugin });
+  }
+  if (problems.length > 0) {
+    throw error(problems);
   }
   return loaded;
 };

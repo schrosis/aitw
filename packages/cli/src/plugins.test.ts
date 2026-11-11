@@ -244,5 +244,17 @@ describe("loadProjectPlugins", () => {
     await expect(loadProjectPlugins(root, root)).rejects.toThrow(
       ".aitw/config.yaml:3:5 plugins.aitw-plain: The plugin takes no settings",
     );
+
+    // Every plugin is checked, and their problems are reported together.
+    writeFileSync(
+      config,
+      'plugins:\n  "aitw-notify":\n    channel: 3\n  "aitw-plain":\n    channel: deploy\n',
+    );
+    await expect(loadProjectPlugins(root, root)).rejects.toThrow(
+      [
+        ".aitw/config.yaml:3:14 plugins.aitw-notify.channel: Must be a string",
+        ".aitw/config.yaml:5:5 plugins.aitw-plain: The plugin takes no settings",
+      ].join("\n"),
+    );
   });
 });

@@ -29,7 +29,7 @@ export const projectConfigSchema = z
       )
       .optional()
       .describe(
-        "Plugin packages to load, keyed by package name, such as @aitw/adapter-ai-claude-code. They are found in the project, and then next to aitw",
+        "Plugin packages to load, keyed by package name, such as @aitw/adapter-ai-claude-code. They are found in the project, and then next to aitw. The value is the settings of the plugin, which its config schema validates",
       ),
     temporal: z
       .strictObject({

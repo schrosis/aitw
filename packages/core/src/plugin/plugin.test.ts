@@ -290,4 +290,24 @@ describe("plugin settings", () => {
       ),
     ).resolves.toEqual({ data: "large" });
   });
+
+  it("takes the type of the settings only from the schema of the plugin", () => {
+    const reader = defineWaitMethod<unknown, { channel: string }>({
+      name: "ask",
+      respond: async ({ config }) => ({ channel: config.channel }),
+      with: z.object({}),
+    });
+
+    // The settings that the method reads match the schema.
+    const declared = definePlugin({
+      config: z.strictObject({ channel: z.string() }),
+      name: "declared",
+      waitMethods: [reader],
+    });
+    // A plugin without the schema takes no settings, so the method could not read them.
+    // @ts-expect-error -- The method reads settings that the plugin does not declare.
+    const undeclared = definePlugin({ name: "undeclared", waitMethods: [reader] });
+
+    expect([declared.name, undeclared.name]).toEqual(["declared", "undeclared"]);
+  });
 });

@@ -199,8 +199,12 @@ const constrainExtensions = (
   }
   step.properties[field] = {
     ...(isJsonObject(step.properties[field]) ? step.properties[field] : {}),
-    enum: extensions.map(({ name }) => name),
+    // An empty enum is not valid JSON Schema, so a field without names accepts no value.
+    ...(extensions.length === 0 ? { not: {} } : { enum: extensions.map(({ name }) => name) }),
   };
+  if (extensions.length === 0) {
+    return;
+  }
   step.allOf = extensions.map(({ name, with: schema }) => {
     const converted = toJsonSchema(schema) ?? {};
     // A step without `with` is validated as an empty object, so `with` is required when the

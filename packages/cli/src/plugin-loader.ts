@@ -10,6 +10,8 @@ export interface LoadedPlugin {
   /** Name of the package, such as `@acme/aitw-slack`. */
   packageName: string;
   plugin: Plugin;
+  /** Settings of the plugin, after its `config` schema is applied. */
+  config?: unknown;
 }
 
 /** Thrown when a plugin that a project names cannot be loaded. */

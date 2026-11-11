@@ -7,10 +7,11 @@ import { createAiRunner } from "@aitw/core";
 import { startWorker } from "@aitw/engine";
 import type { RunningWorker } from "@aitw/engine";
 
-import { loadProjectConfig } from "../config.js";
+import { readProjectConfig } from "../config.js";
+import type { ReadProjectConfig } from "../config.js";
 import { loadEncryptionKey } from "../encryption.js";
 import { createEnvironmentReader } from "../environment.js";
-import { createRegistry, loadPlugins } from "../plugins.js";
+import { createRegistry, loadConfiguredPlugins } from "../plugins.js";
 import { projectLogDirectory, projectTaskQueue } from "../state.js";
 import { aitwDirectory } from "../workflows.js";
 import type { DaemonProject } from "./client.js";
@@ -66,7 +67,7 @@ const isProject = (root: string): boolean => existsSync(join(root, aitwDirectory
 
 /** A Worker of a project on a server, and the plugin packages that it loaded. */
 interface ServedWorker {
-  /** Names of the plugin packages, one on each line, to compare with the configuration. */
+  /** The plugin packages and their settings, as JSON, to compare with the configuration. */
   plugins: string;
   worker: Promise<RunningWorker>;
 }
@@ -110,25 +111,27 @@ export const createProjectWorkers = ({
     }
   };
 
-  /** Returns the Temporal Server and the plugin packages that a project names now. */
+  /** Returns the Temporal Server and the plugins that a project names now. */
   const settingsOf = async (
     root: string,
-  ): Promise<{ serverAddress: string; plugins: string[] }> => {
-    const config = await loadProjectConfig(root, root);
+  ): Promise<{ serverAddress: string; plugins: string; read: ReadProjectConfig }> => {
+    const read = await readProjectConfig(root, root);
     return {
-      plugins: Object.keys(config.plugins ?? {}),
-      serverAddress: config.temporal?.address ?? address,
+      // The order of the plugins and their settings are compared, because both affect names.
+      plugins: JSON.stringify(Object.entries(read.config.plugins ?? {})),
+      read,
+      serverAddress: read.config.temporal?.address ?? address,
     };
   };
 
   const start = (
     root: string,
     serverAddress: string,
-    plugins: readonly string[],
+    { plugins, read }: { plugins: string; read: ReadProjectConfig },
   ): Promise<RunningWorker> => {
     const taskQueue = projectTaskQueue(root);
     const worker: Promise<RunningWorker> = (async () => {
-      const loaded = await loadPlugins(plugins, root);
+      const loaded = await loadConfiguredPlugins(read, root);
       prepareEngine();
       const running = await startProjectWorker({
         address: serverAddress,
@@ -152,7 +155,7 @@ export const createProjectWorkers = ({
       return running;
     })();
     const byServer = workers.get(root) ?? new Map<string, ServedWorker>();
-    byServer.set(serverAddress, { plugins: plugins.join("\n"), worker });
+    byServer.set(serverAddress, { plugins, worker });
     workers.set(root, byServer);
     // A Worker that fails to start is forgotten, so that a later request can try again.
     worker.catch(() => forget(root, serverAddress, worker));
@@ -165,7 +168,8 @@ export const createProjectWorkers = ({
    * @returns The address of the server.
    */
   const serve = async (root: string): Promise<string> => {
-    const { plugins, serverAddress } = await settingsOf(root);
+    const settings = await settingsOf(root);
+    const { serverAddress } = settings;
     const previousAddress = servers.get(root);
     servers.set(root, serverAddress);
     if (
@@ -180,12 +184,12 @@ export const createProjectWorkers = ({
     const served = workers.get(root)?.get(serverAddress);
     // A Worker that the project used before on the same server is used again, unless the
     // plugins changed. Its registry would not have the extensions of the plugins added since.
-    if (served?.plugins === plugins.join("\n")) {
+    if (served?.plugins === settings.plugins) {
       await served.worker;
       return serverAddress;
     }
     try {
-      await start(root, serverAddress, plugins);
+      await start(root, serverAddress, settings);
     } catch (error) {
       // The previous Worker keeps serving the project, and stops with the resident process.
       if (served !== undefined && workers.get(root)?.has(serverAddress) !== true) {

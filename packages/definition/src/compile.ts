@@ -67,7 +67,7 @@ const resolveWaitSteps = (
     }
     // A bug in a plugin is reported at the step instead of stopping the command.
     try {
-      answers[id] = method.answers?.(options.value);
+      answers[id] = method.answers?.(options.value, plugins.waitMethodConfig(step.method));
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       errors.push({

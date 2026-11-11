@@ -24,17 +24,12 @@ export const projectConfigSchema = z
             packageNamePattern,
             "Must be the name of an npm package, such as @acme/aitw-slack",
           ),
-        z
-          .record(z.string(), z.json())
-          .nullable()
-          .refine(
-            (settings) => settings === null || Object.keys(settings).length === 0,
-            "Settings of plugins are not supported yet",
-          ),
+        // Settings of the plugin, which its config schema validates after it loads.
+        z.record(z.string(), z.json()).nullable(),
       )
       .optional()
       .describe(
-        "Plugin packages to load, keyed by package name, such as @aitw/adapter-ai-claude-code. They are found in the project, and then next to aitw",
+        "Plugin packages to load, keyed by package name, such as @aitw/adapter-ai-claude-code. They are found in the project, and then next to aitw. The value is the settings of the plugin, which its config schema validates",
       ),
     temporal: z
       .strictObject({
@@ -75,6 +70,17 @@ const readIfExists = async (file: string): Promise<string | undefined> => {
   }
 };
 
+/** A configuration file that was read, with what reports problems in it. */
+export interface ReadProjectConfig {
+  config: ProjectConfig;
+  /**
+   * Builds the error for problems found later in the file, such as invalid settings of a plugin.
+   *
+   * @param errors Problems with paths in the file, such as `["plugins", "@acme/x", "channel"]`.
+   */
+  error: (errors: readonly { message: string; path: (number | string)[] }[]) => ProjectConfigError;
+}
+
 /**
  * Reads the configuration file of a project, `.aitw/config.yaml`.
  *
@@ -84,7 +90,15 @@ const readIfExists = async (file: string): Promise<string | undefined> => {
  * @param cwd Directory that the paths in the messages are relative to.
  * @throws {ProjectConfigError} When the file cannot be read or is invalid.
  */
-export const loadProjectConfig = async (root: string, cwd: string): Promise<ProjectConfig> => {
+export const loadProjectConfig = async (root: string, cwd: string): Promise<ProjectConfig> =>
+  (await readProjectConfig(root, cwd)).config;
+
+/**
+ * Reads the configuration file of a project, and keeps what locates problems in it.
+ *
+ * @throws {ProjectConfigError} When the file cannot be read or is invalid.
+ */
+export const readProjectConfig = async (root: string, cwd: string): Promise<ReadProjectConfig> => {
   const found: { file: string; source: string }[] = [];
   for (const name of configNames) {
     const file = join(root, aitwDirectory, name);
@@ -102,7 +116,11 @@ export const loadProjectConfig = async (root: string, cwd: string): Promise<Proj
   }
   const [config, other] = found;
   if (config === undefined) {
-    return {};
+    return {
+      config: {},
+      // A project without the file has no settings that could be invalid.
+      error: (errors) => new ProjectConfigError(errors.map(({ message }) => message).join("\n")),
+    };
   }
   if (other !== undefined) {
     throw new ProjectConfigError(
@@ -110,9 +128,9 @@ export const loadProjectConfig = async (root: string, cwd: string): Promise<Proj
     );
   }
 
+  const file = relative(cwd, config.file);
   const result = parseYaml(config.source, projectConfigSchema);
   if (!result.ok) {
-    const file = relative(cwd, config.file);
     throw new ProjectConfigError(
       result.errors
         .map((error) => formatError(file, error))
@@ -120,5 +138,14 @@ export const loadProjectConfig = async (root: string, cwd: string): Promise<Proj
         .trimEnd(),
     );
   }
-  return result.value;
+  return {
+    config: result.value,
+    error: (errors) =>
+      new ProjectConfigError(
+        errors
+          .map(({ message, path }) => formatError(file, { ...result.locate(path), message, path }))
+          .join("")
+          .trimEnd(),
+      ),
+  };
 };

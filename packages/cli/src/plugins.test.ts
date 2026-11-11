@@ -10,6 +10,28 @@ import { validate } from "./commands/validate.ts";
 import { PluginLoadError } from "./plugin-loader.ts";
 import { createRegistry, loadProjectPlugins } from "./plugins.ts";
 
+/**
+ * Source of a plugin module whose settings need a channel, and whose wait method answers with it.
+ */
+const configuredPluginSource = `
+const schema = (validate) => ({ "~standard": { version: 1, vendor: "test", validate } });
+export default {
+  name: "notify",
+  config: schema((value) =>
+    typeof value.channel === "string"
+      ? { value: { channel: value.channel } }
+      : { issues: [{ message: "Must be a string", path: ["channel"] }] },
+  ),
+  waitMethods: [
+    {
+      name: "ask",
+      with: schema((value) => ({ value })),
+      respond: async ({ config }) => ({ channel: config.channel }),
+    },
+  ],
+};
+`;
+
 /** Source of a plugin module that provides a wait method. */
 const pluginSource = (name: string): string => `
 const schema = {
@@ -183,6 +205,56 @@ describe("loadProjectPlugins", () => {
     await expect(validate("review", { cwd: root, ...output })).resolves.toBe(1);
     expect(output.written.stderr).toBe(
       ".aitw/workflows/review.yaml:6:15 steps.review.provider: Unknown AI provider: claude-code. Install @aitw/adapter-ai-claude-code and add it to plugins in .aitw/config.yaml\n",
+    );
+  });
+
+  it("validates the settings of a plugin, and gives them to its extensions", async () => {
+    install("aitw-notify", { main: "index.js" }, { "index.js": configuredPluginSource });
+    writeFileSync(
+      join(root, ".aitw", "config.yaml"),
+      'plugins:\n  "aitw-notify":\n    channel: deploy\n',
+    );
+
+    const registry = createRegistry(undefined, await loadProjectPlugins(root, root));
+    const method = registry.waitMethod("notify/ask");
+
+    expect(registry.waitMethodConfig("notify/ask")).toEqual({ channel: "deploy" });
+    await expect(
+      method?.respond?.({
+        answers: {},
+        config: registry.waitMethodConfig("notify/ask"),
+        options: {},
+        signal: new AbortController().signal,
+        step: "ask",
+      }),
+    ).resolves.toEqual({ channel: "deploy" });
+  });
+
+  it("reports invalid settings of a plugin with their locations", async () => {
+    install("aitw-notify", { main: "index.js" }, { "index.js": configuredPluginSource });
+    install("aitw-plain", { main: "index.js" }, { "index.js": pluginSource("plain") });
+    const config = join(root, ".aitw", "config.yaml");
+
+    writeFileSync(config, 'plugins:\n  "aitw-notify":\n    channel: 3\n');
+    await expect(loadProjectPlugins(root, root)).rejects.toThrow(
+      ".aitw/config.yaml:3:14 plugins.aitw-notify.channel: Must be a string",
+    );
+
+    writeFileSync(config, 'plugins:\n  "aitw-plain":\n    channel: deploy\n');
+    await expect(loadProjectPlugins(root, root)).rejects.toThrow(
+      ".aitw/config.yaml:3:5 plugins.aitw-plain: The plugin takes no settings",
+    );
+
+    // Every plugin is checked, and their problems are reported together.
+    writeFileSync(
+      config,
+      'plugins:\n  "aitw-notify":\n    channel: 3\n  "aitw-plain":\n    channel: deploy\n',
+    );
+    await expect(loadProjectPlugins(root, root)).rejects.toThrow(
+      [
+        ".aitw/config.yaml:3:14 plugins.aitw-notify.channel: Must be a string",
+        ".aitw/config.yaml:5:5 plugins.aitw-plain: The plugin takes no settings",
+      ].join("\n"),
     );
   });
 });

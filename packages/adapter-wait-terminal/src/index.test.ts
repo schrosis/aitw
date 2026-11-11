@@ -24,7 +24,7 @@ describe("terminalWaitMethod", () => {
       },
     });
 
-    expect(options.ok && terminalWaitMethod.answers?.(options.value)).toEqual({
+    expect(options.ok && terminalWaitMethod.answers?.(options.value, undefined)).toEqual({
       approve: { required: true, type: "boolean" },
       name: { description: "Your name", required: false, type: "string" },
     });
@@ -33,7 +33,7 @@ describe("terminalWaitMethod", () => {
   it("answers with nothing when no schema is declared", () => {
     const options = validateWithSchema(terminalWaitMethod.with, { message: "Press Enter" });
 
-    expect(options.ok && terminalWaitMethod.answers?.(options.value)).toEqual({});
+    expect(options.ok && terminalWaitMethod.answers?.(options.value, undefined)).toEqual({});
   });
 
   it.each([
@@ -121,8 +121,14 @@ const respondWith = async (
   if (method?.respond === undefined || !validated.ok) {
     throw new Error("The test setup is invalid");
   }
-  const answers = method.answers?.(validated.value) ?? {};
-  const values = await method.respond({ answers, options: validated.value, signal, step: "ask" });
+  const answers = method.answers?.(validated.value, undefined) ?? {};
+  const values = await method.respond({
+    answers,
+    config: undefined,
+    options: validated.value,
+    signal,
+    step: "ask",
+  });
   return { output, values };
 };
 

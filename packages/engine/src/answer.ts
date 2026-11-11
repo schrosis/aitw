@@ -75,7 +75,13 @@ const answerStep = async (
   await flush();
   for (;;) {
     const values = await untilAborted(
-      method.respond({ answers, options: validated.value, signal, step }),
+      method.respond({
+        answers,
+        config: plugins.waitMethodConfig(name),
+        options: validated.value,
+        signal,
+        step,
+      }),
       signal,
     );
     try {

@@ -87,15 +87,18 @@ describe("loadProjectConfig", () => {
     ]);
   });
 
-  it("rejects settings of plugins and names that are not packages", async () => {
-    write("config.yaml", 'plugins:\n  "@acme/aitw-slack":\n    channel: deploy\n  ./local:\n');
+  it("keeps the settings of plugins, and rejects names that are not packages", async () => {
+    write("config.yaml", 'plugins:\n  "@acme/aitw-slack":\n    channel: deploy\n');
+
+    await expect(loadProjectConfig(root, root)).resolves.toEqual({
+      plugins: { "@acme/aitw-slack": { channel: "deploy" } },
+    });
+
+    write("config.yaml", "plugins:\n  ./local:\n");
 
     await expect(loadProjectConfig(root, root)).rejects.toThrow(
       new ProjectConfigError(
-        [
-          ".aitw/config.yaml:3:5 plugins.@acme/aitw-slack: Settings of plugins are not supported yet",
-          ".aitw/config.yaml:4:3 plugins../local: Must be the name of an npm package, such as @acme/aitw-slack",
-        ].join("\n"),
+        ".aitw/config.yaml:2:3 plugins../local: Must be the name of an npm package, such as @acme/aitw-slack",
       ),
     );
   });

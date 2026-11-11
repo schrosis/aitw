@@ -224,4 +224,27 @@ describe("createProjectWorkers", () => {
     await workers.stopAll();
     expect(stopped).toEqual([1]);
   });
+
+  it("starts the Worker again when the settings of a plugin change", async () => {
+    const config = join(project, ".aitw", "config.yaml");
+    const plugin = join(project, "node_modules", "aitw-settings");
+    mkdirSync(plugin, { recursive: true });
+    writeFileSync(
+      join(plugin, "package.json"),
+      '{"name":"aitw-settings","type":"module","main":"index.js"}',
+    );
+    writeFileSync(
+      join(plugin, "index.js"),
+      'export default { name: "settings", config: { "~standard": { version: 1, vendor: "test", validate: (value) => ({ value }) } } };\n',
+    );
+    const workers = create(succeed);
+
+    writeFileSync(config, "plugins:\n  aitw-settings:\n    level: 1\n");
+    await workers.add(project);
+    await workers.add(project);
+    writeFileSync(config, "plugins:\n  aitw-settings:\n    level: 2\n");
+    await workers.add(project);
+
+    expect(started).toHaveLength(2);
+  });
 });

@@ -91,6 +91,17 @@ describe("evaluateExpression", () => {
     });
   });
 
+  it("reads a field of null as null", () => {
+    expect(evaluateExpression("${{ inputs.absent.name }}", context)).toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(evaluateExpression("[${{ result.data.verdict }}]", { result: { data: null } })).toEqual({
+      ok: true,
+      value: "[]",
+    });
+  });
+
   it("takes an index only in brackets", () => {
     expect(parseTemplate("${{ steps.a.visits.0.outputs.v }}")).toMatchObject({ ok: false });
     expect(parseTemplate("${{ steps.a.visits[x].outputs.v }}")).toMatchObject({ ok: false });

@@ -6,9 +6,18 @@ export type EvaluateResult = { ok: true; value: unknown } | { ok: false; message
 
 type Resolved = { ok: true; value: unknown } | { ok: false };
 
+/**
+ * Reads a path of own data properties.
+ *
+ * A path that goes through `null` reads as `null`, as in conditions, so that the fields of a
+ * value that is absent, such as `result.data` of a failed AI step, can be referenced.
+ */
 const resolve = (context: Readonly<Record<string, unknown>>, path: readonly string[]): Resolved => {
   let value: unknown = context;
   for (const segment of path) {
+    if (value === null) {
+      return { ok: true, value: null };
+    }
     // Only own data properties are read, so that references cannot reach prototype members
     // or run getters.
     const descriptor =

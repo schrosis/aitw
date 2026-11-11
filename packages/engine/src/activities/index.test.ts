@@ -791,6 +791,40 @@ describe("continueOnError", () => {
     expect(events.at(-1)).toMatchObject({ continued: true, outcome: "failed" });
   });
 
+  it("reads the fields of result.data of a failed AI step as null", async () => {
+    await expect(
+      new MockActivityEnvironment().run(
+        createActivities({
+          aiRunner: {
+            run: async () => {
+              throw new Error("The structured result is missing");
+            },
+          },
+          scriptRunner: failingScript({}),
+        }).executeAiStep,
+        {
+          branches: [
+            { if: "${{ result.data.verdict == 'approve' }}", to: { type: "end" } },
+            { to: { step: "implement", type: "step" } },
+          ],
+          continueOnError: true,
+          inputs: {},
+          options: {},
+          outputs: { summary: "${{ result.data.summary }}", verdict: "${{ result.data.verdict }}" },
+          prompt: "Review",
+          provider: "claude-code",
+          references: {},
+          schema: {
+            properties: { summary: { type: "string" }, verdict: { enum: ["approve", "changes"] } },
+            type: "object",
+          },
+          step: "review",
+          timeoutMs: 1000,
+        } satisfies AiStepRequest,
+      ),
+    ).resolves.toEqual({ next: "implement", outputs: { summary: null, verdict: null } });
+  });
+
   it("sets ok and error of an AI step that succeeds", async () => {
     await expect(runAiContinuing({ run: async () => ({ data: "done" }) })).resolves.toEqual({
       next: null,

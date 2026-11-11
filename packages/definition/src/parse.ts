@@ -173,12 +173,26 @@ const convertIssue = (
   return [createError(lineCounter, offset, path, message)];
 };
 
+/** Result of {@link parseYaml}. */
+export type YamlParseResult<Value> =
+  | { ok: true; value: Value; locate: DefinitionLocator }
+  | { ok: false; errors: DefinitionError[] };
+
 /**
- * Parses a YAML workflow definition and validates its structure.
+ * Parses a YAML document and validates it with a schema, reporting problems with their source
+ * positions.
  *
- * Invalid definitions are reported in the result instead of being thrown.
+ * Aliases and anchors are rejected, because the positions of the values that they repeat would
+ * be unclear. An empty document is `null`.
+ *
+ * @param check Finds problems that the parsed value no longer shows, such as how a number was
+ *   written. A value whose path it reports is not reported by the schema again.
  */
-export const parseDefinition = (source: string): ParseResult => {
+export const parseYaml = <Schema extends z.ZodType>(
+  source: string,
+  schema: Schema,
+  check: (document: DefinitionDocument, lineCounter: LineCounter) => DefinitionError[] = () => [],
+): YamlParseResult<z.output<Schema>> => {
   const lineCounter = new LineCounter();
   const document = parseDocument(source, { lineCounter, prettyErrors: false });
 
@@ -194,17 +208,16 @@ export const parseDefinition = (source: string): ParseResult => {
     return { errors: aliasErrors, ok: false };
   }
 
-  const numberErrors = findNumberNotationErrors(document, lineCounter);
-  const result = definitionSchema.safeParse(document.toJS() as unknown);
-  if (!result.success || numberErrors.length > 0) {
+  const checkErrors = check(document, lineCounter);
+  const result = schema.safeParse(document.toJS() as unknown);
+  if (!result.success || checkErrors.length > 0) {
     return {
       errors: [
-        ...numberErrors,
-        // A number notation error already explains why its value fails the schema.
+        ...checkErrors,
         ...(
           result.error?.issues.flatMap((issue) => convertIssue(issue, document, lineCounter)) ?? []
         ).filter(
-          ({ path }) => !numberErrors.some((error) => error.path.join(".") === path.join(".")),
+          ({ path }) => !checkErrors.some((error) => error.path.join(".") === path.join(".")),
         ),
       ],
       ok: false,
@@ -218,5 +231,18 @@ export const parseDefinition = (source: string): ParseResult => {
     return { column, line };
   };
 
-  return { definition: result.data, locate, ok: true };
+  return { locate, ok: true, value: result.data };
+};
+
+/**
+ * Parses a YAML workflow definition and validates its structure.
+ *
+ * Invalid definitions are reported in the result instead of being thrown.
+ */
+export const parseDefinition = (source: string): ParseResult => {
+  // A number notation error explains why its value fails the schema.
+  const result = parseYaml(source, definitionSchema, findNumberNotationErrors);
+  return result.ok
+    ? { definition: result.value, locate: result.locate, ok: true }
+    : { errors: result.errors, ok: false };
 };

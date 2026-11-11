@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
 
 import { TestWorkflowEnvironment } from "@temporalio/testing";
@@ -224,5 +227,33 @@ describe("run", () => {
 
   it("does not start an invalid workflow", async () => {
     await expect(execute("transition-error")).resolves.toMatchObject({ exitCode: 1, stdout: "" });
+  }, 60_000);
+
+  it("runs on the Temporal Server that the configuration file of the project names", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "aitw-configured-")));
+    try {
+      mkdirSync(join(root, ".aitw", "workflows"), { recursive: true });
+      writeFileSync(
+        join(root, ".aitw", "config.yaml"),
+        `temporal:\n  address: ${environment.address}\n`,
+      );
+      writeFileSync(
+        join(root, ".aitw", "workflows", "hello.yaml"),
+        "version: v0.1\nstart: hello\nsteps:\n  hello:\n    type: script\n    run: echo hello\n    next: end\n",
+      );
+      const output = createOutput();
+
+      // No resident process runs in the state directory of the tests.
+      const exitCode = await run(
+        "hello",
+        { signal: new AbortController().signal, version: "0.0.0" },
+        { cwd: root, ...output },
+      );
+
+      expect(exitCode).toBe(0);
+      expect(output.written.stdout).toContain("hello: completed (hello)\n");
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
   }, 60_000);
 });

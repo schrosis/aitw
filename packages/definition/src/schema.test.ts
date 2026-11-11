@@ -153,6 +153,10 @@ describe("createDefinitionJsonSchema with plugins", () => {
     );
     expect(schema).toHaveProperty(`${steps}.2.properties.provider.enum`, ["echo"]);
     expect(schema).toHaveProperty(`${steps}.2.allOf.0.then.properties.with.required`, ["tone"]);
+    // The settings of the provider need a value, so the step must have with, as validate does.
+    expect(schema).toHaveProperty(`${steps}.2.allOf.0.then.required`, ["with"]);
+    // An empty with passes the method, so the step may leave it out.
+    expect(schema).not.toHaveProperty(`${steps}.1.allOf.0.then.required`);
     // Script steps have no extensions.
     expect(schema).not.toHaveProperty(`${steps}.0.allOf`);
   });

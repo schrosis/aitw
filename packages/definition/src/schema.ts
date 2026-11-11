@@ -5,9 +5,11 @@ import {
   identifierPattern,
   identifierSource,
   inputDeclarationDefinitionSchema,
+  isJsonObject,
+  jsonSchemaTarget,
   toJsonSchema,
 } from "@aitw/core";
-import type { PluginRegistry, WaitMethod } from "@aitw/core";
+import type { JsonObject, PluginRegistry, WaitMethod } from "@aitw/core";
 import { z } from "zod";
 
 const stepIdPattern = new RegExp(`^(?!(?:end|start)$)${identifierSource}$`, "u");
@@ -174,11 +176,6 @@ export interface DefinitionJsonSchemaOptions {
   plugins?: PluginRegistry;
 }
 
-type JsonObject = Record<string, unknown>;
-
-const isJsonObject = (value: unknown): value is JsonObject =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 /**
  * Restricts the extension of the steps of a type to the names that plugins provide, and the
  * `with` of each name to its schema.
@@ -204,11 +201,17 @@ const constrainExtensions = (
     ...(isJsonObject(step.properties[field]) ? step.properties[field] : {}),
     enum: extensions.map(({ name }) => name),
   };
-  step.allOf = extensions.map(({ name, with: schema }) => ({
-    if: { properties: { [field]: { const: name } }, required: [field] },
-    // oxlint-disable-next-line unicorn/no-thenable -- `then` is a keyword of JSON Schema.
-    then: { properties: { with: toJsonSchema(schema) ?? {} } },
-  }));
+  step.allOf = extensions.map(({ name, with: schema }) => {
+    const converted = toJsonSchema(schema) ?? {};
+    // A step without `with` is validated as an empty object, so `with` is required when the
+    // empty object would not pass.
+    const required = Array.isArray(converted.required) && converted.required.length > 0;
+    return {
+      if: { properties: { [field]: { const: name } }, required: [field] },
+      // oxlint-disable-next-line unicorn/no-thenable -- `then` is a keyword of JSON Schema.
+      then: { properties: { with: converted }, ...(required ? { required: ["with"] } : {}) },
+    };
+  });
 };
 
 /**
@@ -217,7 +220,10 @@ const constrainExtensions = (
  * It follows draft-07, which editors for YAML support widely.
  */
 export const createDefinitionJsonSchema = ({ plugins }: DefinitionJsonSchemaOptions = {}) => {
-  const schema: JsonObject = z.toJSONSchema(definitionSchema, { io: "input", target: "draft-7" });
+  const schema: JsonObject = z.toJSONSchema(definitionSchema, {
+    io: "input",
+    target: jsonSchemaTarget,
+  });
   if (plugins === undefined) {
     return schema;
   }

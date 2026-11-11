@@ -69,6 +69,7 @@ export {
   defineAiProvider,
   definePlugin,
   defineWaitMethod,
+  isJsonObject,
   jsonSchemaTarget,
   toJsonSchema,
   validatePluginConfig,
@@ -76,6 +77,7 @@ export {
 } from "./plugin/index.js";
 export type {
   AiProvider,
+  JsonObject,
   AiProviderRequest,
   AiRunnerOptions,
   Plugin,

@@ -85,6 +85,13 @@ export const validatePluginConfig = (
 /** Version of JSON Schema that aitw generates, which editors for YAML support widely. */
 export const jsonSchemaTarget = "draft-07";
 
+/** An object of JSON, such as a JSON Schema. */
+export type JsonObject = Record<string, unknown>;
+
+/** Returns whether a value is an object of JSON, and not an array or `null`. */
+export const isJsonObject = (value: unknown): value is JsonObject =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 const hasJsonSchema = (
   standard: StandardSchemaV1.Props,
 ): standard is StandardSchemaV1.Props & StandardJSONSchemaV1.Props =>

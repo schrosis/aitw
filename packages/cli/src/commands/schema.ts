@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
-import { toJsonSchema } from "@aitw/core";
+import { isJsonObject, jsonSchemaTarget, toJsonSchema } from "@aitw/core";
+import type { JsonObject } from "@aitw/core";
 import { createDefinitionJsonSchema } from "@aitw/definition";
 import { z } from "zod";
 
@@ -14,11 +15,6 @@ import type { CommandContext } from "./load.js";
 /** Directory of the generated JSON Schemas, in `.aitw`. */
 export const schemaDirectory = "schemas";
 
-type JsonObject = Record<string, unknown>;
-
-const isJsonObject = (value: unknown): value is JsonObject =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 /**
  * Creates the JSON Schema of the configuration file of a project.
  *
@@ -28,7 +24,7 @@ const isJsonObject = (value: unknown): value is JsonObject =>
 export const createProjectConfigJsonSchema = (loaded: readonly LoadedPlugin[]): JsonObject => {
   const schema: JsonObject = z.toJSONSchema(projectConfigSchema, {
     io: "input",
-    target: "draft-7",
+    target: jsonSchemaTarget,
   });
   // An empty file is null, so the object is one of the options.
   const options = Array.isArray(schema.anyOf) ? schema.anyOf.filter(isJsonObject) : [schema];

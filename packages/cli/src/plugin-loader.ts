@@ -23,8 +23,8 @@ export class PluginLoadError extends Error {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Conditions of `exports` that aitw loads a plugin with, in order of preference. */
-const conditions = ["node", "import", "default"];
+/** Conditions of `exports` that aitw loads a plugin with. */
+const conditions: ReadonlySet<string> = new Set(["node", "import", "default"]);
 
 /** Returns the target of `exports` for the conditions of aitw, or `undefined`. */
 const exportTarget = (value: unknown): string | undefined => {
@@ -41,9 +41,10 @@ const exportTarget = (value: unknown): string | undefined => {
     return undefined;
   }
   if (isRecord(value)) {
-    for (const condition of conditions) {
-      if (Object.hasOwn(value, condition)) {
-        const target = exportTarget(value[condition]);
+    // As in Node, the first condition that matches in the order of the keys is taken.
+    for (const [condition, nested] of Object.entries(value)) {
+      if (conditions.has(condition)) {
+        const target = exportTarget(nested);
         if (target !== undefined) {
           return target;
         }

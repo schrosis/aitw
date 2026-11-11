@@ -174,4 +174,54 @@ describe("createProjectWorkers", () => {
     await expect(create(succeed).add(project)).rejects.toThrow("Unknown field: port");
     expect(started).toEqual([]);
   });
+
+  it("starts the Worker again when the plugins of the project change, and stops the previous one", async () => {
+    const stopped: number[] = [];
+    const workers = create(async () => {
+      const index = started.length;
+      return {
+        stop: async () => {
+          stopped.push(index);
+        },
+      };
+    });
+    const config = join(project, ".aitw", "config.yaml");
+    await workers.add(project);
+    await workers.add(project);
+    expect(started).toHaveLength(1);
+
+    // aitw has this plugin built in, so adding it changes the list without loading a package.
+    writeFileSync(config, 'plugins:\n  "@aitw/adapter-ai-claude-code":\n');
+    await workers.add(project);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(started).toHaveLength(2);
+    expect(stopped).toEqual([1]);
+    expect(workers.list()).toMatchObject([{ running: true }]);
+    await workers.stopAll();
+    expect(stopped).toEqual([1, 2]);
+  });
+
+  it("keeps the previous Worker when the Worker with the new plugins cannot start", async () => {
+    const stopped: number[] = [];
+    const workers = create(async () => {
+      const index = started.length;
+      return {
+        stop: async () => {
+          stopped.push(index);
+        },
+      };
+    });
+    await workers.add(project);
+
+    writeFileSync(join(project, ".aitw", "config.yaml"), 'plugins:\n  "@acme/aitw-missing":\n');
+    await expect(workers.add(project)).rejects.toThrow(
+      "Plugin @acme/aitw-missing is not installed",
+    );
+
+    expect(stopped).toEqual([]);
+    expect(workers.list()).toMatchObject([{ running: true }]);
+    await workers.stopAll();
+    expect(stopped).toEqual([1]);
+  });
 });

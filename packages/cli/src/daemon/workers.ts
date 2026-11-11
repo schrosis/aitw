@@ -10,7 +10,7 @@ import type { RunningWorker } from "@aitw/engine";
 import { loadProjectConfig } from "../config.js";
 import { loadEncryptionKey } from "../encryption.js";
 import { createEnvironmentReader } from "../environment.js";
-import { createRegistry, loadProjectPlugins } from "../plugins.js";
+import { createRegistry, loadPlugins } from "../plugins.js";
 import { projectLogDirectory, projectTaskQueue } from "../state.js";
 import { aitwDirectory } from "../workflows.js";
 import type { DaemonProject } from "./client.js";
@@ -64,6 +64,13 @@ const readRoots = (file: string): string[] => {
 
 const isProject = (root: string): boolean => existsSync(join(root, aitwDirectory));
 
+/** A Worker of a project on a server, and the plugin packages that it loaded. */
+interface ServedWorker {
+  /** Names of the plugin packages, one on each line, to compare with the configuration. */
+  plugins: string;
+  worker: Promise<RunningWorker>;
+}
+
 /**
  * Creates the Workers of projects, one for each project on the task queue of the project.
  *
@@ -82,7 +89,9 @@ export const createProjectWorkers = ({
   // Workers that run or start, keyed by project root and then by server, so that a project gets
   // one Worker on each server. A Worker on a server that the project no longer names keeps
   // serving the runs that started there until the resident process stops.
-  const workers = new Map<string, Map<string, Promise<RunningWorker>>>();
+  const workers = new Map<string, Map<string, ServedWorker>>();
+  // Workers that stop because their plugins changed, after the scripts that they run finish.
+  const stopping = new Set<Promise<void>>();
   // The server that each project names now.
   const servers = new Map<string, string>();
   // The latest request to serve each project. A request waits for the previous one, so that
@@ -96,19 +105,30 @@ export const createProjectWorkers = ({
   const forget = (root: string, serverAddress: string, worker: Promise<RunningWorker>): void => {
     // A later Worker of the same project and server is kept.
     const byServer = workers.get(root);
-    if (byServer?.get(serverAddress) === worker) {
+    if (byServer?.get(serverAddress)?.worker === worker) {
       byServer.delete(serverAddress);
     }
   };
 
-  /** Returns the Temporal Server of a project. */
-  const serverOf = async (root: string): Promise<string> =>
-    (await loadProjectConfig(root, root)).temporal?.address ?? address;
+  /** Returns the Temporal Server and the plugin packages that a project names now. */
+  const settingsOf = async (
+    root: string,
+  ): Promise<{ serverAddress: string; plugins: string[] }> => {
+    const config = await loadProjectConfig(root, root);
+    return {
+      plugins: Object.keys(config.plugins ?? {}),
+      serverAddress: config.temporal?.address ?? address,
+    };
+  };
 
-  const start = (root: string, serverAddress: string): Promise<RunningWorker> => {
+  const start = (
+    root: string,
+    serverAddress: string,
+    plugins: readonly string[],
+  ): Promise<RunningWorker> => {
     const taskQueue = projectTaskQueue(root);
     const worker: Promise<RunningWorker> = (async () => {
-      const loaded = await loadProjectPlugins(root, root);
+      const loaded = await loadPlugins(plugins, root);
       prepareEngine();
       const running = await startProjectWorker({
         address: serverAddress,
@@ -131,8 +151,8 @@ export const createProjectWorkers = ({
       );
       return running;
     })();
-    const byServer = workers.get(root) ?? new Map<string, Promise<RunningWorker>>();
-    byServer.set(serverAddress, worker);
+    const byServer = workers.get(root) ?? new Map<string, ServedWorker>();
+    byServer.set(serverAddress, { plugins: plugins.join("\n"), worker });
     workers.set(root, byServer);
     // A Worker that fails to start is forgotten, so that a later request can try again.
     worker.catch(() => forget(root, serverAddress, worker));
@@ -145,7 +165,7 @@ export const createProjectWorkers = ({
    * @returns The address of the server.
    */
   const serve = async (root: string): Promise<string> => {
-    const serverAddress = await serverOf(root);
+    const { plugins, serverAddress } = await settingsOf(root);
     const previousAddress = servers.get(root);
     servers.set(root, serverAddress);
     if (
@@ -157,8 +177,37 @@ export const createProjectWorkers = ({
         `${root} now uses ${serverAddress}. Its Worker at ${previousAddress} keeps serving the runs there until aitw daemon stops`,
       );
     }
-    // A Worker that the project used before on the same server is used again.
-    await (workers.get(root)?.get(serverAddress) ?? start(root, serverAddress));
+    const served = workers.get(root)?.get(serverAddress);
+    // A Worker that the project used before on the same server is used again, unless the
+    // plugins changed. Its registry would not have the extensions of the plugins added since.
+    if (served?.plugins === plugins.join("\n")) {
+      await served.worker;
+      return serverAddress;
+    }
+    try {
+      await start(root, serverAddress, plugins);
+    } catch (error) {
+      // The previous Worker keeps serving the project, and stops with the resident process.
+      if (served !== undefined && workers.get(root)?.has(serverAddress) !== true) {
+        workers.get(root)?.set(serverAddress, served);
+      }
+      throw error;
+    }
+    if (served !== undefined) {
+      log(`restarted the Worker of ${root} at ${serverAddress}, because its plugins changed`);
+      // Two Workers on the same task queue share its tasks, so the previous one stops after the
+      // scripts that it runs finish. It stops only after the new one started, so that the
+      // project keeps a Worker when the new one cannot start.
+      const stop = served.worker
+        .then(async (previous) => previous.stop())
+        .catch((error: unknown) => {
+          log(
+            `previous Worker of ${root} did not stop cleanly: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      stopping.add(stop);
+      void stop.finally(() => stopping.delete(stop));
+    }
     return serverAddress;
   };
 
@@ -222,8 +271,11 @@ export const createProjectWorkers = ({
     },
     stopAll: async () => {
       const running = await Promise.allSettled(
-        [...workers.values()].flatMap((byServer) => [...byServer.values()]),
+        [...workers.values()].flatMap((byServer) =>
+          [...byServer.values()].map(({ worker }) => worker),
+        ),
       );
+      await Promise.all(stopping);
       await Promise.all(
         running.map(async (result) =>
           result.status === "fulfilled" ? result.value.stop() : undefined,

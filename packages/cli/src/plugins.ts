@@ -51,8 +51,20 @@ export const createRegistry = (
  */
 export const loadProjectPlugins = async (root: string, cwd: string): Promise<LoadedPlugin[]> => {
   const { plugins = {} } = await loadProjectConfig(root, cwd);
+  return loadPlugins(Object.keys(plugins), root);
+};
+
+/**
+ * Loads plugin packages for a project, in order.
+ *
+ * @throws {PluginLoadError} When a plugin cannot be loaded.
+ */
+export const loadPlugins = async (
+  packageNames: readonly string[],
+  root: string,
+): Promise<LoadedPlugin[]> => {
   const loaded: LoadedPlugin[] = [];
-  for (const packageName of Object.keys(plugins)) {
+  for (const packageName of packageNames) {
     if (!builtinPackages.has(packageName)) {
       loaded.push(await loadPlugin(packageName, root));
     }

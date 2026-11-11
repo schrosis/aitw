@@ -81,6 +81,19 @@ describe("loadProjectPlugins", () => {
     ]);
   });
 
+  it("takes the first condition of exports in the order of its keys, as Node does", async () => {
+    install(
+      "aitw-conditions",
+      { exports: { import: "./imported.js", node: "./node.js", require: "./required.cjs" } },
+      { "imported.js": pluginSource("imported"), "node.js": pluginSource("node") },
+    );
+    configure(["aitw-conditions"]);
+
+    const [loaded] = await loadProjectPlugins(root, root);
+
+    expect(loaded?.plugin.name).toBe("imported");
+  });
+
   it("does not load a plugin that aitw has built in again", async () => {
     configure(["@aitw/adapter-ai-claude-code"]);
 

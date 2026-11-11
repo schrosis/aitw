@@ -6,7 +6,7 @@
  * runs, and record the replay histories again. Prefer changes that can replay, such as with
  * `patched()` of `@temporalio/workflow`.
  */
-export const workflowCodeVersion = 1;
+export const workflowCodeVersion = 2;
 
 /** Key of the memo of a run that holds {@link workflowCodeVersion} of the code that started it. */
 export const workflowCodeVersionMemoKey = "aitwWorkflowCodeVersion";

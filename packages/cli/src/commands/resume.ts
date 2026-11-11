@@ -11,6 +11,7 @@ import {
   isCancelled,
   rootMessage,
 } from "../follow.js";
+import { loadEncryptionKey } from "../encryption.js";
 import { acquireRunLock, RunLockedError } from "../lock.js";
 import { chooseRun, listProjectRuns } from "../runs.js";
 import type { ProjectRun } from "../runs.js";
@@ -225,6 +226,7 @@ export const cancel = async (options: ResumeOptions, context: CommandContext): P
     const outcome = await resumeWorkflow({
       address: server.address,
       cancel: true,
+      encryptionKey: loadEncryptionKey(),
       // The end of the cancelled step is recorded in the same log as the rest of the run.
       eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
       servedTaskQueue,

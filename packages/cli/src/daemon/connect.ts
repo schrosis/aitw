@@ -1,6 +1,7 @@
 import { workflowCodeVersion } from "@aitw/engine";
 
 import type { CommandContext } from "../commands/load.js";
+import { loadProjectConfig } from "../config.js";
 import { openServer } from "../server.js";
 import type { OpenedServer, ServerOptions } from "../server.js";
 import { getDaemonStatus, registerProject } from "./client.js";
@@ -11,7 +12,7 @@ import { daemonPaths } from "./paths.js";
 export class DaemonUnavailableError extends Error {
   constructor(reason: string) {
     super(
-      `aitw daemon ${reason}. Run "aitw daemon start", or choose a server with --dev or --address`,
+      `aitw daemon ${reason}. Run "aitw daemon start", choose a server with --dev or --address, or set temporal.address in .aitw/config.yaml`,
     );
     this.name = "DaemonUnavailableError";
   }
@@ -76,12 +77,61 @@ export interface CommandServer {
 }
 
 /**
- * Opens the Temporal Server that the options of a command name, or that of the resident process
- * when they name none.
+ * Asks the resident process to serve a project on a server that the project names, when it runs
+ * with the same version on that server.
+ *
+ * The project names its server, so the command runs its own Worker without the resident process.
+ * When the resident process runs but is not used, the command says why, because a run then stops
+ * with the command.
+ *
+ * @returns The task queue that it serves, or `undefined` when the command runs its own Worker.
+ */
+const daemonOn = async (
+  address: string,
+  root: string,
+  version: string,
+  context: CommandContext,
+): Promise<string | undefined> => {
+  const paths = daemonPaths();
+  let status;
+  try {
+    status = await getDaemonStatus(paths);
+  } catch (error) {
+    context.stderr(
+      `aitw daemon: cannot be reached, so this command runs its own Worker: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return undefined;
+  }
+  if (status === undefined) {
+    return undefined;
+  }
+  if (status.address !== address) {
+    // Addresses are compared as written, so localhost and 127.0.0.1 differ.
+    context.stderr(
+      `aitw daemon: uses the Temporal Server at ${status.address}, and temporal.address of the project is ${address}, so this command runs its own Worker\n`,
+    );
+    return undefined;
+  }
+  if (status.version !== version || status.workflowCodeVersion !== workflowCodeVersion) {
+    context.stderr(
+      `aitw daemon: runs aitw ${status.version}, and this is aitw ${version}, so this command runs its own Worker. Run "aitw daemon stop" and start it again to use it\n`,
+    );
+    return undefined;
+  }
+  return (await registerProject(paths, root)).taskQueue;
+};
+
+/**
+ * Opens the Temporal Server of a command.
+ *
+ * The options of the command come first. Without them, the server is the one that
+ * `temporal.address` in the configuration file of the project names, or that of the resident
+ * process.
  *
  * @param version Version of this aitw, which the resident process must have to run the steps.
  * @throws {DaemonUnavailableError} When no server is named and the resident process is not
  *   available.
+ * @throws {ProjectConfigError} When the configuration file of the project is invalid.
  */
 export const openCommandServer = async (
   { server, version }: { server?: ServerOptions | undefined; version: string },
@@ -91,6 +141,15 @@ export const openCommandServer = async (
 ): Promise<CommandServer> => {
   if (server !== undefined) {
     return { server: await openServer(server, context, signal) };
+  }
+  const address = (await loadProjectConfig(root, context.cwd)).temporal?.address;
+  if (address !== undefined) {
+    const opened = await openServer({ address, type: "address" }, context, signal);
+    return {
+      // Later commands read the configuration file again.
+      server: { ...opened, options: "" },
+      servedTaskQueue: await daemonOn(address, root, version, context),
+    };
   }
   const daemon = await connectDaemon(root, version, context);
   return { server: daemon.server, servedTaskQueue: daemon.project?.taskQueue };

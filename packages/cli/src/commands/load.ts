@@ -36,7 +36,11 @@ const formatPath = (path: readonly (number | string)[]): string =>
     .join("")
     .slice(1);
 
-const formatError = (file: string, { column, line, message, path }: DefinitionError): string => {
+/** Formats a problem in a YAML file, such as `.aitw/workflows/a.yaml:3:5 steps.a.run: message`. */
+export const formatError = (
+  file: string,
+  { column, line, message, path }: DefinitionError,
+): string => {
   const location = path.length > 0 ? ` ${formatPath(path)}:` : "";
   return `${file}:${line}:${column}${location} ${message}\n`;
 };

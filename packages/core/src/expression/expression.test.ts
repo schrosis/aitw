@@ -175,6 +175,21 @@ describe("pickReferences", () => {
     });
   });
 
+  it.each([
+    [["${{ steps.review.outputs.data }}", "${{ steps.review.outputs.data.verdict }}"], []],
+    [["${{ steps.review.outputs.data.verdict }}", "${{ steps.review.outputs.data }}"], []],
+    [[], [["steps", "review", "outputs", "data", "verdict"]]],
+  ])("keeps a null that references go through, from %j %j", (texts, paths) => {
+    const picked = pickReferences(
+      texts,
+      { steps: { review: { outputs: { data: null } } } },
+      roots,
+      paths,
+    );
+
+    expect(picked).toEqual({ steps: { review: { outputs: { data: null } } } });
+  });
+
   it("skips unknown references and invalid templates", () => {
     expect(
       pickReferences(["${{ steps.missing.outputs.x }}", "${{ steps.fetch"], values, roots),

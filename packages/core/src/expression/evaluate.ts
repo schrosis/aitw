@@ -4,7 +4,11 @@ import type { Template } from "./template.js";
 /** Result of {@link evaluateTemplate}. */
 export type EvaluateResult = { ok: true; value: unknown } | { ok: false; message: string };
 
-type Resolved = { ok: true; value: unknown } | { ok: false };
+/**
+ * A value that a path reads. When the path goes through `null` before its end, the value is
+ * `null`, and `nullAt` is the length of the part of the path that reads the `null`.
+ */
+type Resolved = { ok: true; value: unknown; nullAt?: number } | { ok: false };
 
 /**
  * Reads a path of own data properties.
@@ -14,9 +18,9 @@ type Resolved = { ok: true; value: unknown } | { ok: false };
  */
 const resolve = (context: Readonly<Record<string, unknown>>, path: readonly string[]): Resolved => {
   let value: unknown = context;
-  for (const segment of path) {
+  for (const [index, segment] of path.entries()) {
     if (value === null) {
-      return { ok: true, value: null };
+      return { nullAt: index, ok: true, value: null };
     }
     // Only own data properties are read, so that references cannot reach prototype members
     // or run getters.
@@ -54,6 +58,24 @@ const setPath = (tree: Tree, path: readonly string[], value: unknown): void => {
 };
 
 /**
+ * Sets a value that a path reads.
+ *
+ * For a path that goes through `null`, the `null` itself is set. Setting the whole path would
+ * replace the `null` with an object, and another reference to it would read the object.
+ */
+const setPicked = (
+  picked: Tree,
+  path: readonly string[],
+  resolved: Extract<Resolved, { ok: true }>,
+): void => {
+  setPath(
+    picked,
+    resolved.nullAt === undefined ? path : path.slice(0, resolved.nullAt),
+    resolved.value,
+  );
+};
+
+/**
  * Returns the part of a context that the `${{ }}` references in some strings read.
  *
  * It keeps only the referenced values, so that a step receives what its definition uses and
@@ -73,7 +95,7 @@ export const pickReferences = (
   for (const path of paths) {
     const resolved = roots.has(path[0] ?? "") ? resolve(context, path) : { ok: false as const };
     if (resolved.ok) {
-      setPath(picked, path, resolved.value);
+      setPicked(picked, path, resolved);
     }
   }
   for (const text of texts) {
@@ -87,7 +109,7 @@ export const pickReferences = (
       }
       const resolved = resolve(context, part.path);
       if (resolved.ok) {
-        setPath(picked, part.path, resolved.value);
+        setPicked(picked, part.path, resolved);
       }
     }
   }

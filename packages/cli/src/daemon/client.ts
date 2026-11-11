@@ -25,6 +25,11 @@ export interface DaemonProject {
   /** Real path of the project root. */
   root: string;
   taskQueue: string;
+  /**
+   * Address of the Temporal Server that its Worker uses: `temporal.address` in the configuration
+   * file of the project, or the server of the resident process.
+   */
+  address?: string | undefined;
   /** Whether its Worker runs. A Worker that failed is started again on the next request. */
   running?: boolean;
 }

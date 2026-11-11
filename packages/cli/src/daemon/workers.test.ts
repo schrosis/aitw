@@ -45,6 +45,7 @@ describe("createProjectWorkers", () => {
     const workers = create(succeed);
 
     await expect(workers.add(project)).resolves.toEqual({
+      address: "127.0.0.1:7233",
       root: project,
       taskQueue: projectTaskQueue(project),
     });
@@ -88,5 +89,51 @@ describe("createProjectWorkers", () => {
     await workers.add(project);
     expect(started).toHaveLength(2);
     expect(workers.list()).toMatchObject([{ running: true }]);
+  });
+
+  it("runs the Worker on the server that the project names", async () => {
+    writeFileSync(
+      join(project, ".aitw", "config.yaml"),
+      "temporal:\n  address: temporal.example.com:7233\n",
+    );
+    const workers = create(succeed);
+
+    await expect(workers.add(project)).resolves.toMatchObject({
+      address: "temporal.example.com:7233",
+    });
+    expect(started.map(({ address }) => address)).toEqual(["temporal.example.com:7233"]);
+    expect(workers.list()).toMatchObject([{ address: "temporal.example.com:7233", running: true }]);
+  });
+
+  it("moves to the server that the project names now, and keeps the previous Worker until it stops", async () => {
+    const stopped: string[] = [];
+    const workers = create(async ({ address }) => ({
+      stop: async () => {
+        stopped.push(address);
+      },
+    }));
+    await workers.add(project);
+
+    writeFileSync(
+      join(project, ".aitw", "config.yaml"),
+      "temporal:\n  address: temporal.example.com:7233\n",
+    );
+    await workers.add(project);
+    await workers.add(project);
+
+    expect(started.map(({ address }) => address)).toEqual([
+      "127.0.0.1:7233",
+      "temporal.example.com:7233",
+    ]);
+    expect(stopped).toEqual([]);
+    await workers.stopAll();
+    expect(stopped.toSorted()).toEqual(["127.0.0.1:7233", "temporal.example.com:7233"]);
+  });
+
+  it("rejects a project whose configuration file is invalid", async () => {
+    writeFileSync(join(project, ".aitw", "config.yaml"), "temporal:\n  port: 7233\n");
+
+    await expect(create(succeed).add(project)).rejects.toThrow("Unknown field: port");
+    expect(started).toEqual([]);
   });
 });

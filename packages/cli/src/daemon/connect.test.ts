@@ -50,8 +50,12 @@ describe("connectDaemon", () => {
     rmSync(state, { force: true, recursive: true });
   });
 
-  /** Serves a fake resident process that reports a version. */
-  const serve = async (version: string): Promise<void> => {
+  /**
+   * Serves a fake resident process that reports a version.
+   *
+   * @param projectAddress Server that it reports for the projects that it serves.
+   */
+  const serve = async (version: string, projectAddress = "127.0.0.1:7233"): Promise<void> => {
     const paths = daemonPaths();
     mkdirSync(paths.directory, { recursive: true });
     server = createServer((incoming, response) => {
@@ -74,7 +78,7 @@ describe("connectDaemon", () => {
                   version,
                   workflowCodeVersion,
                 }
-              : { root: "/project", taskQueue: "aitw-host-hash" },
+              : { address: projectAddress, root: "/project", taskQueue: "aitw-host-hash" },
           ),
         );
       });
@@ -90,7 +94,7 @@ describe("connectDaemon", () => {
     await expect(
       connectDaemon("/project", "1.2.3", { cwd: "/", ...output }),
     ).resolves.toMatchObject({
-      project: { root: "/project", taskQueue: "aitw-host-hash" },
+      project: { address: "127.0.0.1:7233", root: "/project", taskQueue: "aitw-host-hash" },
       server: { address: "127.0.0.1:7233", durable: true },
     });
     expect(requests).toEqual([
@@ -139,26 +143,27 @@ describe("connectDaemon", () => {
       });
     });
 
-    it("asks the resident process when it uses the same server", async () => {
-      await serve("1.2.3");
+    it("asks the resident process to run the steps on the server of the project", async () => {
+      await serve("1.2.3", "temporal.example.com:7233");
 
-      await expect(open(project("127.0.0.1:7233"))).resolves.toMatchObject({
-        server: { address: "127.0.0.1:7233" },
+      await expect(open(project("temporal.example.com:7233"))).resolves.toMatchObject({
+        server: { address: "temporal.example.com:7233" },
         servedTaskQueue: "aitw-host-hash",
       });
+      expect(requests.map(({ url }) => url)).toEqual(["/status", "/projects"]);
     });
 
-    it("runs its own Worker when the resident process uses another server, and says why", async () => {
-      await serve("1.2.3");
+    it("runs its own Worker when the resident process serves the project elsewhere, and says why", async () => {
+      // The configuration file changed after the resident process read it.
+      await serve("1.2.3", "127.0.0.1:7233");
       const output = createOutput();
 
       await expect(open(project("temporal.example.com:7233"), output)).resolves.toMatchObject({
         server: { address: "temporal.example.com:7233" },
         servedTaskQueue: undefined,
       });
-      expect(requests.map(({ url }) => url)).toEqual(["/status"]);
       expect(output.written.stderr).toBe(
-        "aitw daemon: uses the Temporal Server at 127.0.0.1:7233, and temporal.address of the project is temporal.example.com:7233, so this command runs its own Worker\n",
+        "aitw daemon: serves the project at 127.0.0.1:7233, and temporal.address of the project is temporal.example.com:7233, so this command runs its own Worker\n",
       );
     });
 

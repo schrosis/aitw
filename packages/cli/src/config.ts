@@ -10,9 +10,32 @@ import { aitwDirectory } from "./workflows.js";
 /** Names of the configuration file of a project, in `.aitw`. */
 const configNames = ["config.yaml", "config.yml"];
 
+/** Name of an npm package, with or without a scope. */
+const packageNamePattern = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/u;
+
 /** Schema of the configuration file of a project. Unknown fields are rejected. */
 export const projectConfigSchema = z
   .strictObject({
+    plugins: z
+      .record(
+        z
+          .string()
+          .regex(
+            packageNamePattern,
+            "Must be the name of an npm package, such as @acme/aitw-slack",
+          ),
+        z
+          .record(z.string(), z.json())
+          .nullable()
+          .refine(
+            (settings) => settings === null || Object.keys(settings).length === 0,
+            "Settings of plugins are not supported yet",
+          ),
+      )
+      .optional()
+      .describe(
+        "Plugin packages to load, keyed by package name, such as @aitw/adapter-ai-claude-code. They are found in the project, and then next to aitw",
+      ),
     temporal: z
       .strictObject({
         address: z

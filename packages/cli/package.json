@@ -23,7 +23,6 @@
     "typecheck": "tsc -b && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@aitw/adapter-ai-claude-code": "workspace:*",
     "@aitw/adapter-event-log-file": "workspace:*",
     "@aitw/adapter-script-local": "workspace:*",
     "@aitw/adapter-wait-terminal": "workspace:*",
@@ -36,6 +35,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@aitw/adapter-ai-claude-code": "workspace:*",
     "@temporalio/testing": "catalog:",
     "@types/node": "catalog:"
   },

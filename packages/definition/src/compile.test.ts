@@ -13,6 +13,10 @@ steps:
     next: end
 `;
 
+/** Knows the plugin of the codex provider only. */
+const missingHint = (kind: string, name: string) =>
+  kind === "aiProvider" && name === "codex" ? "Install the codex plugin" : undefined;
+
 describe("compileDefinition", () => {
   it("returns the intermediate representation", () => {
     expect(compileDefinition(validSource)).toMatchObject({
@@ -289,6 +293,21 @@ describe("compileDefinition for AI steps", () => {
     });
     expect(compileDefinition(aiSource("    provider: codex"))).toMatchObject({
       errors: [{ message: "Unknown AI provider: codex. No providers are available" }],
+      ok: false,
+    });
+  });
+
+  it("tells how to get an unknown provider when a hint knows it", () => {
+    expect(
+      compileDefinition(aiSource("    provider: codex"), { missingHint, plugins }),
+    ).toMatchObject({
+      errors: [{ message: "Unknown AI provider: codex. Install the codex plugin" }],
+      ok: false,
+    });
+    expect(
+      compileDefinition(aiSource("    provider: other"), { missingHint, plugins }),
+    ).toMatchObject({
+      errors: [{ message: "Unknown AI provider: other. Available providers: claude-code" }],
       ok: false,
     });
   });

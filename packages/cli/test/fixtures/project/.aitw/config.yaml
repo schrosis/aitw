@@ -1,0 +1,3 @@
+# The AI steps of the fixtures use the official Claude Code plugin.
+plugins:
+  "@aitw/adapter-ai-claude-code":

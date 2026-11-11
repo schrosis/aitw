@@ -1,8 +1,8 @@
-import { claudeCodePlugin } from "@aitw/adapter-ai-claude-code";
 import { createTerminalPlugin, terminalPlugin } from "@aitw/adapter-wait-terminal";
 import type { TerminalIO } from "@aitw/adapter-wait-terminal";
 import { createPluginRegistry } from "@aitw/core";
 import type { PluginRegistry } from "@aitw/core";
+import type { MissingHint } from "@aitw/definition";
 
 import { loadProjectConfig } from "./config.js";
 import { loadPlugin } from "./plugin-loader.js";
@@ -11,8 +11,22 @@ import type { LoadedPlugin } from "./plugin-loader.js";
 /** Scope of the plugins that aitw publishes, whose extensions are used without the plugin name. */
 const officialScope = "@aitw/";
 
-/** Plugin packages that aitw has built in, which a project may also name. */
-const builtinPackages: ReadonlySet<string> = new Set(["@aitw/adapter-ai-claude-code"]);
+/** Packages of the official plugins, keyed by the names of the AI providers that they provide. */
+const officialAiProviders: Readonly<Record<string, string>> = {
+  "claude-code": "@aitw/adapter-ai-claude-code",
+};
+
+/**
+ * Tells which package provides an official extension that no loaded plugin provides.
+ *
+ * Only the terminal is built in, so a project installs and names the other plugins.
+ */
+export const missingHint: MissingHint = (kind, name) => {
+  const packageName = kind === "aiProvider" ? officialAiProviders[name] : undefined;
+  return packageName === undefined
+    ? undefined
+    : `Install ${packageName} and add it to plugins in .aitw/config.yaml`;
+};
 
 /**
  * Creates the registry of the plugins that the CLI loads.
@@ -32,7 +46,6 @@ export const createRegistry = (
   createPluginRegistry({
     builtins: [
       terminal === undefined ? terminalPlugin : createTerminalPlugin(terminal),
-      claudeCodePlugin,
       ...loaded
         .filter(({ packageName }) => packageName.startsWith(officialScope))
         .map(({ plugin }) => plugin),
@@ -65,9 +78,7 @@ export const loadPlugins = async (
 ): Promise<LoadedPlugin[]> => {
   const loaded: LoadedPlugin[] = [];
   for (const packageName of packageNames) {
-    if (!builtinPackages.has(packageName)) {
-      loaded.push(await loadPlugin(packageName, root));
-    }
+    loaded.push(await loadPlugin(packageName, root));
   }
   return loaded;
 };

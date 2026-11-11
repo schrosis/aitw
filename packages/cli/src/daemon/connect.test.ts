@@ -7,7 +7,7 @@ import { workflowCodeVersion } from "@aitw/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createOutput } from "../testing.ts";
-import { connectDaemon } from "./connect.ts";
+import { connectDaemon, DaemonUnavailableError } from "./connect.ts";
 import { daemonPaths } from "./paths.ts";
 
 describe("connectDaemon", () => {
@@ -90,25 +90,25 @@ describe("connectDaemon", () => {
     ]);
   });
 
-  it("runs its own Worker when the resident process has another version", async () => {
+  it("runs its own Worker on its server when the resident process has another version", async () => {
     await serve("0.9.0");
     const output = createOutput();
 
-    await expect(
-      connectDaemon("/project", "1.2.3", { cwd: "/", ...output }),
-    ).resolves.toBeUndefined();
+    await expect(connectDaemon("/project", "1.2.3", { cwd: "/", ...output })).resolves.toEqual({
+      server: expect.objectContaining({ address: "127.0.0.1:7233", durable: true }) as unknown,
+    });
     expect(output.written.stderr).toBe(
       'aitw daemon: runs aitw 0.9.0, and this is aitw 1.2.3, so this command runs its own Worker. Run "aitw daemon stop" and start it again to use it\n',
     );
     expect(requests.map(({ url }) => url)).toEqual(["/status"]);
   });
 
-  it("runs its own Worker when no resident process runs", async () => {
+  it("tells how to choose a server when no resident process runs", async () => {
     const output = createOutput();
 
     await expect(
       connectDaemon(join(state, "project"), "1.2.3", { cwd: "/", ...output }),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow(new DaemonUnavailableError("is not running"));
     expect(output.written).toEqual({ stderr: "", stdout: "" });
   });
 });

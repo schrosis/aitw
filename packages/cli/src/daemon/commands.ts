@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import type { CommandContext } from "../commands/load.js";
 import { workflowCodeVersion } from "@aitw/engine";
 
-import { defaultAddress, quote, serverArguments } from "../server.js";
+import { quote, serverArguments } from "../server.js";
 import type { ServerOptions } from "../server.js";
+import { stateDirectory } from "../state.js";
 import { getDaemonStatus, requestDaemonStop } from "./client.js";
 import type { DaemonStatus } from "./client.js";
 import { checkSocketPath, daemonPaths } from "./paths.js";
@@ -17,6 +18,10 @@ const waitTimeoutMs = 60_000;
 
 /** Options of {@link startDaemon}. */
 export interface StartDaemonOptions {
+  /**
+   * Temporal Server of the resident process. A development server without a SQLite file keeps
+   * its runs in the state directory.
+   */
   server: ServerOptions;
   /** Version of this aitw, to tell whether a running resident process differs. */
   version: string;
@@ -46,8 +51,7 @@ const differences = (running: DaemonStatus, version: string, requested: string[]
   if (running.version !== version || running.workflowCodeVersion !== workflowCodeVersion) {
     notes.push(`it runs aitw ${running.version}, and this is aitw ${version}`);
   }
-  // The default address has no options.
-  const runningOptions = running.serverOptions.trim() || `--address ${defaultAddress}`;
+  const runningOptions = running.serverOptions.trim();
   // The running process quotes its options for a command line, so the request is quoted too.
   if (runningOptions !== requested.map(quote).join(" ")) {
     notes.push(`it uses the server options "${runningOptions}"`);
@@ -87,13 +91,12 @@ export const startDaemon = async (
 ): Promise<number> => {
   const paths = daemonPaths();
   checkSocketPath(paths.socket);
-  if (server.type === "dev" && server.dbFilename === undefined) {
-    context.stderr(
-      "aitw daemon needs --dev-db with --dev, because a development server without it keeps no runs\n",
-    );
-    return 1;
-  }
-  const requested = serverArguments(withAbsolutePaths(server, context.cwd));
+  // The resident process serves runs that last, so its development server always keeps them.
+  const kept: ServerOptions =
+    server.type === "dev" && server.dbFilename === undefined
+      ? { ...server, dbFilename: join(stateDirectory(), "temporal.db") }
+      : server;
+  const requested = serverArguments(withAbsolutePaths(kept, context.cwd));
   const running = await getDaemonStatus(paths);
   if (running !== undefined) {
     context.stdout(`aitw daemon: already running (${describe(running)})\n`);

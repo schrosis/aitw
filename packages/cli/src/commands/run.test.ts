@@ -29,7 +29,12 @@ describe("run", () => {
     const output = createOutput();
     const exitCode = await run(
       name,
-      { input, server: { address: environment.address, type: "address" }, signal },
+      {
+        input,
+        server: { address: environment.address, type: "address" },
+        signal,
+        version: "0.0.0",
+      },
       {
         cwd: fixtureProject,
         stderr: output.stderr,

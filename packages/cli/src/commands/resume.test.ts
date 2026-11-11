@@ -39,7 +39,7 @@ describe("resume and cancel", () => {
     const input = new PassThrough();
     const exitCode = await run(
       "wait-valid",
-      { server: server(), signal: controller.signal },
+      { server: server(), signal: controller.signal, version: "0.0.0" },
       {
         cwd: fixtureProject,
         stderr: output.stderr,
@@ -69,7 +69,7 @@ describe("resume and cancel", () => {
   ) => {
     const output = createOutput();
     const exitCode = await command(
-      { server: target, signal: new AbortController().signal, workflowId },
+      { server: target, signal: new AbortController().signal, version: "0.0.0", workflowId },
       {
         cwd: fixtureProject,
         stderr: output.stderr,

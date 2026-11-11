@@ -1,10 +1,8 @@
+import { chmodSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import type { CommandContext } from "./commands/load.js";
 import { ensureTemporalCli, startDevServer } from "./temporal-cli/index.js";
-
-/** Default address of the Temporal Server. */
-export const defaultAddress = "localhost:7233";
 
 /** Temporal Server that a command uses. */
 export type ServerOptions =
@@ -56,6 +54,19 @@ export const serverArguments = (server: ServerOptions): string[] =>
         ...(server.ui === true ? ["--dev-ui"] : []),
       ];
 
+/**
+ * Lets only the owner read the SQLite file of a development server, which holds the history of
+ * its runs.
+ *
+ * The file cannot be created in advance, because the server creates its tables only in a new
+ * file.
+ */
+const protectDb = (dbFilename: string | undefined): void => {
+  if (dbFilename !== undefined && existsSync(dbFilename)) {
+    chmodSync(dbFilename, 0o600);
+  }
+};
+
 /** Resolves an executable like a shell: a name without a slash is looked up in PATH. */
 const resolveExecutable = (cwd: string, executable: string): string =>
   executable.includes("/") ? resolve(cwd, executable) : executable;
@@ -78,8 +89,7 @@ export const openServer = async (
     return {
       address: server.address,
       durable: true,
-      options:
-        server.address === defaultAddress ? "" : ` ${serverArguments(server).map(quote).join(" ")}`,
+      options: ` ${serverArguments(server).map(quote).join(" ")}`,
       stop: async () => {},
     };
   }
@@ -91,13 +101,12 @@ export const openServer = async (
           signal,
         })
       : resolveExecutable(context.cwd, server.temporalBin);
-  const devServer = await startDevServer({
-    dbFilename:
-      server.dbFilename === undefined ? undefined : resolve(context.cwd, server.dbFilename),
-    executable,
-    signal,
-    ui: server.ui,
-  });
+  const dbFilename =
+    server.dbFilename === undefined ? undefined : resolve(context.cwd, server.dbFilename);
+  protectDb(dbFilename);
+  const devServer = await startDevServer({ dbFilename, executable, signal, ui: server.ui });
+  // The server creates a new file with the default permissions.
+  protectDb(dbFilename);
   if (devServer.uiUrl !== undefined) {
     context.stderr(`Temporal Web UI: ${devServer.uiUrl}\n`);
   }

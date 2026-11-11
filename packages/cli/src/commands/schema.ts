@@ -56,6 +56,26 @@ const write = async (file: string, schema: JsonObject, cwd: string): Promise<str
 };
 
 /**
+ * Writes the JSON Schemas of a project in `.aitw/schemas`, with the plugins that it loads.
+ *
+ * @returns The paths of the files, relative to `cwd`.
+ * @throws When the plugins cannot be loaded, or a file cannot be written.
+ */
+export const writeSchemas = async (root: string, cwd: string): Promise<string[]> => {
+  const loaded = await loadProjectPlugins(root, cwd);
+  const directory = join(root, aitwDirectory, schemaDirectory);
+  await mkdir(directory, { recursive: true });
+  return [
+    await write(
+      join(directory, "workflow.schema.json"),
+      createDefinitionJsonSchema({ plugins: createRegistry(undefined, loaded) }),
+      cwd,
+    ),
+    await write(join(directory, "config.schema.json"), createProjectConfigJsonSchema(loaded), cwd),
+  ];
+};
+
+/**
  * Generates the JSON Schemas of the workflow definitions and the configuration file of the
  * project in `.aitw/schemas`, with the extensions of the plugins that the project loads.
  *
@@ -68,22 +88,7 @@ export const schema = async (context: CommandContext): Promise<number> => {
     return 1;
   }
   try {
-    const loaded = await loadProjectPlugins(root, context.cwd);
-    const directory = join(root, aitwDirectory, schemaDirectory);
-    await mkdir(directory, { recursive: true });
-    const written = [
-      await write(
-        join(directory, "workflow.schema.json"),
-        createDefinitionJsonSchema({ plugins: createRegistry(undefined, loaded) }),
-        context.cwd,
-      ),
-      await write(
-        join(directory, "config.schema.json"),
-        createProjectConfigJsonSchema(loaded),
-        context.cwd,
-      ),
-    ];
-    for (const file of written) {
+    for (const file of await writeSchemas(root, context.cwd)) {
       context.stdout(`wrote ${file}\n`);
     }
     return 0;

@@ -10,6 +10,7 @@ import { showDaemonStatus, startDaemon, stopDaemon } from "./daemon/commands.js"
 import { runDaemon } from "./daemon/process.js";
 import type { ServerOptions } from "./server.js";
 import { docs } from "./commands/docs.js";
+import { init } from "./commands/init.js";
 import { schema } from "./commands/schema.js";
 import { validate } from "./commands/validate.js";
 
@@ -165,6 +166,15 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .argument("[workflow]", "workflow name, such as deploy or release/notes. Defaults to all")
     .action(async (workflow) => {
       context.setExitCode(await docs(workflow, context));
+    });
+
+  program
+    .command("init")
+    .description(
+      "Create .aitw in the current directory with a configuration file, a sample workflow, and JSON Schemas",
+    )
+    .action(async () => {
+      context.setExitCode(await init(context));
     });
 
   program

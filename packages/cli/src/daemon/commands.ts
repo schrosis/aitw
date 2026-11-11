@@ -198,9 +198,16 @@ export const showDaemonStatus = async (context: CommandContext): Promise<number>
         ? ["projects: none"]
         : [
             "projects:",
-            ...status.projects.map(
-              ({ root, running }) => `  ${root}${running === false ? " (Worker not running)" : ""}`,
-            ),
+            ...status.projects.map(({ address, previousAddresses = [], root, running }) => {
+              const notes = [
+                ...(address === undefined || address === status.address
+                  ? []
+                  : [`server ${address}`]),
+                ...previousAddresses.map((previous) => `previous server ${previous}`),
+                ...(running === false ? ["Worker not running"] : []),
+              ];
+              return `  ${root}${notes.length === 0 ? "" : ` (${notes.join(", ")})`}`;
+            }),
           ]),
       "",
     ].join("\n"),

@@ -77,12 +77,12 @@ export interface CommandServer {
 }
 
 /**
- * Asks the resident process to serve a project on a server that the project names, when it runs
- * with the same version on that server.
+ * Asks the resident process to serve a project on the server that the project names, when it runs
+ * with the same version.
  *
- * The project names its server, so the command runs its own Worker without the resident process.
- * When the resident process runs but is not used, the command says why, because a run then stops
- * with the command.
+ * The resident process runs the Worker of the project on that server too. The project names its
+ * server, so the command runs its own Worker without the resident process. When the resident
+ * process runs but is not used, the command says why, because a run then stops with the command.
  *
  * @returns The task queue that it serves, or `undefined` when the command runs its own Worker.
  */
@@ -105,20 +105,21 @@ const daemonOn = async (
   if (status === undefined) {
     return undefined;
   }
-  if (status.address !== address) {
-    // Addresses are compared as written, so localhost and 127.0.0.1 differ.
-    context.stderr(
-      `aitw daemon: uses the Temporal Server at ${status.address}, and temporal.address of the project is ${address}, so this command runs its own Worker\n`,
-    );
-    return undefined;
-  }
   if (status.version !== version || status.workflowCodeVersion !== workflowCodeVersion) {
     context.stderr(
       `aitw daemon: runs aitw ${status.version}, and this is aitw ${version}, so this command runs its own Worker. Run "aitw daemon stop" and start it again to use it\n`,
     );
     return undefined;
   }
-  return (await registerProject(paths, root)).taskQueue;
+  const project = await registerProject(paths, root);
+  // The resident process reads the configuration file again, which may have changed since.
+  if (project.address !== address) {
+    context.stderr(
+      `aitw daemon: serves the project at ${project.address ?? status.address}, and temporal.address of the project is ${address}, so this command runs its own Worker\n`,
+    );
+    return undefined;
+  }
+  return project.taskQueue;
 };
 
 /**

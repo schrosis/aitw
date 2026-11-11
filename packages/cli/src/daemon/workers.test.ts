@@ -45,6 +45,7 @@ describe("createProjectWorkers", () => {
     const workers = create(succeed);
 
     await expect(workers.add(project)).resolves.toEqual({
+      address: "127.0.0.1:7233",
       root: project,
       taskQueue: projectTaskQueue(project),
     });
@@ -69,7 +70,12 @@ describe("createProjectWorkers", () => {
 
     expect(JSON.parse(readFileSync(file, "utf8"))).toEqual([project]);
     expect(workers.list()).toEqual([
-      { root: project, running: false, taskQueue: projectTaskQueue(project) },
+      {
+        address: "127.0.0.1:7233",
+        root: project,
+        running: false,
+        taskQueue: projectTaskQueue(project),
+      },
     ]);
   });
 
@@ -88,5 +94,84 @@ describe("createProjectWorkers", () => {
     await workers.add(project);
     expect(started).toHaveLength(2);
     expect(workers.list()).toMatchObject([{ running: true }]);
+  });
+
+  it("runs the Worker on the server that the project names", async () => {
+    writeFileSync(
+      join(project, ".aitw", "config.yaml"),
+      "temporal:\n  address: temporal.example.com:7233\n",
+    );
+    const workers = create(succeed);
+
+    await expect(workers.add(project)).resolves.toMatchObject({
+      address: "temporal.example.com:7233",
+    });
+    expect(started.map(({ address }) => address)).toEqual(["temporal.example.com:7233"]);
+    expect(workers.list()).toMatchObject([{ address: "temporal.example.com:7233", running: true }]);
+  });
+
+  it("moves to the server that the project names now, and keeps the previous Worker until it stops", async () => {
+    const stopped: string[] = [];
+    const workers = create(async ({ address }) => ({
+      stop: async () => {
+        stopped.push(address);
+      },
+    }));
+    await workers.add(project);
+
+    writeFileSync(
+      join(project, ".aitw", "config.yaml"),
+      "temporal:\n  address: temporal.example.com:7233\n",
+    );
+    await workers.add(project);
+    await workers.add(project);
+
+    expect(started.map(({ address }) => address)).toEqual([
+      "127.0.0.1:7233",
+      "temporal.example.com:7233",
+    ]);
+    expect(stopped).toEqual([]);
+    expect(workers.list()).toMatchObject([
+      {
+        address: "temporal.example.com:7233",
+        previousAddresses: ["127.0.0.1:7233"],
+        running: true,
+      },
+    ]);
+    await workers.stopAll();
+    expect(stopped.toSorted()).toEqual(["127.0.0.1:7233", "temporal.example.com:7233"]);
+  });
+
+  it("uses the Worker on a server again when the project names it again", async () => {
+    const workers = create(succeed);
+    const config = join(project, ".aitw", "config.yaml");
+    await workers.add(project);
+    writeFileSync(config, "temporal:\n  address: temporal.example.com:7233\n");
+    await workers.add(project);
+    rmSync(config);
+
+    await expect(workers.add(project)).resolves.toMatchObject({ address: "127.0.0.1:7233" });
+    expect(started.map(({ address }) => address)).toEqual([
+      "127.0.0.1:7233",
+      "temporal.example.com:7233",
+    ]);
+    expect(workers.list()).toMatchObject([
+      { address: "127.0.0.1:7233", previousAddresses: ["temporal.example.com:7233"] },
+    ]);
+  });
+
+  it("starts one Worker for concurrent requests of a project", async () => {
+    const workers = create(succeed);
+
+    await Promise.all([workers.add(project), workers.add(project), workers.restore()]);
+
+    expect(started).toHaveLength(1);
+  });
+
+  it("rejects a project whose configuration file is invalid", async () => {
+    writeFileSync(join(project, ".aitw", "config.yaml"), "temporal:\n  port: 7233\n");
+
+    await expect(create(succeed).add(project)).rejects.toThrow("Unknown field: port");
+    expect(started).toEqual([]);
   });
 });

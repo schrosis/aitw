@@ -91,6 +91,17 @@ describe("evaluateExpression", () => {
     });
   });
 
+  it("reads a field of null as null", () => {
+    expect(evaluateExpression("${{ inputs.absent.name }}", context)).toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(evaluateExpression("[${{ result.data.verdict }}]", { result: { data: null } })).toEqual({
+      ok: true,
+      value: "[]",
+    });
+  });
+
   it("takes an index only in brackets", () => {
     expect(parseTemplate("${{ steps.a.visits.0.outputs.v }}")).toMatchObject({ ok: false });
     expect(parseTemplate("${{ steps.a.visits[x].outputs.v }}")).toMatchObject({ ok: false });
@@ -162,6 +173,21 @@ describe("pickReferences", () => {
       steps: { fetch: { outputs: { title: "hello" } }, other: { outputs: { constructor: "c" } } },
       workflow: { inputs: { level: "high" } },
     });
+  });
+
+  it.each([
+    [["${{ steps.review.outputs.data }}", "${{ steps.review.outputs.data.verdict }}"], []],
+    [["${{ steps.review.outputs.data.verdict }}", "${{ steps.review.outputs.data }}"], []],
+    [[], [["steps", "review", "outputs", "data", "verdict"]]],
+  ])("keeps a null that references go through, from %j %j", (texts, paths) => {
+    const picked = pickReferences(
+      texts,
+      { steps: { review: { outputs: { data: null } } } },
+      roots,
+      paths,
+    );
+
+    expect(picked).toEqual({ steps: { review: { outputs: { data: null } } } });
   });
 
   it("skips unknown references and invalid templates", () => {

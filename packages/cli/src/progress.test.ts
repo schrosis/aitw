@@ -22,6 +22,10 @@ describe("formatStepEvent", () => {
       { message: "Script exited with code 3", outcome: "failed" as const },
       "✗ build: Script exited with code 3 (1.2s)\n",
     ],
+    [
+      { continued: true, message: "Script exited with code 3", outcome: "failed" as const },
+      "✗ build: Script exited with code 3 (continued, 1.2s)\n",
+    ],
     [{ outcome: "cancelled" as const }, "■ build: cancelled (1.2s)\n"],
   ])("shows how a step finished", (fields, expected) => {
     expect(

@@ -47,6 +47,7 @@ const buildStep = (
   if (step.type === "script") {
     return {
       ...common,
+      ...(step.continueOnError === undefined ? {} : { continueOnError: step.continueOnError }),
       ...(step.env === undefined ? {} : { env: step.env }),
       run: step.run,
       timeoutMs: toMilliseconds(step.timeout),
@@ -56,6 +57,7 @@ const buildStep = (
   if (step.type === "ai") {
     return {
       ...common,
+      ...(step.continueOnError === undefined ? {} : { continueOnError: step.continueOnError }),
       ...(step.env === undefined ? {} : { env: step.env }),
       ...(step.model === undefined ? {} : { model: step.model }),
       ...(step.schema === undefined ? {} : { schema: step.schema }),

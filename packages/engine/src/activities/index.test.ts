@@ -2,6 +2,7 @@ import { AiTimeoutError, ScriptTimeoutError } from "@aitw/core";
 import type {
   AiRequest,
   AiResult,
+  AiRunner,
   EnvironmentReader,
   EventLog,
   ScriptRequest,
@@ -599,5 +600,241 @@ describe("branches", () => {
         },
       ),
     ).resolves.toMatchObject({ next: "yes" });
+  });
+});
+
+const failingScript = (result: Partial<ScriptResult> | Error): ScriptRunner => ({
+  run: async () => {
+    if (result instanceof Error) {
+      throw result;
+    }
+    return { exitCode: 1, signal: null, stderr: "error\n", stdout: "out\n", ...result };
+  },
+});
+
+const runContinuing = async (
+  scriptRunner: ScriptRunner,
+  request: Partial<BranchingScriptStepRequest> = {},
+  events: WorkflowEvent[] = [],
+) =>
+  new MockActivityEnvironment().run(
+    createActivities({ eventLog: logTo(events), scriptRunner }).executeBranchingScriptStep,
+    {
+      branches: branches("${{ !result.ok }}"),
+      continueOnError: true,
+      inputs: {},
+      outputs: {
+        error: "${{ result.error }}",
+        exitCode: "${{ result.exitCode }}",
+        ok: "${{ result.ok }}",
+        stdout: "${{ result.stdout }}",
+      },
+      references: {},
+      run: "./run.sh",
+      step: "check",
+      timeoutMs: 1000,
+      ...request,
+    },
+  );
+
+const runAiContinuing = async (aiRunner: AiRunner | undefined, events: WorkflowEvent[] = []) =>
+  new MockActivityEnvironment().run(
+    createActivities({
+      aiRunner,
+      eventLog: logTo(events),
+      scriptRunner: failingScript({}),
+    }).executeAiStep,
+    {
+      branches: branches("${{ !result.ok }}"),
+      continueOnError: true,
+      inputs: {},
+      options: {},
+      outputs: {
+        data: "${{ result.data }}",
+        error: "${{ result.error }}",
+        ok: "${{ result.ok }}",
+      },
+      prompt: "Review",
+      provider: "claude-code",
+      references: {},
+      sessionId: "previous",
+      step: "review",
+      timeoutMs: 1000,
+    },
+  );
+
+describe("continueOnError", () => {
+  it("returns a failed script as its result, and reports that the run goes on", async () => {
+    const events: WorkflowEvent[] = [];
+
+    await expect(runContinuing(failingScript({}), {}, events)).resolves.toEqual({
+      next: "yes",
+      outputs: { error: "Script exited with code 1", exitCode: 1, ok: false, stdout: "out" },
+    });
+    expect(events.at(-1)).toMatchObject({
+      continued: true,
+      message: "Script exited with code 1",
+      outcome: "failed",
+      step: "check",
+      type: "stepFinished",
+    });
+  });
+
+  it("sets ok and error of a script that succeeds", async () => {
+    const events: WorkflowEvent[] = [];
+
+    await expect(runContinuing(failingScript({ exitCode: 0 }), {}, events)).resolves.toEqual({
+      next: null,
+      outputs: { error: null, exitCode: 0, ok: true, stdout: "out" },
+    });
+    expect(events.at(-1)).toMatchObject({ outcome: "succeeded" });
+    expect(events.at(-1)).not.toHaveProperty("continued");
+  });
+
+  it("sets ok and error without continueOnError", async () => {
+    await expect(
+      runContinuing(failingScript({ exitCode: 0 }), { continueOnError: undefined }),
+    ).resolves.toMatchObject({ outputs: { error: null, ok: true } });
+  });
+
+  it("returns a script that timed out, without an exit code", async () => {
+    await expect(runContinuing(failingScript(new ScriptTimeoutError(1000)))).resolves.toEqual({
+      next: "yes",
+      outputs: {
+        error: "Script timed out after 1000 ms",
+        exitCode: null,
+        ok: false,
+        stdout: "",
+      },
+    });
+  });
+
+  it("returns a script that could not run", async () => {
+    await expect(
+      runContinuing(failingScript(new Error("Failed to read the dotenv file .env"))),
+    ).resolves.toEqual({
+      next: "yes",
+      outputs: {
+        error: "Failed to read the dotenv file .env",
+        exitCode: null,
+        ok: false,
+        stdout: "",
+      },
+    });
+  });
+
+  it("sets every output to null when the outputs exceed the size limit", async () => {
+    await expect(
+      runContinuing(failingScript({ exitCode: 0, stdout: "x".repeat(maxValueBytes) }), {
+        outputs: { ok: "${{ result.ok }}", stdout: "${{ result.stdout }}" },
+      }),
+    ).resolves.toEqual({ next: "yes", outputs: { ok: null, stdout: null } });
+  });
+
+  it("still fails on an invalid expression in the outputs", async () => {
+    await expect(
+      runContinuing(failingScript({}), { outputs: { value: "${{ inputs.missing }}" } }),
+    ).rejects.toMatchObject({ type: "InvalidExpression" });
+  });
+
+  it("still fails on an invalid condition", async () => {
+    await expect(
+      runContinuing(failingScript({}), { branches: branches("${{ result.stdout }}") }),
+    ).rejects.toMatchObject({ type: "InvalidCondition" });
+  });
+
+  it("still stops a cancelled step", async () => {
+    const events: WorkflowEvent[] = [];
+    const environment = new MockActivityEnvironment();
+    const result = environment.run(
+      createActivities({
+        eventLog: logTo(events),
+        scriptRunner: {
+          run: async (_request, { signal }) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener("abort", () => reject(signal.reason));
+            }),
+        },
+      }).executeScriptStep,
+      {
+        continueOnError: true,
+        inputs: {},
+        outputs: {},
+        references: {},
+        run: "./run.sh",
+        step: "build",
+        timeoutMs: 1000,
+      },
+    );
+    environment.cancel();
+
+    await expect(result).rejects.toBeDefined();
+    expect(events.at(-1)).toMatchObject({ outcome: "cancelled", step: "build" });
+  });
+
+  it("returns a failed AI step as its result, without data or a session", async () => {
+    const events: WorkflowEvent[] = [];
+
+    await expect(
+      runAiContinuing(
+        {
+          run: async () => {
+            throw new AiTimeoutError(1000);
+          },
+        },
+        events,
+      ),
+    ).resolves.toEqual({
+      next: "yes",
+      outputs: { data: null, error: "AI step timed out after 1000 ms", ok: false },
+    });
+    expect(events.at(-1)).toMatchObject({ continued: true, outcome: "failed" });
+  });
+
+  it("reads the fields of result.data of a failed AI step as null", async () => {
+    await expect(
+      new MockActivityEnvironment().run(
+        createActivities({
+          aiRunner: {
+            run: async () => {
+              throw new Error("The structured result is missing");
+            },
+          },
+          scriptRunner: failingScript({}),
+        }).executeAiStep,
+        {
+          branches: [
+            { if: "${{ result.data.verdict == 'approve' }}", to: { type: "end" } },
+            { to: { step: "implement", type: "step" } },
+          ],
+          continueOnError: true,
+          inputs: {},
+          options: {},
+          outputs: { summary: "${{ result.data.summary }}", verdict: "${{ result.data.verdict }}" },
+          prompt: "Review",
+          provider: "claude-code",
+          references: {},
+          schema: {
+            properties: { summary: { type: "string" }, verdict: { enum: ["approve", "changes"] } },
+            type: "object",
+          },
+          step: "review",
+          timeoutMs: 1000,
+        } satisfies AiStepRequest,
+      ),
+    ).resolves.toEqual({ next: "implement", outputs: { summary: null, verdict: null } });
+  });
+
+  it("sets ok and error of an AI step that succeeds", async () => {
+    await expect(runAiContinuing({ run: async () => ({ data: "done" }) })).resolves.toEqual({
+      next: null,
+      outputs: { data: "done", error: null, ok: true },
+    });
+  });
+
+  it("still fails in a Worker without an AI runner", async () => {
+    await expect(runAiContinuing(undefined)).rejects.toMatchObject({
+      type: "AiRunnerUnavailable",
+    });
   });
 });

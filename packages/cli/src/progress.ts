@@ -22,7 +22,8 @@ export const formatStepEvent = (event: StepEvent): string => {
   if (event.outcome === "cancelled") {
     return `■ ${event.step}: cancelled (${duration})\n`;
   }
-  return `✗ ${event.step}: ${event.message ?? "failed"} (${duration})\n`;
+  const continued = event.continued === true ? "continued, " : "";
+  return `✗ ${event.step}: ${event.message ?? "failed"} (${continued}${duration})\n`;
 };
 
 /** Streams that progress is written to. */

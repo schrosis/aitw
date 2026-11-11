@@ -39,7 +39,7 @@ describe("validate", () => {
       exitCode: 1,
       stderr: [
         ".aitw/workflows/expression-error.yaml:6:10 steps.fetch.run: Step fetch does not declare the input title: ${{ inputs.title }}",
-        ".aitw/workflows/expression-error.yaml:8:14 steps.fetch.outputs.title: Can reference only steps.<id>.outputs.<name>, steps.<id>.visits[n].outputs.<name>, workflow.inputs.<name>, inputs.<name>, result.exitCode, result.stdout, or result.stderr: ${{ result.body }}",
+        ".aitw/workflows/expression-error.yaml:8:14 steps.fetch.outputs.title: Can reference only steps.<id>.outputs.<name>, steps.<id>.visits[n].outputs.<name>, workflow.inputs.<name>, inputs.<name>, result.exitCode, result.stdout, result.stderr, result.ok, or result.error: ${{ result.body }}",
         "",
       ].join("\n"),
       stdout: "",

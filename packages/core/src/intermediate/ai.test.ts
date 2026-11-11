@@ -76,12 +76,18 @@ describe("validateIntermediate for AI steps", () => {
     ]);
   });
 
-  it("allows only data in the result", () => {
+  it("allows only data, ok, and error in the result", () => {
+    expect(
+      errorsOf(review({ outputs: { error: "${{ result.error }}", ok: "${{ result.ok }}" } })),
+    ).toEqual([]);
     expect(errorsOf(review({ outputs: { cost: "${{ result.cost }}" } }))).toMatchObject([
       {
         message: expect.stringContaining("result.data") as unknown,
         path: ["steps", "review", "outputs", "cost"],
       },
+    ]);
+    expect(errorsOf(review({ outputs: { ok: "${{ result.ok.value }}" } }))).toMatchObject([
+      { path: ["steps", "review", "outputs", "ok"] },
     ]);
   });
 

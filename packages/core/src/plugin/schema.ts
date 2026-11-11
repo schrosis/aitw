@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import type { ValidationError } from "../intermediate/index.js";
+import type { Plugin } from "./types.js";
 
 /** Result of {@link validateWithSchema}. */
 export type SchemaResult<Output> =
@@ -54,4 +55,29 @@ export const validateWithSchema = <Output>(
     };
   }
   return { ok: true, value: result.value };
+};
+
+/**
+ * Validates the settings that a project writes for a plugin, with the `config` schema of the
+ * plugin.
+ *
+ * A plugin without the schema takes no settings, so only an absent or empty value passes.
+ *
+ * @param settings The value under the package name, or `null` when nothing is written.
+ */
+export const validatePluginConfig = (
+  plugin: Pick<Plugin, "config">,
+  settings: unknown,
+): SchemaResult<unknown> => {
+  if (plugin.config === undefined) {
+    const empty =
+      settings === null ||
+      settings === undefined ||
+      (typeof settings === "object" && Object.keys(settings).length === 0);
+    return empty
+      ? { ok: true, value: undefined }
+      : { errors: [{ message: "The plugin takes no settings", path: [] }], ok: false };
+  }
+  // A plugin with settings receives an empty object when nothing is written.
+  return validateWithSchema(plugin.config, settings ?? {});
 };

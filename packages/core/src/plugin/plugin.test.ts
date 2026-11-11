@@ -8,6 +8,7 @@ import {
   defineAiProvider,
   definePlugin,
   defineWaitMethod,
+  validatePluginConfig,
   validateWithSchema,
 } from "./index.ts";
 
@@ -124,7 +125,7 @@ describe("defineWaitMethod", () => {
       schema: { name: { required: true, type: "string" } },
     });
 
-    expect(options.ok && terminal.answers?.(options.value)).toEqual({
+    expect(options.ok && terminal.answers?.(options.value, undefined)).toEqual({
       name: { required: true, type: "string" },
     });
   });
@@ -239,5 +240,54 @@ describe("createAiRunner", () => {
         { signal },
       ),
     ).rejects.toThrow("Invalid options of AI provider claude-code: limit:");
+  });
+});
+
+describe("plugin settings", () => {
+  const notify = definePlugin({
+    aiProviders: [
+      defineAiProvider<unknown, { model: string }>({
+        name: "echo",
+        run: async ({ config }) => ({ data: config.model }),
+        with: z.object({}),
+      }),
+    ],
+    config: z.strictObject({ model: z.string().default("small") }),
+    name: "notify",
+  });
+
+  it("validates the settings with the schema of the plugin, and applies its defaults", () => {
+    expect(validatePluginConfig(notify, null)).toEqual({ ok: true, value: { model: "small" } });
+    expect(validatePluginConfig(notify, { model: "large" })).toEqual({
+      ok: true,
+      value: { model: "large" },
+    });
+    expect(validatePluginConfig(notify, { size: 1 })).toMatchObject({ ok: false });
+  });
+
+  it("takes no settings for a plugin without a schema", () => {
+    const plain = definePlugin({ name: "plain" });
+
+    expect(validatePluginConfig(plain, null)).toEqual({ ok: true, value: undefined });
+    expect(validatePluginConfig(plain, {})).toEqual({ ok: true, value: undefined });
+    expect(validatePluginConfig(plain, { model: "large" })).toEqual({
+      errors: [{ message: "The plugin takes no settings", path: [] }],
+      ok: false,
+    });
+  });
+
+  it("gives the settings of the plugin to the provider that runs a step", async () => {
+    const plugins = createPluginRegistry({
+      configs: new Map([["notify", { model: "large" }]]),
+      plugins: [notify],
+    });
+
+    expect(plugins.aiProviderConfig("notify/echo")).toEqual({ model: "large" });
+    await expect(
+      createAiRunner({ cwd: "/", plugins }).run(
+        { options: {}, prompt: "Hi", provider: "notify/echo", timeoutMs: 1000 },
+        { signal: new AbortController().signal },
+      ),
+    ).resolves.toEqual({ data: "large" });
   });
 });

@@ -29,6 +29,9 @@ export const createAiRunner = ({ cwd, plugins }: AiRunnerOptions): AiRunner => (
       );
       throw new Error(`Invalid options of AI provider ${name}: ${reasons.join(", ")}`);
     }
-    return provider.run({ ...request, cwd, options: validated.value }, runOptions);
+    return provider.run(
+      { ...request, config: plugins.aiProviderConfig(name), cwd, options: validated.value },
+      runOptions,
+    );
   },
 });

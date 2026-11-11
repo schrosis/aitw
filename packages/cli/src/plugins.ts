@@ -1,10 +1,11 @@
 import { createTerminalPlugin, terminalPlugin } from "@aitw/adapter-wait-terminal";
 import type { TerminalIO } from "@aitw/adapter-wait-terminal";
-import { createPluginRegistry } from "@aitw/core";
+import { createPluginRegistry, validatePluginConfig } from "@aitw/core";
 import type { PluginRegistry } from "@aitw/core";
 import type { MissingHint } from "@aitw/definition";
 
-import { loadProjectConfig } from "./config.js";
+import { readProjectConfig } from "./config.js";
+import type { ReadProjectConfig } from "./config.js";
 import { loadPlugin } from "./plugin-loader.js";
 import type { LoadedPlugin } from "./plugin-loader.js";
 
@@ -53,32 +54,44 @@ export const createRegistry = (
     plugins: loaded
       .filter(({ packageName }) => !packageName.startsWith(officialScope))
       .map(({ plugin }) => plugin),
+    configs: new Map(loaded.map(({ config, plugin }) => [plugin.name, config])),
   });
 
 /**
- * Loads the plugins that `plugins` in the configuration file of a project names, in order.
+ * Loads the plugins that `plugins` in the configuration file of a project names, in order, and
+ * validates their settings.
  *
  * @param cwd Directory that the paths in the messages are relative to.
- * @throws {ProjectConfigError} When the configuration file is invalid.
+ * @throws {ProjectConfigError} When the configuration file or the settings of a plugin are
+ *   invalid.
  * @throws {PluginLoadError} When a plugin cannot be loaded.
  */
-export const loadProjectPlugins = async (root: string, cwd: string): Promise<LoadedPlugin[]> => {
-  const { plugins = {} } = await loadProjectConfig(root, cwd);
-  return loadPlugins(Object.keys(plugins), root);
-};
+export const loadProjectPlugins = async (root: string, cwd: string): Promise<LoadedPlugin[]> =>
+  loadConfiguredPlugins(await readProjectConfig(root, cwd), root);
 
 /**
- * Loads plugin packages for a project, in order.
+ * Loads the plugins of a configuration file that was read, and validates their settings.
  *
+ * @throws {ProjectConfigError} When the settings of a plugin are invalid.
  * @throws {PluginLoadError} When a plugin cannot be loaded.
  */
-export const loadPlugins = async (
-  packageNames: readonly string[],
+export const loadConfiguredPlugins = async (
+  { config, error }: ReadProjectConfig,
   root: string,
 ): Promise<LoadedPlugin[]> => {
   const loaded: LoadedPlugin[] = [];
-  for (const packageName of packageNames) {
-    loaded.push(await loadPlugin(packageName, root));
+  for (const [packageName, settings] of Object.entries(config.plugins ?? {})) {
+    const { plugin } = await loadPlugin(packageName, root);
+    const validated = validatePluginConfig(plugin, settings);
+    if (!validated.ok) {
+      throw error(
+        validated.errors.map(({ message, path }) => ({
+          message,
+          path: ["plugins", packageName, ...path],
+        })),
+      );
+    }
+    loaded.push({ config: validated.value, packageName, plugin });
   }
   return loaded;
 };

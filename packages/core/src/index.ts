@@ -69,6 +69,7 @@ export {
   defineAiProvider,
   definePlugin,
   defineWaitMethod,
+  validatePluginConfig,
   validateWithSchema,
 } from "./plugin/index.js";
 export type {

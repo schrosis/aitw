@@ -386,7 +386,7 @@ export const createActivities = ({
    */
   const trackStep = async <Result>(
     step: string,
-    started: { provider?: string; run?: string },
+    started: { prompt?: string; provider?: string; run?: string },
     body: (
       onOutput: (output: ScriptOutput) => void,
     ) => Promise<{ error: string | null; value: Result }>,
@@ -619,12 +619,16 @@ export const createActivities = ({
       // The step inputs are added last, so that references cannot replace them.
       const values = { ...references, inputs };
 
-      return trackStep(step, { provider }, async (onOutput) => {
+      // The prompt is shown when the step starts. When its expressions are invalid, it is shown as
+      // written, and the step fails.
+      const prompt = evaluateExpression(promptTemplate, values);
+      const shown = prompt.ok ? embedValue(prompt.value) : promptTemplate;
+
+      return trackStep(step, { prompt: shown, provider }, async (onOutput) => {
         const env = evaluateEnv(stepEnv, workflowEnv, values);
         if (!env.ok) {
           throw env.error;
         }
-        const prompt = evaluateExpression(promptTemplate, values);
         if (!prompt.ok) {
           throw invalidExpression("prompt", prompt.message);
         }
@@ -642,7 +646,7 @@ export const createActivities = ({
                 ...(schema === undefined ? {} : { schema }),
                 ...(sessionId === undefined ? {} : { sessionId }),
                 options,
-                prompt: embedValue(prompt.value),
+                prompt: shown,
                 provider,
                 timeoutMs,
               },

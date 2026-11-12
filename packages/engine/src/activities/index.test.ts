@@ -426,10 +426,22 @@ describe("executeAiStep", () => {
     );
 
     expect(events).toMatchObject([
-      { step: "review", type: "stepStarted" },
+      { prompt: "Review", provider: "claude-code", step: "review", type: "stepStarted" },
       { step: "review", stream: "stdout", text: "Read a.ts\n", type: "stepOutput" },
       { outcome: "succeeded", step: "review", type: "stepFinished" },
     ]);
+  });
+
+  it("reports the evaluated prompt when the step starts", async () => {
+    const events: WorkflowEvent[] = [];
+    await runAi(
+      { inputs: { file: "a.ts" }, prompt: "Review ${{ inputs.file }}" },
+      { data: "done" },
+      [],
+      events,
+    );
+
+    expect(events[0]).toMatchObject({ prompt: "Review a.ts", type: "stepStarted" });
   });
 
   it("fails without retrying on a timeout", async () => {

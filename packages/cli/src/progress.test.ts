@@ -37,6 +37,53 @@ describe("createProgressFormat", () => {
     expect(format.step({ step: "ask", type: "stepStarted" })).toBe("ask\n");
   });
 
+  it("quotes the first lines of a prompt, and the message of a wait step", () => {
+    const prompt = Array.from({ length: 8 }, (_, index) => `line ${index + 1}`).join("\n");
+
+    expect(
+      format.step({ prompt, provider: "claude-code", step: "review", type: "stepStarted" }),
+    ).toBe(
+      [
+        "review",
+        "│ > line 1",
+        "│ > line 2",
+        "│ > line 3",
+        "│ > line 4",
+        "│ > line 5",
+        "│ > … (3 more lines)",
+        "",
+      ].join("\n"),
+    );
+    expect(
+      format.step({
+        prompt: prompt.split("\n").slice(0, 6).join("\n"),
+        provider: "claude-code",
+        step: "review",
+        type: "stepStarted",
+      }),
+    ).toContain("│ > … (1 more line)\n");
+    expect(
+      format.step({ message: "Approve?\nSee the plan", step: "ask", type: "stepStarted" }),
+    ).toBe("ask\n│ > Approve?\n│ > See the plan\n");
+  });
+
+  it("hides what a step runs, but not what a wait step asks, when asked", () => {
+    const quiet = createProgressFormat(false, createStepColors(), false);
+
+    expect(quiet.step({ run: "make", step: "build", type: "stepStarted" })).toBe("build\n");
+    expect(
+      quiet.step({
+        prompt: "Review",
+        provider: "claude-code",
+        step: "review",
+        type: "stepStarted",
+      }),
+    ).toBe("review\n");
+    expect(quiet.step({ message: "Approve?", step: "ask", type: "stepStarted" })).toBe(
+      "ask\n│ > Approve?\n",
+    );
+  });
+
   it.each([
     [{ outcome: "succeeded" as const }, "✓ build  1.2s\n\n"],
     [

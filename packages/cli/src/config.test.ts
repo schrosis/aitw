@@ -102,4 +102,12 @@ describe("loadProjectConfig", () => {
       ),
     );
   });
+
+  it("reads how the progress is shown", async () => {
+    write("config.yaml", "output:\n  showCommands: false\n");
+
+    await expect(loadProjectConfig(root, root)).resolves.toEqual({
+      output: { showCommands: false },
+    });
+  });
 });

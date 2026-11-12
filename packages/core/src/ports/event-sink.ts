@@ -12,6 +12,8 @@ export type WorkflowEvent =
       run?: string | undefined;
       /** Provider of an AI step. Other steps have none. */
       provider?: string | undefined;
+      /** Prompt of an AI step, after its expressions are evaluated. Other steps have none. */
+      prompt?: string | undefined;
       /**
        * What a wait step waits for, from the `message` option of its method, such as to list
        * the runs that wait.
@@ -53,6 +55,7 @@ export const workflowEventSchema: z.ZodType<WorkflowEvent> = z.discriminatedUnio
     ...stepEventBase,
     run: z.string().optional(),
     provider: z.string().optional(),
+    prompt: z.string().optional(),
     message: z.string().optional(),
   }),
   z.strictObject({

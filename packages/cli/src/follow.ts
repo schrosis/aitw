@@ -11,7 +11,8 @@ import { loadEncryptionKey } from "./encryption.js";
 import { createEnvironmentReader } from "./environment.js";
 import { createLineReader } from "./lines.js";
 import type { LineReader } from "./lines.js";
-import { createRegistry, loadProjectPlugins } from "./plugins.js";
+import { readProjectConfig } from "./config.js";
+import { createRegistry, loadConfiguredPlugins } from "./plugins.js";
 import { createProgressPrinter } from "./progress.js";
 import type { OpenedServer } from "./server.js";
 import { projectLogDirectory } from "./state.js";
@@ -109,7 +110,8 @@ export const followRun = async (
   context: CommandContext,
 ): Promise<number> => {
   const terminal = given ?? createTerminal(context);
-  const printer = createProgressPrinter(context, { colors: context.colors, steps });
+  // The configuration file decides what the progress shows, once it is read below.
+  let printer = createProgressPrinter(context, { colors: context.colors, steps });
   // The script or AI step that runs now, so that an interrupt can tell that the run waits for it.
   let runningStep: string | undefined;
   const eventSink: EventSink = {
@@ -142,8 +144,15 @@ export const followRun = async (
   interrupt.addEventListener("abort", onInterrupt, { once: true });
 
   try {
+    // The file is read once, so that the progress and the plugins follow the same contents.
+    const read = await readProjectConfig(root, context.cwd);
+    printer = createProgressPrinter(context, {
+      colors: context.colors,
+      showCommands: read.config.output?.showCommands,
+      steps,
+    });
     // Plugins load before the run starts, so that a broken one stops nothing.
-    const loaded = await loadProjectPlugins(root, context.cwd);
+    const loaded = await loadConfiguredPlugins(read, root);
     const outcome = await follow({
       address: server.address,
       eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),

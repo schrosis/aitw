@@ -27,6 +27,9 @@ const stepColors: readonly Style[] = [
 /** Prefix of the lines that belong to a step. */
 const gutter = "│";
 
+/** Lines of a prompt that are shown. A prompt can be long, so that the rest is counted. */
+const promptLines = 5;
+
 /**
  * Returns the colors of steps, in the order of the definition. A step that is not listed gets the
  * next color when it first appears.
@@ -59,6 +62,8 @@ export const formatDuration = (durationMs: number): string => {
 
 /** Options of {@link createProgressPrinter}. */
 export interface ProgressOptions {
+  /** Whether to show what a step runs: the run of a script step and the prompt of an AI step. */
+  showCommands?: boolean | undefined;
   /** Whether to color the progress on each stream, such as for a terminal. */
   colors?: Readonly<Partial<Record<keyof ProgressOutput, boolean>>> | undefined;
   /**
@@ -84,6 +89,7 @@ export interface ProgressOutput {
 export const createProgressFormat = (
   colors: boolean,
   colorOf: (step: string) => Style = createStepColors(),
+  showCommands = true,
 ) => {
   const style = (format: Style | readonly Style[], text: string): string =>
     colors ? styleText(format, text, { validateStream: false }) : text;
@@ -94,17 +100,22 @@ export const createProgressFormat = (
     step: (event: StepEvent): string => {
       const name = style([colorOf(event.step), "bold"], event.step);
       if (event.type === "stepStarted") {
-        // What the step runs is quoted, as in Markdown.
-        const run =
-          event.run === undefined
-            ? []
-            : event.run
-                .replace(/\n$/u, "")
-                .split("\n")
-                .map(
-                  (line) => `${style(colorOf(event.step), gutter)} ${style("dim", `> ${line}`)}`,
-                );
-        return [name, ...run, ""].join("\n");
+        // What the step runs, or what a wait step asks, is quoted as in Markdown.
+        const quote = (text: string, limit = Infinity): string[] => {
+          const lines = text.replace(/\n$/u, "").split("\n");
+          const shown = lines.slice(0, limit);
+          const rest = lines.length - shown.length;
+          const more = `… (${rest} more ${rest === 1 ? "line" : "lines"})`;
+          return [...shown, ...(rest > 0 ? [more] : [])].map(
+            (line) => `${style(colorOf(event.step), gutter)} ${style("dim", `> ${line}`)}`,
+          );
+        };
+        const quoted = [
+          ...(showCommands && event.run !== undefined ? quote(event.run) : []),
+          ...(showCommands && event.prompt !== undefined ? quote(event.prompt, promptLines) : []),
+          ...(event.message === undefined ? [] : quote(event.message)),
+        ];
+        return [name, ...quoted, ""].join("\n");
       }
       const duration = formatDuration(event.durationMs);
       if (event.outcome === "succeeded") {
@@ -133,13 +144,13 @@ export const createProgressFormat = (
  */
 export const createProgressPrinter = (
   output: ProgressOutput,
-  { colors = {}, steps }: ProgressOptions = {},
+  { colors = {}, showCommands = true, steps }: ProgressOptions = {},
 ): EventSink => {
   // Each stream is colored only when it goes to a terminal, and both share the step colors.
   const colorOf = createStepColors(steps);
   const formats = {
-    stderr: createProgressFormat(colors.stderr === true, colorOf),
-    stdout: createProgressFormat(colors.stdout === true, colorOf),
+    stderr: createProgressFormat(colors.stderr === true, colorOf, showCommands),
+    stdout: createProgressFormat(colors.stdout === true, colorOf, showCommands),
   };
   // Streams whose output does not end with a newline. Their lines are ended before the next step
   // event, on the same stream, so that the output does not run into the next line.

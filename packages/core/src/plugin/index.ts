@@ -16,5 +16,7 @@ export type {
   AiProviderRequest,
   Plugin,
   WaitMethod,
+  WaitRespondIn,
   WaitResponseContext,
+  WaitRun,
 } from "./types.js";

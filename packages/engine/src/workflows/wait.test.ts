@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { intermediateVersion } from "@aitw/core";
-import type { Intermediate, ScriptRequest } from "@aitw/core";
+import { createPluginRegistry, definePlugin, intermediateVersion } from "@aitw/core";
+import type { Intermediate, ScriptRequest, WaitResponseContext } from "@aitw/core";
 import { WorkflowUpdateFailedError } from "@temporalio/client";
 import type { WorkflowHandle } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { z } from "zod";
 
 import { createActivities } from "../activities/index.ts";
 import { answerUpdateName, waitingQueryName } from "../messages.ts";
@@ -113,6 +114,7 @@ describe("aitw wait steps", () => {
         options: { message: "Hello, who are you?", tags: ["Hello"] },
         step: "ask",
         visit: 0,
+        workflowInputs: { greeting: "Hello" },
       });
 
       await answer(handle, { step: "ask", values: { name: "aitw" } });
@@ -154,4 +156,248 @@ describe("aitw wait steps", () => {
       expect(requests).toEqual([]);
     });
   }, 60_000);
+});
+
+describe("aitw wait steps that the Worker answers", () => {
+  let environment: TestWorkflowEnvironment;
+
+  beforeAll(async () => {
+    environment = await TestWorkflowEnvironment.createLocal({
+      server: { executable: { path: inject("temporalCli"), type: "existing-path" } },
+    });
+  }, 120_000);
+
+  afterAll(async () => {
+    await environment?.teardown();
+  });
+
+  const answeredInWorker: Intermediate = {
+    ...intermediate,
+    steps: {
+      ...intermediate.steps,
+      ask: {
+        answers: { name: { required: true, type: "string" } },
+        inputs: {},
+        method: "chat",
+        next: { step: "greet", type: "step" },
+        outputs: { label: "${{ result.name }}" },
+        respondIn: "worker",
+        type: "wait",
+        with: { message: "${{ workflow.inputs.greeting }}, who are you?" },
+      },
+      greet: {
+        inputs: {},
+        next: { type: "end" },
+        outputs: {},
+        run: 'echo "${{ steps.ask.outputs.label }}"',
+        timeoutMs: 5000,
+        type: "script",
+      },
+    },
+  };
+
+  const withWorkflow = async (
+    respond: (context: WaitResponseContext<unknown>) => Promise<Record<string, unknown>>,
+    test: (handle: WorkflowHandle, requests: ScriptRequest[]) => Promise<void>,
+  ) => {
+    const requests: ScriptRequest[] = [];
+    const taskQueue = randomUUID();
+    const worker = await Worker.create({
+      activities: createActivities({
+        heartbeatIntervalMs: 100,
+        plugins: createPluginRegistry({
+          builtins: [
+            definePlugin({
+              name: "test",
+              waitMethods: [
+                {
+                  name: "chat",
+                  respond,
+                  respondIn: "worker",
+                  with: z.strictObject({ message: z.string() }),
+                },
+              ],
+            }),
+          ],
+        }),
+        scriptRunner: {
+          run: async (request) => {
+            requests.push(request);
+            return { exitCode: 0, signal: null, stderr: "", stdout: "" };
+          },
+        },
+      }),
+      connection: environment.nativeConnection,
+      taskQueue,
+      workflowsPath: fileURLToPath(new URL("./index.ts", import.meta.url)),
+    });
+    await worker.runUntil(async () => {
+      const handle = await environment.client.workflow.start(aitw, {
+        args: [answeredInWorker],
+        taskQueue,
+        workflowId: randomUUID(),
+      });
+      await test(handle, requests);
+    });
+  };
+
+  it("answers with the method in the Worker and continues with the answers", async () => {
+    const contexts: Omit<WaitResponseContext<unknown>, "signal">[] = [];
+
+    await withWorkflow(
+      async ({ signal: _signal, ...context }) => {
+        contexts.push(context);
+        return { name: "aitw" };
+      },
+      async (handle, requests) => {
+        await expect(handle.result()).resolves.toEqual({ executedSteps: ["ask", "greet"] });
+        expect(contexts).toEqual([
+          {
+            answers: { name: { required: true, type: "string" } },
+            config: undefined,
+            options: { message: "Hello, who are you?" },
+            run: { inputs: { greeting: "Hello" }, workflowId: handle.workflowId },
+            step: "ask",
+            visit: 0,
+          },
+        ]);
+        expect(requests.map(({ run }) => run)).toEqual(['echo "aitw"']);
+      },
+    );
+  }, 60_000);
+
+  it("accepts no answers from outside the method", async () => {
+    const { promise: released, resolve: release } = Promise.withResolvers<void>();
+
+    await withWorkflow(
+      async () => {
+        await released;
+        return { name: "aitw" };
+      },
+      async (handle) => {
+        await expect(waitForStep(handle)).resolves.toMatchObject({
+          method: "chat",
+          respondIn: "worker",
+          step: "ask",
+        });
+
+        const rejected = await answer(handle, { step: "ask", values: { name: "other" } }).catch(
+          (error: unknown) => error,
+        );
+        expect(rejected).toMatchObject({
+          cause: { message: "Step ask is answered by its wait method chat" },
+        });
+
+        release();
+        await expect(handle.result()).resolves.toEqual({ executedSteps: ["ask", "greet"] });
+      },
+    );
+  }, 60_000);
+
+  it("stops the method when the workflow is cancelled", async () => {
+    const { promise: waiting, resolve: started } = Promise.withResolvers<void>();
+    let stopped: unknown;
+
+    await withWorkflow(
+      async ({ signal }) => {
+        started();
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            stopped = signal.reason;
+            reject(new Error("stopped"));
+          });
+        });
+      },
+      async (handle, requests) => {
+        await waiting;
+        await handle.cancel();
+
+        await expect(handle.result()).rejects.toMatchObject({
+          cause: { name: "CancelledFailure" },
+        });
+        expect(stopped).toBeDefined();
+        expect(requests).toEqual([]);
+      },
+    );
+  }, 60_000);
+
+  it("asks again in the next Worker after the Worker stopped", async () => {
+    const taskQueue = randomUUID();
+    const createWorker = async (
+      respond: (context: WaitResponseContext<unknown>) => Promise<Record<string, unknown>>,
+      stopping?: AbortSignal,
+    ) =>
+      Worker.create({
+        activities: createActivities({
+          heartbeatIntervalMs: 100,
+          plugins: createPluginRegistry({
+            builtins: [
+              definePlugin({
+                name: "test",
+                waitMethods: [
+                  {
+                    name: "chat",
+                    respond,
+                    respondIn: "worker",
+                    with: z.strictObject({ message: z.string() }),
+                  },
+                ],
+              }),
+            ],
+          }),
+          scriptRunner: {
+            run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }),
+          },
+          stopping,
+        }),
+        connection: environment.nativeConnection,
+        taskQueue,
+        workflowsPath: fileURLToPath(new URL("./index.ts", import.meta.url)),
+      });
+    const stopping = new AbortController();
+    const { promise: asked, resolve: ask } = Promise.withResolvers<void>();
+    const first = await createWorker(async ({ signal }) => {
+      ask();
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new Error("stopped")));
+      });
+    }, stopping.signal);
+
+    const handle = await first.runUntil(async () => {
+      const started = await environment.client.workflow.start(aitw, {
+        args: [answeredInWorker],
+        taskQueue,
+        workflowId: randomUUID(),
+      });
+      await asked;
+      // The Worker stops after its waits end, as a resident process does.
+      stopping.abort();
+      return started;
+    });
+    const second = await createWorker(async () => ({ name: "again" }));
+
+    await expect(second.runUntil(handle.result())).resolves.toEqual({
+      executedSteps: ["ask", "greet"],
+    });
+  }, 60_000);
+
+  it.each([
+    [
+      async (): Promise<Record<string, unknown>> => {
+        throw new Error("no one is here");
+      },
+      // The activity fails, and the failure of the method is its cause.
+      { cause: { cause: { message: "steps.ask: Wait method chat failed: no one is here" } } },
+    ],
+    [async () => ({ name: 1 }), { cause: { message: "steps.ask.name: Must be a string" } }],
+  ])(
+    "fails the step when the method cannot answer (%#)",
+    async (respond, failure) => {
+      await withWorkflow(respond, async (handle, requests) => {
+        await expect(handle.result()).rejects.toMatchObject(failure);
+        expect(requests).toEqual([]);
+      });
+    },
+    60_000,
+  );
 });

@@ -3,13 +3,14 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { intermediateVersion } from "@aitw/core";
+import { createPluginRegistry, definePlugin, intermediateVersion } from "@aitw/core";
 import type { Intermediate } from "@aitw/core";
 import type { WorkflowHandle } from "@temporalio/client";
 import { historyToJSON } from "@temporalio/common/lib/proto-utils";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { describe, expect, inject, it } from "vitest";
+import { z } from "zod";
 
 import { createActivities } from "../activities/index.ts";
 import { createMemoryEventLog } from "../events.ts";
@@ -179,6 +180,27 @@ const scenarios: Record<
       version: intermediateVersion,
     },
   },
+  "wait-worker": {
+    inputs: { greeting: "Hello" },
+    intermediate: {
+      inputs: { greeting: { required: true, type: "string" } },
+      start: "ask",
+      steps: {
+        ask: {
+          answers: { name: { required: true, type: "string" } },
+          inputs: {},
+          method: "chat",
+          next: { step: "greet", type: "step" },
+          outputs: { name: "${{ result.name }}" },
+          respondIn: "worker",
+          type: "wait",
+          with: { message: "${{ workflow.inputs.greeting }}, who are you?" },
+        },
+        greet: script('echo "${{ steps.ask.outputs.name }}"', null),
+      },
+      version: intermediateVersion,
+    },
+  },
   "wait-cancelled": {
     drive: async (handle) => {
       await waitForStep(handle);
@@ -230,6 +252,21 @@ const record = async (): Promise<void> => {
         activities: createActivities({
           aiRunner: { run: async () => ({ data: { verdict: "approve" }, sessionId: "session" }) },
           eventLog: createMemoryEventLog(),
+          plugins: createPluginRegistry({
+            builtins: [
+              definePlugin({
+                name: "test",
+                waitMethods: [
+                  {
+                    name: "chat",
+                    respond: async () => ({ name: "aitw" }),
+                    respondIn: "worker",
+                    with: z.strictObject({ message: z.string() }),
+                  },
+                ],
+              }),
+            ],
+          }),
           scriptRunner: {
             run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "x\n" }),
           },

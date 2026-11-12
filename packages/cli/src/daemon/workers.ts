@@ -132,10 +132,12 @@ export const createProjectWorkers = ({
     const taskQueue = projectTaskQueue(root);
     const worker: Promise<RunningWorker> = (async () => {
       const loaded = await loadConfiguredPlugins(read, root);
+      // The resident process has no terminal, so only methods that answer in the Worker answer.
+      const registry = createRegistry(undefined, loaded);
       prepareEngine();
       const running = await startProjectWorker({
         address: serverAddress,
-        aiRunner: createAiRunner({ cwd: root, plugins: createRegistry(undefined, loaded) }),
+        aiRunner: createAiRunner({ cwd: root, plugins: registry }),
         encryptionKey: loadEncryptionKey(),
         eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
         onError: (error) => {
@@ -145,6 +147,7 @@ export const createProjectWorkers = ({
           // The next request for the project starts a new Worker.
           forget(root, serverAddress, worker);
         },
+        plugins: registry,
         readEnvironment: createEnvironmentReader(root),
         scriptRunner: createLocalScriptRunner({ cwd: root }),
         taskQueue,

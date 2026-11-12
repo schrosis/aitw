@@ -224,8 +224,10 @@ describe("loadProjectPlugins", () => {
         answers: {},
         config: registry.waitMethodConfig("notify/ask"),
         options: {},
+        run: { inputs: {}, workflowId: "deploy-1" },
         signal: new AbortController().signal,
         step: "ask",
+        visit: 0,
       }),
     ).resolves.toEqual({ channel: "deploy" });
   });

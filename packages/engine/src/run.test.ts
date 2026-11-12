@@ -39,7 +39,10 @@ const intermediate: Intermediate = {
   inputs: {},
 };
 
-const pluginsWith = (respond: WaitMethod["respond"]) =>
+const pluginsWith = (
+  respond: WaitMethod["respond"],
+  respondIn: WaitMethod["respondIn"] = "follower",
+) =>
   createPluginRegistry({
     builtins: [
       definePlugin({
@@ -48,6 +51,7 @@ const pluginsWith = (respond: WaitMethod["respond"]) =>
           {
             name: "ask",
             ...(respond === undefined ? {} : { respond }),
+            respondIn,
             with: z.strictObject({ message: z.string() }),
           },
         ],
@@ -252,6 +256,35 @@ describe("runWorkflow", () => {
       ).rejects.toThrow("no one is here");
       // The workflow stores the end of the step, which the cancellation interrupted.
       expect(events.at(-1)).toMatchObject({ outcome: "cancelled", step: "ask" });
+    }, 60_000);
+
+    it("lets its Worker answer a step whose method answers in the Worker", async () => {
+      const steps: string[] = [];
+      const ask = waiting.steps.ask;
+      if (ask?.type !== "wait") {
+        throw new Error("The test setup is invalid");
+      }
+
+      await expect(
+        runWorkflow({
+          address: environment.address,
+          intermediate: {
+            ...waiting,
+            steps: { ...waiting.steps, ask: { ...ask, respondIn: "worker" } },
+          },
+          name: "ask",
+          plugins: pluginsWith(async ({ step }) => {
+            steps.push(step);
+            return { name: "aitw" };
+          }, "worker"),
+          scriptRunner: {
+            run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }),
+          },
+          workflowsPath: fileURLToPath(new URL("./workflows/index.ts", import.meta.url)),
+        }),
+      ).resolves.toMatchObject({ executedSteps: ["ask", "fetch"], status: "completed" });
+      // The process that follows the run does not ask too.
+      expect(steps).toEqual(["ask"]);
     }, 60_000);
 
     it("fails a run whose wait method cannot answer here", async () => {

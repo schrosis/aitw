@@ -72,6 +72,11 @@ const waitStepSchema = z.strictObject({
    * receive answers has none, and its result is not checked before running.
    */
   answers: z.record(inputNameSchema, inputDeclarationSchema).optional(),
+  /**
+   * `worker` when the Worker of the run answers the step with the method, which the method
+   * declares. Without it, the process that follows the run answers.
+   */
+  respondIn: z.literal("worker").optional(),
   inputs: expressionMapSchema,
   outputs: expressionMapSchema,
 });

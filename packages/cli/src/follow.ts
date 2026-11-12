@@ -71,6 +71,8 @@ export interface FollowRunOptions {
   name: string;
   /** Real path of the project root, where scripts run and logs are kept. */
   root: string;
+  /** IDs of the steps in the order of the definition, which gives each step its color. */
+  steps?: readonly string[] | undefined;
   server: OpenedServer;
   /**
    * Aborted when the user interrupts. On a server that keeps its runs, it detaches the run, so
@@ -94,11 +96,20 @@ export interface FollowRunOptions {
  * @returns The exit code of the command.
  */
 export const followRun = async (
-  { follow, interrupt, name, ownsWorker = true, root, server, terminal: given }: FollowRunOptions,
+  {
+    follow,
+    interrupt,
+    name,
+    ownsWorker = true,
+    root,
+    server,
+    steps,
+    terminal: given,
+  }: FollowRunOptions,
   context: CommandContext,
 ): Promise<number> => {
   const terminal = given ?? createTerminal(context);
-  const printer = createProgressPrinter(context);
+  const printer = createProgressPrinter(context, { colors: context.colors, steps });
   // The script or AI step that runs now, so that an interrupt can tell that the run waits for it.
   let runningStep: string | undefined;
   const eventSink: EventSink = {

@@ -87,6 +87,8 @@ const stopSignal = (): AbortSignal => {
 };
 
 const processContext = (): ProgramContext => ({
+  // Only a terminal has hasColors, which honors NO_COLOR and FORCE_COLOR.
+  colors: process.stdout.isTTY && process.stdout.hasColors(),
   cwd: process.cwd(),
   executable: process.argv[1] ?? "aitw",
   interruptSignal,

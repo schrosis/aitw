@@ -93,7 +93,7 @@ describe("resume and cancel", () => {
     );
     // The resumed run shows the earlier progress, and continues from the wait step.
     expect(result.stdout).toMatch(
-      /Select a run \(1-\d+\): \d+\n▶ ask\nHello, what is your name\?\nname \(string, required\): schrosis\n/u,
+      /Select a run \(1-\d+\): \d+\nask\nHello, what is your name\?\nname \(string, required\): schrosis\n/u,
     );
     expect(result.stdout).toContain("Hello schrosis!!\n");
     expect(result.stdout).toContain("wait-valid: completed (ask, greet)\n");

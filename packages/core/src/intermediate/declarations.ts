@@ -10,12 +10,17 @@ const inputBase = {
 };
 
 // z.number() accepts only finite numbers.
-const declarationOptions = <Required extends z.ZodType<boolean>>(base: {
-  description: z.ZodOptional<z.ZodString>;
-  required: Required;
-}) =>
+const declarationOptions = <Required extends z.ZodType<boolean>>(
+  base: { description: z.ZodOptional<z.ZodString>; required: Required },
+  multiline: z.ZodOptional<z.ZodBoolean> = z.boolean().optional(),
+) =>
   [
-    z.strictObject({ type: z.literal("string"), ...base, default: z.string().optional() }),
+    z.strictObject({
+      type: z.literal("string"),
+      ...base,
+      default: z.string().optional(),
+      multiline,
+    }),
     z.strictObject({ type: z.literal("number"), ...base, default: z.number().optional() }),
     z.strictObject({ type: z.literal("boolean"), ...base, default: z.boolean().optional() }),
     z.strictObject({
@@ -72,13 +77,21 @@ export const checkInputDeclarations = (
  */
 export const inputDeclarationDefinitionSchema = z.discriminatedUnion(
   "type",
-  declarationOptions({
-    description: z.string().optional().describe("Description of the value"),
-    required: z
+  declarationOptions(
+    {
+      description: z.string().optional().describe("Description of the value"),
+      required: z
+        .boolean()
+        .default(false)
+        .describe("Whether the value must be given. It cannot be combined with default"),
+    },
+    z
       .boolean()
-      .default(false)
-      .describe("Whether the value must be given. It cannot be combined with default"),
-  }),
+      .optional()
+      .describe(
+        "Whether the value can span lines. The terminal wait method asks for it in an editor",
+      ),
+  ),
 );
 
 /**

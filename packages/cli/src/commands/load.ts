@@ -26,6 +26,11 @@ export interface CommandContext {
    * It is a function so that commands that do not read it never open standard input.
    */
   stdin?: () => NodeJS.ReadableStream;
+  /**
+   * Interrupts the command as SIGINT does. Interactive prompts read Ctrl+C as a key, so they
+   * call it instead. Without it, the prompts are not used.
+   */
+  interrupt?: (() => void) | undefined;
 }
 
 /** A workflow that passed validation. */

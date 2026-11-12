@@ -1,5 +1,7 @@
+import { Writable } from "node:stream";
+
 import { createFileEventLog } from "@aitw/adapter-event-log-file";
-import type { TerminalIO } from "@aitw/adapter-wait-terminal";
+import type { TerminalIO, TerminalStreams } from "@aitw/adapter-wait-terminal";
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
 import { createAiRunner } from "@aitw/core";
 import type { EventSink } from "@aitw/core";
@@ -41,12 +43,46 @@ export const rootMessage = (error: unknown): string => {
   return current instanceof Error ? current.message : String(current);
 };
 
-/** Creates the terminal that wait steps ask in. Standard input is opened only when it is read. */
+/** Creates the output of interactive prompts, which writes to standard output of the command. */
+const createPromptOutput = (
+  stdout: (text: string) => void,
+  columns: () => number,
+): NodeJS.WritableStream => {
+  const output = new Writable({
+    write: (chunk: Buffer | string, _encoding, callback) => {
+      stdout(chunk.toString());
+      callback();
+    },
+  });
+  // The prompts wrap their lines to the width of the terminal.
+  Object.defineProperty(output, "columns", { get: columns });
+  return output;
+};
+
+/**
+ * Creates the terminal that wait steps ask in. Standard input is opened only when it is read.
+ *
+ * When both standard input and output are terminals, wait steps ask with interactive prompts.
+ */
 export const createTerminal = (context: CommandContext): TerminalIO & { close: () => void } => {
   let lines: LineReader | undefined;
   let echo = false;
   return {
     close: () => lines?.close(),
+    interactive: (): TerminalStreams | undefined => {
+      const { columns, interrupt, stdin } = context;
+      if (stdin === undefined || columns === undefined || interrupt === undefined) {
+        return undefined;
+      }
+      const input = stdin();
+      if (!("isTTY" in input && input.isTTY === true)) {
+        return undefined;
+      }
+      // A prompt reads the keys, so lines are read again by a new reader after it.
+      lines?.close();
+      lines = undefined;
+      return { input, interrupt, output: createPromptOutput(context.stdout, columns) };
+    },
     readLine: async (signal) => {
       if (context.stdin === undefined) {
         return null;

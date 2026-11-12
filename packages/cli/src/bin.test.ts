@@ -140,7 +140,7 @@ describe("aitw executable", () => {
       );
 
       expect(exitCode).toBe(130);
-      expect(output).toContain("■ ask: cancelled");
+      expect(output).toContain("■ ask  cancelled · ");
       expect(output).toContain(
         "wait-valid: cancelled. Runs on a development server without --dev-db cannot be resumed\n",
       );
@@ -155,7 +155,7 @@ describe("aitw executable", () => {
         fixtureProject,
         {
           onOutput: (child, text) => {
-            if (address === undefined && text.includes("▶ wait")) {
+            if (address === undefined && text.includes("wait\n│ > sleep 30")) {
               address = /Temporal Web UI: (http:\S+)/u.exec(text)?.[1];
               child.kill("SIGINT");
               child.kill("SIGINT");
@@ -177,7 +177,7 @@ describe("aitw executable", () => {
         fixtureProject,
         {
           onOutput: (child, text) => {
-            if (address === undefined && text.includes("▶ wait")) {
+            if (address === undefined && text.includes("wait\n│ > sleep 30")) {
               address = /Temporal Web UI: (http:\S+)/u.exec(text)?.[1];
               child.kill("SIGINT");
             }

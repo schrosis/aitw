@@ -119,6 +119,7 @@ export const run = async (
           ownsWorker: servedTaskQueue === undefined,
           root,
           server: opened,
+          steps: Object.keys(workflow.intermediate.steps),
         },
         context,
       );

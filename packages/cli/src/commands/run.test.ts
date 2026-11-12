@@ -56,16 +56,16 @@ describe("run", () => {
 
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
     expect(result.stdout).toMatch(
-      /^▶ check\ntest -d \.aitw\n✓ check \(\d+\.\ds\)\n▶ finish\ntrue\n✓ finish \(\d+\.\ds\)\nrun-success: completed \(check, finish\)\n$/u,
+      /^check\n│ > test -d \.aitw\n✓ check {2}\d+\.\ds\n\nfinish\n│ > true\n✓ finish {2}\d+\.\ds\n\nrun-success: completed \(check, finish\)\n$/u,
     );
   }, 60_000);
 
   it("shows script output as it runs", async () => {
     const result = await execute("run-output");
 
-    expect(result).toMatchObject({ exitCode: 0, stderr: "fuga\n" });
+    expect(result).toMatchObject({ exitCode: 0, stderr: "│ fuga\n" });
     expect(result.stdout).toMatch(
-      /^▶ firstStep\necho "hoge"\nhoge\n✓ firstStep \(\d+\.\ds\)\n▶ secondStep\necho "fuga" >&2\n✓ secondStep \(\d+\.\ds\)\nrun-output: completed \(firstStep, secondStep\)\n$/u,
+      /^firstStep\n│ > echo "hoge"\n│ hoge\n✓ firstStep {2}\d+\.\ds\n\nsecondStep\n│ > echo "fuga" >&2\n✓ secondStep {2}\d+\.\ds\n\nrun-output: completed \(firstStep, secondStep\)\n$/u,
     );
   }, 60_000);
 
@@ -73,7 +73,9 @@ describe("run", () => {
     const result = await execute("run-values");
 
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
-    expect(result.stdout).toContain('test "hello" = hello && echo "title=hello"\ntitle=hello\n');
+    expect(result.stdout).toContain(
+      '│ > test "hello" = hello && echo "title=hello"\n│ title=hello\n',
+    );
   }, 60_000);
 
   it("passes the workflow input with defaults applied", async () => {
@@ -99,7 +101,7 @@ describe("run", () => {
 
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
     expect(result.stdout).toContain("Hello aitw!!\n");
-    expect(result.stdout).toContain("echo 'report-Hello aitw!!'\nreport-Hello aitw!!\n");
+    expect(result.stdout).toContain("│ > echo 'report-Hello aitw!!'\n│ report-Hello aitw!!\n");
   }, 60_000);
 
   it("rejects workflow input over the size limit without starting the workflow", async () => {
@@ -133,7 +135,7 @@ describe("run", () => {
 
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
     expect(result.stdout).toMatch(
-      /^▶ ask\nHello, what is your name\?\nname \(string, required\): schrosis\napprove \(y\/n\): maybe\nEnter y or n\napprove \(y\/n\): y\n✓ ask \(\d+\.\ds\)\n▶ greet\necho "Hello schrosis!!"\nHello schrosis!!\n/u,
+      /^ask\nHello, what is your name\?\nname \(string, required\): schrosis\napprove \(y\/n\): maybe\nEnter y or n\napprove \(y\/n\): y\n✓ ask {2}\d+\.\ds\n\ngreet\n│ > echo "Hello schrosis!!"\n│ Hello schrosis!!\n/u,
     );
   }, 60_000);
 
@@ -141,7 +143,7 @@ describe("run", () => {
     const result = await execute("wait-valid", undefined, undefined, undefined, "schrosis\n\n");
 
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
-    expect(result.stdout).toContain("name (string, required): schrosis\napprove (y/n): \n✓ ask");
+    expect(result.stdout).toContain("name (string, required): schrosis\napprove (y/n): \n✓ ask  ");
   }, 60_000);
 
   it("fails when the input ends before the answers", async () => {
@@ -198,7 +200,7 @@ describe("run", () => {
       stderr: "run-failure: failed: Script exited with code 3\n",
     });
     expect(result.stdout).toMatch(
-      /^▶ fail\nexit 3\n✗ fail: Script exited with code 3 \(\d+\.\ds\)\n$/u,
+      /^fail\n│ > exit 3\n✗ fail {2}Script exited with code 3 · \d+\.\ds\n\n$/u,
     );
   }, 60_000);
 
@@ -206,14 +208,14 @@ describe("run", () => {
     const controller = new AbortController();
     // Interrupt once the script has started, because starting a Worker can take a while in CI.
     const result = await execute("run-detach", controller.signal, (text) => {
-      if (text.startsWith("▶ build")) {
+      if (text.startsWith("build\n")) {
         controller.abort();
       }
     });
 
     expect(result).toMatchObject({ exitCode: 3 });
     expect(result.stdout).toMatch(
-      /^▶ build\nsleep 2 && echo built\n\nbuilt\n✓ build \(\d+\.\ds\)\n$/u,
+      /^build\n│ > sleep 2 && echo built\n\n│ built\n✓ build {2}\d+\.\ds\n\n$/u,
     );
     expect(result.stderr).toBe(
       [

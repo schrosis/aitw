@@ -11,6 +11,8 @@ import { resolveWorkflow } from "../workflows.js";
 /** Environment that a command runs in. */
 export interface CommandContext {
   cwd: string;
+  /** Whether to color the text of each stream, such as for a terminal that has colors. */
+  colors?: Readonly<Record<"stderr" | "stdout", boolean>> | undefined;
   stdout: (text: string) => void;
   stderr: (text: string) => void;
   /**

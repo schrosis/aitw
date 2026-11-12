@@ -1,7 +1,8 @@
-import { realpath } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 
 import { createFileEventLog } from "@aitw/adapter-event-log-file";
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
+import { parseDefinition } from "@aitw/definition";
 import { resumeWorkflow, terminateWorkflow } from "@aitw/engine";
 
 import {
@@ -18,7 +19,7 @@ import type { ProjectRun } from "../runs.js";
 import { openCommandServer } from "../daemon/connect.js";
 import type { OpenedServer, ServerOptions } from "../server.js";
 import { projectLockDirectory, projectLogDirectory } from "../state.js";
-import { aitwDirectory, findProjectRoot } from "../workflows.js";
+import { aitwDirectory, findProjectRoot, resolveWorkflow } from "../workflows.js";
 import type { CommandContext } from "./load.js";
 
 /** Options of {@link resume} and {@link cancel}. */
@@ -44,6 +45,26 @@ export interface ResumeOptions {
 }
 
 type Selected = { ok: true; run: ProjectRun } | { ok: false; exitCode: number };
+
+/**
+ * Returns the IDs of the steps of a workflow in the order of its definition, which gives each
+ * step its color.
+ *
+ * The definition may have changed or gone since the run started, so the steps then get colors in
+ * the order that they run.
+ */
+const stepOrder = async (root: string, name: string): Promise<string[] | undefined> => {
+  const resolved = await resolveWorkflow(root, name);
+  if (!resolved.ok) {
+    return undefined;
+  }
+  try {
+    const parsed = parseDefinition(await readFile(resolved.file, "utf8"));
+    return parsed.ok ? Object.keys(parsed.definition.steps) : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 /** Finds the project root, and checks that the server keeps its runs. */
 const findRoot = async (
@@ -149,6 +170,7 @@ export const resume = async (options: ResumeOptions, context: CommandContext): P
             }),
           interrupt: signal,
           name: run.name,
+          steps: await stepOrder(root, run.name),
           ownsWorker: run.taskQueue !== servedTaskQueue,
           root,
           server,

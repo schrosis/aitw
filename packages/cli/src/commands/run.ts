@@ -1,5 +1,5 @@
 import { resolveWorkflowInput } from "@aitw/core";
-import { jsonBytes, maxValueBytes, runWorkflow } from "@aitw/engine";
+import { jsonBytes, maxValueBytes, runWorkflow, startWorkflow } from "@aitw/engine";
 
 import { realpath } from "node:fs/promises";
 
@@ -8,6 +8,7 @@ import { readWorkflowInput } from "../input.js";
 import { acquireRunLock } from "../lock.js";
 import type { RunLock } from "../lock.js";
 import { openCommandServer } from "../daemon/connect.js";
+import { loadEncryptionKey } from "../encryption.js";
 import type { OpenedServer, ServerOptions } from "../server.js";
 import { projectHash, projectLockDirectory, projectMemoKey, workflowMemoKey } from "../state.js";
 import { loadWorkflow } from "./load.js";
@@ -30,6 +31,11 @@ export interface RunOptions {
   /** Called after the workflow is validated and before it starts. */
   prepareEngine?: () => void;
   /**
+   * Starts the run and exits without following it. The resident process runs the steps, and
+   * the questions of the run wait in `aitw inbox list`.
+   */
+  detach?: boolean | undefined;
+  /**
    * Version of this aitw. When the server is not given, a resident process of the same version
    * runs the steps.
    */
@@ -45,7 +51,7 @@ export interface RunOptions {
  */
 export const run = async (
   name: string,
-  { input: inputOption, prepareEngine, server, signal, version }: RunOptions,
+  { detach = false, input: inputOption, prepareEngine, server, signal, version }: RunOptions,
   context: CommandContext,
 ): Promise<number> => {
   const workflow = await loadWorkflow(name, context);
@@ -92,6 +98,30 @@ export const run = async (
       return cancelledExitCode;
     }
 
+    const memo = { [projectMemoKey]: projectHash(root), [workflowMemoKey]: name };
+    if (detach) {
+      // The run goes on after this command only in the resident process.
+      if (servedTaskQueue === undefined) {
+        context.stderr(
+          `${name}: --detach needs aitw daemon to run the steps of the project. Run "aitw daemon start", or run it without --detach\n`,
+        );
+        return 1;
+      }
+      const workflowId = await startWorkflow({
+        address: opened.address,
+        encryptionKey: loadEncryptionKey(),
+        inputs: read.values,
+        intermediate: workflow.intermediate,
+        memo,
+        name,
+        taskQueue: servedTaskQueue,
+      });
+      context.stdout(
+        `${name}: started ${workflowId} in aitw daemon. Its questions wait in "aitw inbox list", and "aitw resume ${workflowId}" follows it\n`,
+      );
+      return 0;
+    }
+
     prepareEngine?.();
     let lock: RunLock | undefined;
     try {
@@ -103,7 +133,7 @@ export const run = async (
               inputs: read.values,
               intermediate: workflow.intermediate,
               // The memo marks the run, so that aitw resume can find the runs of a project.
-              memo: { [projectMemoKey]: projectHash(root), [workflowMemoKey]: name },
+              memo,
               name,
               // aitw resume does not follow a run that this process follows.
               onStart: (workflowId) => {

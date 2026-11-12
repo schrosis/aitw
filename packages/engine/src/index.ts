@@ -12,6 +12,7 @@ export {
   listRunningWorkflows,
   resumeWorkflow,
   runWorkflow,
+  startWorkflow,
   terminateWorkflow,
   workflowsPath,
 } from "./run.js";
@@ -31,6 +32,7 @@ export type {
   RunOutcome,
   RunWorkflowOptions,
   RuntimeOptions,
+  StartWorkflowOptions,
   TerminateWorkflowOptions,
 } from "./run.js";
 export type { WorkflowResult } from "./workflows/index.js";

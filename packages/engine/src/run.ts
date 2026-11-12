@@ -355,21 +355,32 @@ const follow = async (
   return outcome;
 };
 
+/** What {@link startRun} needs to start a run. */
+type StartRunOptions = Pick<RunWorkflowOptions, "inputs" | "intermediate" | "memo" | "name"> & {
+  taskQueue: string;
+  id: string;
+};
+
+/** Starts the interpreter workflow for a run, recording the workflow code version. */
+const startRun = async (
+  client: Client,
+  { id, inputs = {}, intermediate, memo, name, taskQueue }: StartRunOptions,
+): Promise<WorkflowHandle<typeof aitw>> =>
+  client.workflow.start<typeof aitw>("aitw", {
+    args: [intermediate, inputs],
+    // The version lets a later process tell whether it can continue the run.
+    memo: { ...memo, [workflowCodeVersionMemoKey]: String(workflowCodeVersion) },
+    taskQueue,
+    workflowId: `${name}-${id}`,
+  });
+
 /**
  * Starts a workflow and follows it with a Worker that lives only for this run.
  *
  * @throws When the workflow fails, for example because a script step fails.
  */
 export const runWorkflow = async (options: RunWorkflowOptions): Promise<RunOutcome> => {
-  const {
-    address,
-    inputs = {},
-    intermediate,
-    memo,
-    name,
-    namespace = "default",
-    onStart = () => {},
-  } = options;
+  const { address, namespace = "default", onStart = () => {} } = options;
   const id = randomUUID();
   // A task queue for this run keeps other Workers from picking up its tasks.
   const taskQueue = options.taskQueue ?? `aitw-${id}`;
@@ -383,18 +394,38 @@ export const runWorkflow = async (options: RunWorkflowOptions): Promise<RunOutco
       { ...options, taskQueue },
       { client, connection: clientConnection, worker: workerConnection },
       async () => {
-        const handle = await client.workflow.start<typeof aitw>("aitw", {
-          args: [intermediate, inputs],
-          // The version lets a later process tell whether it can continue the run.
-          memo: { ...memo, [workflowCodeVersionMemoKey]: String(workflowCodeVersion) },
-          taskQueue,
-          workflowId: `${name}-${id}`,
-        });
+        const handle = await startRun(client, { ...options, id, taskQueue });
         onStart(handle.workflowId);
         return handle;
       },
     );
   });
+};
+
+/** Options of {@link startWorkflow}. */
+export interface StartWorkflowOptions extends Pick<
+  RunWorkflowOptions,
+  "address" | "encryptionKey" | "inputs" | "intermediate" | "memo" | "name" | "namespace"
+> {
+  /** Task queue that another Worker serves, such as of a resident process. */
+  taskQueue: string;
+}
+
+/**
+ * Starts a workflow without following it, for a Worker of another process to run it.
+ *
+ * @returns The workflow ID of the run.
+ */
+export const startWorkflow = async (options: StartWorkflowOptions): Promise<string> => {
+  const { address, encryptionKey, namespace = "default", taskQueue } = options;
+  const connection = await Connection.connect({ address });
+  try {
+    const client = new Client({ connection, namespace, ...clientDataConverter(encryptionKey) });
+    const handle = await startRun(client, { ...options, id: randomUUID(), taskQueue });
+    return handle.workflowId;
+  } finally {
+    await connection.close();
+  }
 };
 
 /**

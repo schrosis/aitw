@@ -51,6 +51,27 @@ describe("run", () => {
     return { exitCode, ...output.written };
   };
 
+  it("does not detach a run without aitw daemon, which would leave it stopped", async () => {
+    const output = createOutput();
+    const exitCode = await run(
+      "run-success",
+      {
+        detach: true,
+        server: { address: environment.address, type: "address" },
+        signal: new AbortController().signal,
+        version: "0.0.0",
+      },
+      { cwd: fixtureProject, stderr: output.stderr, stdout: output.stdout },
+    );
+
+    expect({ exitCode, ...output.written }).toEqual({
+      exitCode: 1,
+      stderr:
+        'run-success: --detach needs aitw daemon to run the steps of the project. Run "aitw daemon start", or run it without --detach\n',
+      stdout: "",
+    });
+  }, 60_000);
+
   it("runs the steps in the project root", async () => {
     const result = await execute("run-success");
 

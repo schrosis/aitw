@@ -105,7 +105,8 @@ export const createProgressFormat = (
           const lines = text.replace(/\n$/u, "").split("\n");
           const shown = lines.slice(0, limit);
           const rest = lines.length - shown.length;
-          return [...shown, ...(rest > 0 ? [`… (${rest} more lines)`] : [])].map(
+          const more = `… (${rest} more ${rest === 1 ? "line" : "lines"})`;
+          return [...shown, ...(rest > 0 ? [more] : [])].map(
             (line) => `${style(colorOf(event.step), gutter)} ${style("dim", `> ${line}`)}`,
           );
         };

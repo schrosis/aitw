@@ -55,6 +55,14 @@ describe("createProgressFormat", () => {
       ].join("\n"),
     );
     expect(
+      format.step({
+        prompt: prompt.split("\n").slice(0, 6).join("\n"),
+        provider: "claude-code",
+        step: "review",
+        type: "stepStarted",
+      }),
+    ).toContain("│ > … (1 more line)\n");
+    expect(
       format.step({ message: "Approve?\nSee the plan", step: "ask", type: "stepStarted" }),
     ).toBe("ask\n│ > Approve?\n│ > See the plan\n");
   });

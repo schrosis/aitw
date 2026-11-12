@@ -43,6 +43,33 @@ describe("createProgram", () => {
     expect(output.endsWith("\n")).toBe(true);
   });
 
+  it("lists the commands in groups, starting with init", () => {
+    const help = createProgram({
+      cwd: fixtureProject,
+      setExitCode: () => {},
+      interruptSignal: () => new AbortController().signal,
+      prepareEngine: () => {},
+      ...createOutput(),
+    }).helpInformation();
+
+    const listed = [...help.matchAll(/^(\S.*:|  [a-z]+)/gmu)].map(([line]) => line.trim());
+    expect(listed.slice(listed.indexOf("Getting started:"))).toEqual([
+      "Getting started:",
+      "init",
+      "help",
+      "Run workflows:",
+      "run",
+      "resume",
+      "cancel",
+      "Write workflows:",
+      "validate",
+      "schema",
+      "docs",
+      "Background:",
+      "daemon",
+    ]);
+  });
+
   it("exits with zero when validate succeeds", async () => {
     await expect(execute(["validate", "valid"])).resolves.toMatchObject({
       exitCode: 0,

@@ -49,17 +49,34 @@ export interface ProgramContext extends CommandContext {
 /** Exit code of an interrupted program, following the shell convention for SIGINT. */
 const interruptedExitCode = 130;
 
+/** Handles an interrupt of the command that runs a workflow, once it has asked for the signal. */
+let handleInterrupt: (() => void) | undefined;
+
 const interruptSignal = (): AbortSignal => {
   const controller = new AbortController();
-  process.on("SIGINT", () => {
+  handleInterrupt = () => {
     if (controller.signal.aborted) {
       // A second interrupt exits immediately. process.exit() still runs the "exit" handlers,
       // which stop a development server.
       process.exit(interruptedExitCode);
     }
     controller.abort();
-  });
+  };
+  process.on("SIGINT", handleInterrupt);
   return controller.signal;
+};
+
+/**
+ * Interrupts the command as Ctrl+C does, for prompts that read Ctrl+C as a key.
+ *
+ * It calls the handler of SIGINT directly instead of sending the signal, because sending SIGINT
+ * on Windows ends the process without running the handler.
+ */
+const interrupt = (): void => {
+  if (handleInterrupt === undefined) {
+    process.exit(interruptedExitCode);
+  }
+  handleInterrupt();
 };
 
 /**
@@ -112,7 +129,7 @@ const processContext = (): ProgramContext => ({
   columns: process.stdout.isTTY ? () => process.stdout.columns : undefined,
   cwd: process.cwd(),
   executable: process.argv[1] ?? "aitw",
-  interrupt: () => process.kill(process.pid, "SIGINT"),
+  interrupt,
   interruptSignal,
   stopSignal,
   prepareEngine,

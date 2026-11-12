@@ -1,6 +1,11 @@
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { PassThrough } from "node:stream";
+
 import { validateWithSchema } from "@aitw/core";
 import type { InputDeclaration } from "@aitw/core";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createTerminalPlugin,
@@ -9,7 +14,7 @@ import {
   terminalPlugin,
   terminalWaitMethod,
 } from "./index.ts";
-import type { TerminalPluginOptions } from "./index.ts";
+import type { TerminalIO, TerminalPluginOptions } from "./index.ts";
 
 describe("terminalWaitMethod", () => {
   it("is provided by the terminal plugin", () => {
@@ -43,6 +48,10 @@ describe("terminalWaitMethod", () => {
     [{ extra: 1, message: "Hi" }, []],
     [{ message: "Hi", schema: { "my-name": { type: "string" } } }, ["schema", "my-name"]],
     [{ message: "Hi", schema: { name: { type: "integer" } } }, ["schema", "name", "type"]],
+    [
+      { message: "Hi", schema: { count: { multiline: true, type: "number" } } },
+      ["schema", "count"],
+    ],
     [
       { message: "Hi", schema: { level: { options: ["a", "a"], type: "choice" } } },
       ["schema", "level", "options"],
@@ -189,5 +198,247 @@ describe("createTerminalPlugin", () => {
 
   it("does not answer without a terminal", () => {
     expect("respond" in terminalWaitMethod).toBe(false);
+  });
+});
+
+describe("createTerminalPlugin with line input", () => {
+  const multiline = {
+    message: "Describe the change",
+    schema: { prompt: { multiline: true, required: true, type: "string" } },
+  };
+
+  it("reads a multiline answer until a line of a dot", async () => {
+    await expect(
+      respondWith(["Fix the login.", "", "Add tests.", "."], multiline),
+    ).resolves.toEqual({
+      output:
+        'Describe the change\nprompt (string, multiline, required). End with a line of ".":\n',
+      values: { prompt: "Fix the login.\n\nAdd tests." },
+    });
+  });
+
+  it("asks again for an empty required multiline answer", async () => {
+    await expect(respondWith([".", "Fix it.", "."], multiline)).resolves.toMatchObject({
+      output: expect.stringContaining("A value is required\n") as unknown,
+      values: { prompt: "Fix it." },
+    });
+  });
+
+  it("fails when the input ends before the line of a dot", async () => {
+    await expect(respondWith(["Fix the login."], multiline)).rejects.toThrow(
+      "The input ended before the answer was entered",
+    );
+  });
+});
+
+/** Keys that the interactive tests press. */
+const keys = { ctrlC: "\u0003", down: "\u001B[B", enter: "\r" };
+
+/** A terminal for the interactive prompts, which a test types in. */
+const createInteractiveTerminal = () => {
+  const input = new PassThrough();
+  // The output of a terminal is never ended, which the test checks after every prompt.
+  const output = new PassThrough();
+  output.on("finish", () => {
+    throw new Error("The prompt ended the output of the terminal");
+  });
+  let screen = "";
+  output.on("data", (chunk: Buffer) => {
+    screen += chunk.toString();
+  });
+  const interrupted = new AbortController();
+  const io: TerminalIO = {
+    interactive: () => ({ input, interrupt: () => interrupted.abort(), output }),
+    readLine: () => Promise.reject(new Error("The test reads only keys")),
+    write: () => {},
+  };
+  /** Waits until the screen shows the text, and then types the keys. */
+  const press = async (text: string, ...typed: string[]) => {
+    await vi.waitFor(() => {
+      expect(screen).toContain(text);
+    });
+    screen = "";
+    for (const key of typed) {
+      input.write(key);
+    }
+  };
+  return { interrupted: interrupted.signal, io, press, screen: () => screen };
+};
+
+const respondInteractively = async (
+  io: TerminalIO,
+  options: unknown,
+  signal = new AbortController().signal,
+) => {
+  const method = createTerminalPlugin(io, { showMessage: false }).waitMethods?.[0];
+  const validated = validateWithSchema(terminalWaitMethod.with, options);
+  if (method?.respond === undefined || !validated.ok) {
+    throw new Error("The test setup is invalid");
+  }
+  return method.respond({
+    answers: method.answers?.(validated.value, undefined) ?? {},
+    config: undefined,
+    options: validated.value,
+    signal,
+    step: "ask",
+  });
+};
+
+describe("createTerminalPlugin with interactive prompts", () => {
+  it("asks for every answer in turn", async () => {
+    const { io, press } = createInteractiveTerminal();
+    const answered = respondInteractively(io, {
+      message: "Deploy",
+      schema: {
+        env: { options: ["staging", "production"], required: true, type: "choice" },
+        reason: { required: true, type: "string" },
+      },
+    });
+
+    await press("production", keys.down, keys.enter);
+    await press("reason (string)", "hotfix", keys.enter);
+
+    await expect(answered).resolves.toEqual({ env: "production", reason: "hotfix" });
+  });
+
+  it("leaves an optional choice not given when (skip) is chosen", async () => {
+    const { io, press } = createInteractiveTerminal();
+    const answered = respondInteractively(io, {
+      message: "Deploy",
+      schema: {
+        env: { description: "Target", options: ["staging", "production"], type: "choice" },
+      },
+    });
+
+    await press("(skip)", keys.down, keys.down, keys.enter);
+
+    await expect(answered).resolves.toEqual({});
+  });
+
+  it("chooses an option that is not the first", async () => {
+    const { io, press } = createInteractiveTerminal();
+    const answered = respondInteractively(io, {
+      message: "Deploy",
+      schema: {
+        env: { options: ["staging", "production"], required: true, type: "choice" },
+      },
+    });
+
+    await press("production", keys.down, keys.enter);
+
+    await expect(answered).resolves.toEqual({ env: "production" });
+  });
+
+  it("confirms a boolean that has a default with Enter", async () => {
+    const { io, press } = createInteractiveTerminal();
+    const answered = respondInteractively(io, {
+      message: "Deploy",
+      schema: { approve: { default: false, type: "boolean" } },
+    });
+
+    await press("approve", keys.enter);
+
+    await expect(answered).resolves.toEqual({ approve: false });
+  });
+
+  it("asks to type a boolean without a default, so that Enter alone does not answer it", async () => {
+    const { io, press } = createInteractiveTerminal();
+    const answered = respondInteractively(io, {
+      message: "Deploy",
+      schema: { approve: { required: true, type: "boolean" } },
+    });
+
+    await press("approve (y/n)", keys.enter);
+    await press("A value is required", "y", keys.enter);
+
+    await expect(answered).resolves.toEqual({ approve: true });
+  });
+
+  it("asks again for a value that does not match the type", async () => {
+    const { io, press } = createInteractiveTerminal();
+    const answered = respondInteractively(io, {
+      message: "Scale",
+      schema: { replicas: { required: true, type: "number" } },
+    });
+
+    await press("replicas (number)", "x", keys.enter);
+    await press("without exponent notation", "\u007F", "3", keys.enter);
+
+    await expect(answered).resolves.toEqual({ replicas: 3 });
+  });
+
+  it("uses the default of a string for an empty answer", async () => {
+    const { io, press } = createInteractiveTerminal();
+    const answered = respondInteractively(io, {
+      message: "Greet",
+      schema: { name: { default: "you", type: "string" } },
+    });
+
+    await press("name", keys.enter);
+
+    await expect(answered).resolves.toEqual({ name: "you" });
+  });
+
+  it("waits for Enter when no answers are declared", async () => {
+    const { io, press } = createInteractiveTerminal();
+    const answered = respondInteractively(io, { message: "Continue?" });
+
+    await press("Press Enter to continue", keys.enter);
+
+    await expect(answered).resolves.toEqual({});
+  });
+
+  it("interrupts the command on Ctrl+C and waits for the signal", async () => {
+    const { interrupted, io, press } = createInteractiveTerminal();
+    const controller = new AbortController();
+    interrupted.addEventListener("abort", () => controller.abort(new Error("Detached")));
+    const answered = respondInteractively(
+      io,
+      { message: "Greet", schema: { name: { type: "string" } } },
+      controller.signal,
+    );
+
+    await press("name", keys.ctrlC);
+
+    await expect(answered).rejects.toThrow("Detached");
+    expect(interrupted.aborted).toBe(true);
+  });
+
+  describe("with an editor", () => {
+    let directory: string;
+
+    beforeEach(async () => {
+      directory = await mkdtemp(join(tmpdir(), "aitw-editor-"));
+    });
+
+    afterEach(async () => {
+      vi.unstubAllEnvs();
+      await rm(directory, { force: true, recursive: true });
+    });
+
+    /** Uses an editor that replaces the file with the text and records what the file had. */
+    const stubEditor = async (text: string) => {
+      const script = join(directory, "editor.sh");
+      await writeFile(
+        script,
+        `#!/bin/sh\ncat "$1" > "${join(directory, "before.txt")}"\nprintf '%s' '${text}' > "$1"\n`,
+      );
+      await chmod(script, 0o755);
+      vi.stubEnv("VISUAL", script);
+    };
+
+    it("asks for a multiline answer in the editor, filled with the default", async () => {
+      await stubEditor("Fix the login.\n\nAdd tests.\n\n");
+      const { io, press } = createInteractiveTerminal();
+      const answered = respondInteractively(io, {
+        message: "Describe the change",
+        schema: { prompt: { default: "Fix", multiline: true, type: "string" } },
+      });
+
+      await press("prompt", keys.enter);
+
+      await expect(answered).resolves.toEqual({ prompt: "Fix the login.\n\nAdd tests." });
+      await expect(readFile(join(directory, "before.txt"), "utf8")).resolves.toBe("Fix");
+    });
   });
 });

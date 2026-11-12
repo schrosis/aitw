@@ -1,3 +1,5 @@
+import { PassThrough } from "node:stream";
+
 import {
   decimalNumberMessage,
   decimalNumberPattern,
@@ -6,6 +8,10 @@ import {
   inputDeclarationsSchema,
 } from "@aitw/core";
 import type { InputDeclaration, WaitMethod, WaitResponseContext } from "@aitw/core";
+import confirm from "@inquirer/confirm";
+import editor from "@inquirer/editor";
+import input from "@inquirer/input";
+import select from "@inquirer/select";
 import { z } from "zod";
 
 /** Options of the `terminal` wait method, as the `with` field of a step writes them. */
@@ -19,6 +25,17 @@ const optionsSchema = z.strictObject({
 /** Options of the `terminal` wait method. */
 export type TerminalOptions = z.infer<typeof optionsSchema>;
 
+/** Streams of a terminal where someone presses keys, which interactive prompts ask in. */
+export interface TerminalStreams {
+  input: NodeJS.ReadableStream;
+  output: NodeJS.WritableStream;
+  /**
+   * Interrupts the command, as Ctrl+C does elsewhere. A prompt reads Ctrl+C as a key, so the
+   * terminal does not send SIGINT while it asks.
+   */
+  interrupt: () => void;
+}
+
 /** The terminal that the method asks in. */
 export interface TerminalIO {
   /** Writes text without adding a newline. */
@@ -29,6 +46,13 @@ export interface TerminalIO {
    * @returns The line, or `null` when the input ends.
    */
   readLine: (signal: AbortSignal) => Promise<string | null>;
+  /**
+   * Returns the streams to ask in with interactive prompts, such as a list to choose from.
+   *
+   * It returns `undefined` when the input or the output is not a terminal, such as when a script
+   * answers through a pipe. The method then reads lines with {@link TerminalIO.readLine}.
+   */
+  interactive?: () => TerminalStreams | undefined;
 }
 
 /**
@@ -76,7 +100,18 @@ export const parseAnswer = (declaration: InputDeclaration, line: string): Parsed
     : { message: `Enter one of ${declaration.options.join(", ")}`, ok: false };
 };
 
-/** Formats the prompt of a declaration, such as `approve (y/n, required): `. */
+/** Returns whether a declaration asks for text that can span lines. */
+const isMultiline = (declaration: InputDeclaration): boolean =>
+  declaration.type === "string" && declaration.multiline === true;
+
+/** A line that ends a multiline answer that is read line by line. */
+export const endOfMultiline = ".";
+
+/**
+ * Formats the prompt of a declaration, such as `approve (y/n, required): `.
+ *
+ * A multiline answer is entered on the lines after the prompt, so its prompt ends with a newline.
+ */
 export const formatPrompt = (name: string, declaration: InputDeclaration): string => {
   const kind =
     declaration.type === "boolean"
@@ -86,11 +121,15 @@ export const formatPrompt = (name: string, declaration: InputDeclaration): strin
         : declaration.type;
   const details = [
     kind,
+    ...(isMultiline(declaration) ? ["multiline"] : []),
     ...(declaration.required ? ["required"] : []),
     ...(declaration.default === undefined ? [] : [`default: ${String(declaration.default)}`]),
   ];
   const description = declaration.description === undefined ? "" : ` ${declaration.description}`;
-  return `${name}${description} (${details.join(", ")}): `;
+  const prompt = `${name}${description} (${details.join(", ")})`;
+  return isMultiline(declaration)
+    ? `${prompt}. End with a line of "${endOfMultiline}":\n`
+    : `${prompt}: `;
 };
 
 const inputEnded = (): Error => new Error("The input ended before the answer was entered");
@@ -104,44 +143,219 @@ export interface TerminalPluginOptions {
   showMessage?: boolean;
 }
 
+/**
+ * Reads the answer of a declaration line by line, as a script answers through a pipe.
+ *
+ * @returns The text to parse, which spans lines for a multiline answer.
+ */
+const readText = async (
+  { readLine }: TerminalIO,
+  declaration: InputDeclaration,
+  signal: AbortSignal,
+): Promise<string> => {
+  if (!isMultiline(declaration)) {
+    const line = await readLine(signal);
+    if (line === null) {
+      throw inputEnded();
+    }
+    return line;
+  }
+  const lines: string[] = [];
+  for (;;) {
+    const line = await readLine(signal);
+    if (line === null) {
+      throw inputEnded();
+    }
+    if (line === endOfMultiline) {
+      return lines.join("\n");
+    }
+    lines.push(line);
+  }
+};
+
+const askLineByLine = async (
+  io: TerminalIO,
+  entries: readonly [string, InputDeclaration][],
+  signal: AbortSignal,
+): Promise<Record<string, unknown>> => {
+  const { readLine, write } = io;
+  if (entries.length === 0) {
+    write("Press Enter to continue: ");
+    if ((await readLine(signal)) === null) {
+      throw inputEnded();
+    }
+    return {};
+  }
+
+  const values: Record<string, unknown> = {};
+  for (const [name, declaration] of entries) {
+    for (;;) {
+      write(formatPrompt(name, declaration));
+      const parsed = parseAnswer(declaration, await readText(io, declaration, signal));
+      if (parsed.ok) {
+        if (parsed.value !== undefined) {
+          values[name] = parsed.value;
+        }
+        break;
+      }
+      write(`${parsed.message}\n`);
+    }
+  }
+  return values;
+};
+
+/** Value of the choice that leaves an optional answer not given. */
+const skip: unique symbol = Symbol("skip");
+
+/** Removes the newlines that an editor adds at the end of a file. */
+const trimTrailingNewlines = (text: string): string => text.replace(/(?:\r?\n)+$/u, "");
+
+/** Streams and the signal of a single prompt. */
+interface PromptContext {
+  input: NodeJS.ReadableStream;
+  output: NodeJS.WritableStream;
+  signal: AbortSignal;
+}
+
+/** Asks for the answer of a declaration with an interactive prompt. */
+const askInteractively = async (
+  name: string,
+  declaration: InputDeclaration,
+  context: PromptContext,
+): Promise<boolean | number | string | undefined> => {
+  const message =
+    declaration.description === undefined ? name : `${name} ${declaration.description}`;
+  const parse = (text: string): boolean | number | string | undefined => {
+    const parsed = parseAnswer(declaration, text);
+    if (!parsed.ok) {
+      // The prompt validates the answer before it returns it.
+      throw new Error(parsed.message);
+    }
+    return parsed.value;
+  };
+  const validate = (text: string): string | true => {
+    const parsed = parseAnswer(declaration, text);
+    return parsed.ok || parsed.message;
+  };
+
+  if (declaration.type === "choice") {
+    const choices: { name?: string; value: string | typeof skip }[] = declaration.options.map(
+      (option) => ({ value: option }),
+    );
+    if (!declaration.required && declaration.default === undefined) {
+      choices.push({ name: "(skip)", value: skip });
+    }
+    const chosen = await select(
+      {
+        choices,
+        ...(declaration.default === undefined ? {} : { default: declaration.default }),
+        message,
+      },
+      context,
+    );
+    return chosen === skip ? undefined : chosen;
+  }
+  if (declaration.type === "boolean" && declaration.default !== undefined) {
+    // Without a default, Enter alone would answer yes, so the answer is typed instead.
+    return confirm({ default: declaration.default, message }, context);
+  }
+  if (isMultiline(declaration)) {
+    const text = await editor(
+      {
+        default: declaration.default === undefined ? undefined : String(declaration.default),
+        message,
+        validate: (value) => validate(trimTrailingNewlines(value)),
+      },
+      context,
+    );
+    return parse(trimTrailingNewlines(text));
+  }
+  const kind = declaration.type === "boolean" ? "y/n" : declaration.type;
+  const text = await input(
+    {
+      default: declaration.default === undefined ? undefined : String(declaration.default),
+      message: `${message} (${kind})`,
+      validate,
+    },
+    context,
+  );
+  return parse(text);
+};
+
+/** Rejects when the signal is aborted. */
+const untilAborted = (signal: AbortSignal): Promise<never> =>
+  new Promise((_resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+
+/** Returns whether a prompt ended because Ctrl+C was pressed. */
+const isExitPrompt = (error: unknown): boolean =>
+  error instanceof Error && error.name === "ExitPromptError";
+
+/**
+ * Creates the context of a single prompt.
+ *
+ * A prompt ends its output when it is done, so each prompt writes to its own stream, which
+ * passes the text on without ending the output of the terminal.
+ */
+const createPromptContext = (
+  { input: keys, output }: TerminalStreams,
+  signal: AbortSignal,
+): PromptContext => {
+  const own = new PassThrough();
+  own.pipe(output, { end: false });
+  // The prompts wrap their lines to the width of the terminal.
+  Object.defineProperty(own, "columns", { get: () => Reflect.get(output, "columns") as unknown });
+  return { input: keys, output: own, signal };
+};
+
+const askWithPrompts = async (
+  streams: TerminalStreams,
+  entries: readonly [string, InputDeclaration][],
+  signal: AbortSignal,
+): Promise<Record<string, unknown>> => {
+  try {
+    if (entries.length === 0) {
+      await input({ message: "Press Enter to continue" }, createPromptContext(streams, signal));
+      return {};
+    }
+    const values: Record<string, unknown> = {};
+    for (const [name, declaration] of entries) {
+      const value = await askInteractively(name, declaration, createPromptContext(streams, signal));
+      if (value !== undefined) {
+        values[name] = value;
+      }
+    }
+    return values;
+  } catch (error) {
+    if (!isExitPrompt(error)) {
+      throw error;
+    }
+    // The command decides what Ctrl+C does, such as detaching the run, and aborts the signal.
+    streams.interrupt();
+    return untilAborted(signal);
+  }
+};
+
 const respond =
-  ({ readLine, write }: TerminalIO, { showMessage = true }: TerminalPluginOptions) =>
+  (io: TerminalIO, { showMessage = true }: TerminalPluginOptions) =>
   async ({
     answers,
     options,
     signal,
   }: WaitResponseContext<TerminalOptions>): Promise<Record<string, unknown>> => {
     if (showMessage) {
-      write(`${options.message}\n`);
+      io.write(`${options.message}\n`);
     }
     const entries = Object.entries(answers);
-    if (entries.length === 0) {
-      write("Press Enter to continue: ");
-      if ((await readLine(signal)) === null) {
-        throw inputEnded();
-      }
-      return {};
-    }
-
-    const values: Record<string, unknown> = {};
-    for (const [name, declaration] of entries) {
-      for (;;) {
-        write(formatPrompt(name, declaration));
-        const line = await readLine(signal);
-        if (line === null) {
-          throw inputEnded();
-        }
-        const parsed = parseAnswer(declaration, line);
-        if (parsed.ok) {
-          if (parsed.value !== undefined) {
-            values[name] = parsed.value;
-          }
-          break;
-        }
-        write(`${parsed.message}\n`);
-      }
-    }
-    return values;
+    const streams = io.interactive?.();
+    return streams === undefined
+      ? askLineByLine(io, entries, signal)
+      : askWithPrompts(streams, entries, signal);
   };
 
 const createMethod = (

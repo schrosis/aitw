@@ -112,6 +112,7 @@ const processContext = (): ProgramContext => ({
   columns: process.stdout.isTTY ? () => process.stdout.columns : undefined,
   cwd: process.cwd(),
   executable: process.argv[1] ?? "aitw",
+  interrupt: () => process.kill(process.pid, "SIGINT"),
   interruptSignal,
   stopSignal,
   prepareEngine,

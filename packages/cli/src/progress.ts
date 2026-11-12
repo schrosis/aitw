@@ -241,8 +241,13 @@ export const createProgressPrinter = (
     }
     const mark = spinner[frame % spinner.length] ?? "";
     const elapsed = formatElapsed(now() - running.startedAt);
+    // A terminal whose size Node cannot read has no columns, even though the type says it has.
+    const columns = status.columns();
+    if (!Number.isFinite(columns)) {
+      return;
+    }
     // The line must not wrap, or clearing it would leave a part of it.
-    const room = status.columns() - 1 - `${mark}   ${elapsed}`.length;
+    const room = columns - 1 - `${mark}   ${elapsed}`.length;
     if (room < 1) {
       return;
     }

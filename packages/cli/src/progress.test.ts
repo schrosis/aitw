@@ -313,6 +313,15 @@ describe("the status line", () => {
     expect(written.at(-1)).toBe(`${clear}⠋ a-step-wit…  0:00`);
   });
 
+  it.each([Number.NaN, 0])("is not drawn when the width of the terminal is %d", (columns) => {
+    const { advance, printer, written } = setUp(columns);
+
+    printer.emit({ run: "make", step: "build", type: "stepStarted" });
+    advance(1000);
+
+    expect(written.join("")).toBe("build\n│ > make\n");
+  });
+
   it("goes away for good when it is closed", () => {
     const { advance, printer, stopped, written } = setUp();
     printer.emit({ run: "make", step: "build", type: "stepStarted" });

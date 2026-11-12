@@ -161,7 +161,11 @@ export const followRun = async (
       address: server.address,
       eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
       eventSink,
-      onWarning: (message) => context.stderr(`${name}: warning: ${message}\n`),
+      onWarning: (message) => {
+        // A warning comes while a step runs, so it must not run into the status line.
+        printer?.clear();
+        context.stderr(`${name}: warning: ${message}\n`);
+      },
       aiRunner: createAiRunner({ cwd: root, plugins: createRegistry(undefined, loaded) }),
       encryptionKey: loadEncryptionKey(),
       plugins: createRegistry(terminal, loaded),

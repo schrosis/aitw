@@ -109,6 +109,7 @@ export const colorsOf = (stream: {
 
 const processContext = (): ProgramContext => ({
   colors: { stderr: colorsOf(process.stderr), stdout: colorsOf(process.stdout) },
+  columns: process.stdout.isTTY ? () => process.stdout.columns : undefined,
   cwd: process.cwd(),
   executable: process.argv[1] ?? "aitw",
   interruptSignal,

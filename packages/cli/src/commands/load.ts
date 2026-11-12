@@ -11,6 +11,11 @@ import { resolveWorkflow } from "../workflows.js";
 /** Environment that a command runs in. */
 export interface CommandContext {
   cwd: string;
+  /**
+   * Returns the width of standard output when it is a terminal, which can show a status line.
+   * It is absent for a pipe or a file.
+   */
+  columns?: (() => number) | undefined;
   /** Whether to color the text of each stream, such as for a terminal that has colors. */
   colors?: Readonly<Record<"stderr" | "stdout", boolean>> | undefined;
   stdout: (text: string) => void;

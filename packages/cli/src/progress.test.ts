@@ -8,6 +8,7 @@ import {
   createProgressPrinter,
   createStepColors,
   formatDuration,
+  formatElapsed,
 } from "./progress.ts";
 import type { ProgressOptions } from "./progress.ts";
 
@@ -206,5 +207,120 @@ describe("createProgressPrinter", () => {
     // Standard error goes to a file here, so its lines have no escape sequences.
     expect(written).toContain("[err]│ warn\n");
     expect(written).toContain("\u001B[36m│\u001B[39m done\n");
+  });
+});
+
+describe("formatElapsed", () => {
+  it.each([
+    [0, "0:00"],
+    [42_900, "0:42"],
+    [725_000, "12:05"],
+    [3_723_000, "1:02:03"],
+  ])("formats %d ms as %s", (elapsedMs, expected) => {
+    expect(formatElapsed(elapsedMs)).toBe(expected);
+  });
+});
+
+const clear = "\r\u001B[2K";
+
+/** A printer whose clock and interval the test moves, on a terminal of a width. */
+const setUp = (columns = 80) => {
+  const written: string[] = [];
+  let time = 0;
+  let tick: (() => void) | undefined;
+  let stopped = false;
+  const printer = createProgressPrinter(
+    {
+      stderr: (text) => written.push(`[err]${text}`),
+      stdout: (text) => written.push(text),
+    },
+    {
+      status: {
+        columns: () => columns,
+        every: (callback) => {
+          tick = callback;
+          return () => {
+            stopped = true;
+          };
+        },
+        now: () => time,
+      },
+    },
+  );
+  return {
+    printer,
+    written,
+    advance: (ms: number) => {
+      time += ms;
+      tick?.();
+    },
+    stopped: () => stopped,
+  };
+};
+
+describe("the status line", () => {
+  it("shows the running step and its elapsed time below its output", () => {
+    const { advance, printer, written } = setUp();
+
+    printer.emit({ run: "make", step: "build", type: "stepStarted" });
+    expect(written.join("")).toBe(`build\n│ > make\n${clear}⠋ build  0:00`);
+
+    advance(42_000);
+    expect(written.at(-1)).toBe(`${clear}⠙ build  0:42`);
+
+    // Output is written over the status line, which comes back below it.
+    written.length = 0;
+    printer.emit({ step: "build", stream: "stderr", text: "warn\n", type: "stepOutput" });
+    expect(written).toEqual([clear, "[err]│ warn\n", `${clear}⠙ build  0:42`]);
+  });
+
+  it("removes the status line when the step finishes", () => {
+    const { advance, printer, written } = setUp();
+    printer.emit({ run: "make", step: "build", type: "stepStarted" });
+
+    written.length = 0;
+    printer.emit({ durationMs: 0, outcome: "succeeded", step: "build", type: "stepFinished" });
+    advance(1000);
+
+    expect(written).toEqual([clear, "✓ build  0.0s\n\n"]);
+  });
+
+  it("is not drawn over a line that output left open", () => {
+    const { advance, printer, written } = setUp();
+    printer.emit({ run: "make", step: "build", type: "stepStarted" });
+
+    printer.emit({ step: "build", stream: "stdout", text: "Compiling", type: "stepOutput" });
+    advance(1000);
+
+    expect(written.at(-1)).toBe("│ Compiling");
+  });
+
+  it("is not drawn while a wait step asks", () => {
+    const { advance, printer, written } = setUp();
+
+    printer.emit({ message: "Approve?", step: "ask", type: "stepStarted" });
+    advance(1000);
+
+    expect(written.join("")).toBe("ask\n│ > Approve?\n");
+  });
+
+  it("shortens the step to fit the terminal", () => {
+    const { printer, written } = setUp(20);
+
+    printer.emit({ run: "make", step: "a-step-with-a-long-name", type: "stepStarted" });
+
+    // The line takes 19 columns, one less than the terminal, so that it does not wrap.
+    expect(written.at(-1)).toBe(`${clear}⠋ a-step-wit…  0:00`);
+  });
+
+  it("goes away for good when it is closed", () => {
+    const { advance, printer, stopped, written } = setUp();
+    printer.emit({ run: "make", step: "build", type: "stepStarted" });
+
+    printer.close();
+    advance(1000);
+
+    expect(written.at(-1)).toBe(clear);
+    expect(stopped()).toBe(true);
   });
 });

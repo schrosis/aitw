@@ -14,6 +14,7 @@ import type { LineReader } from "./lines.js";
 import { readProjectConfig } from "./config.js";
 import { createRegistry, loadConfiguredPlugins } from "./plugins.js";
 import { createProgressPrinter } from "./progress.js";
+import type { ProgressPrinter } from "./progress.js";
 import type { OpenedServer } from "./server.js";
 import { projectLogDirectory } from "./state.js";
 
@@ -111,7 +112,7 @@ export const followRun = async (
 ): Promise<number> => {
   const terminal = given ?? createTerminal(context);
   // The configuration file decides what the progress shows, once it is read below.
-  let printer = createProgressPrinter(context, { colors: context.colors, steps });
+  let printer: ProgressPrinter | undefined;
   // The script or AI step that runs now, so that an interrupt can tell that the run waits for it.
   let runningStep: string | undefined;
   const eventSink: EventSink = {
@@ -122,12 +123,13 @@ export const followRun = async (
       } else if (event.type === "stepFinished") {
         runningStep = undefined;
       }
-      printer.emit(event);
+      printer?.emit(event);
     },
   };
 
   const detach = new AbortController();
   const onInterrupt = (): void => {
+    printer?.clear();
     // The interrupt can come while a question waits on the same line.
     context.stdout("\n");
     if (!server.durable) {
@@ -149,11 +151,13 @@ export const followRun = async (
     printer = createProgressPrinter(context, {
       colors: context.colors,
       showCommands: read.config.output?.showCommands,
+      // A status line needs a terminal, which can move the cursor back over it.
+      status: context.columns === undefined ? undefined : { columns: context.columns },
       steps,
     });
     // Plugins load before the run starts, so that a broken one stops nothing.
     const loaded = await loadConfiguredPlugins(read, root);
-    const outcome = await follow({
+    const following = follow({
       address: server.address,
       eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
       eventSink,
@@ -165,6 +169,8 @@ export const followRun = async (
       scriptRunner: createLocalScriptRunner({ cwd: root }),
       ...(server.durable ? { detach: detach.signal } : { signal: interrupt }),
     });
+    // The status line is removed before the result of the run is written.
+    const outcome = await following.finally(() => printer?.close());
     if (outcome.status === "detached") {
       context.stderr(`${name}: detached. Run "aitw resume${server.options}" to continue\n`);
       return detachedExitCode;
@@ -188,6 +194,8 @@ export const followRun = async (
     context.stderr(`${name}: failed: ${rootMessage(error)}\n`);
     return 1;
   } finally {
+    // The run may not have started, such as when a plugin cannot be loaded.
+    printer?.close();
     interrupt.removeEventListener("abort", onInterrupt);
     // A terminal that the caller passed is closed by the caller.
     if (given === undefined) {

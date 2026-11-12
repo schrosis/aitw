@@ -35,6 +35,15 @@ export type {
 } from "./run.js";
 export type { WorkflowResult } from "./workflows/index.js";
 export { answerUpdateName, waitingQueryName } from "./messages.js";
+export { answeredElsewhereMessage } from "./answer.js";
+export { AnswerRejectedError, answerInbox, listInbox } from "./inbox.js";
+export type {
+  AnswerInboxOptions,
+  Inbox,
+  InboxQuestion,
+  ListInboxOptions,
+  UnreadableRun,
+} from "./inbox.js";
 export type { Answer, WaitingStep } from "./messages.js";
 export { startWorker } from "./worker.js";
 export type { RunningWorker, StartWorkerOptions } from "./worker.js";

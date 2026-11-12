@@ -2,8 +2,9 @@ import { createRequire } from "node:module";
 import { WriteStream } from "node:tty";
 
 import { configureRuntime } from "@aitw/engine";
-import { Command, Option } from "@commander-js/extra-typings";
+import { Command, InvalidArgumentError, Option } from "@commander-js/extra-typings";
 
+import { answerInboxCommand, listInboxCommand } from "./commands/inbox.js";
 import type { CommandContext } from "./commands/load.js";
 import { cancel, resume } from "./commands/resume.js";
 import { run } from "./commands/run.js";
@@ -193,6 +194,14 @@ const toServerOptions = (
   return address === undefined ? undefined : { address, type: "address" };
 };
 
+/** Parses the value of `--visit`, which counts the earlier visits of a step from 0. */
+const parseVisit = (value: string): number => {
+  if (!/^\d+$/u.test(value)) {
+    throw new InvalidArgumentError("Enter a whole number from 0");
+  }
+  return Number(value);
+};
+
 /** Creates the `aitw` command line program. */
 export const createProgram = (context: ProgramContext = processContext()) => {
   const version = readVersion();
@@ -302,6 +311,62 @@ ${daemonHelp}`,
             prepareEngine: context.prepareEngine,
             server,
             signal,
+            workflowId,
+          },
+          context,
+        ),
+      );
+    });
+
+  const inbox = program
+    .command("inbox")
+    .description("List and answer the wait steps of the project that wait for someone to answer");
+
+  inbox
+    .command("list")
+    .description("List the wait steps that wait for an answer, with the command that answers each")
+    .addOption(new Option("--address <address>", "address of the Temporal Server"))
+    .action(async ({ address }) => {
+      context.setExitCode(
+        await listInboxCommand(
+          {
+            server: address === undefined ? undefined : { address, type: "address" },
+            signal: context.interruptSignal(),
+            version,
+          },
+          context,
+        ),
+      );
+    });
+
+  inbox
+    .command("answer")
+    .description("Answer a wait step of a run, such as one that aitw inbox list shows")
+    .argument("<workflow-id>", "ID of the run")
+    .requiredOption("--step <step>", "ID of the waiting step")
+    .option("--visit <number>", "visit of the step, which aitw inbox list shows", parseVisit)
+    .requiredOption(
+      "--values <json-or-file>",
+      "answers as a JSON object or the path of a .json file",
+    )
+    .requiredOption("--detach", "exit after answering. The run goes on in aitw daemon")
+    .addOption(new Option("--address <address>", "address of the Temporal Server"))
+    .addHelpText(
+      "after",
+      `
+The run must be one that aitw daemon runs, such as a run that was detached from "aitw run".
+To answer a run and follow it in the terminal, use "aitw resume".`,
+    )
+    .action(async (workflowId, { address, step, values, visit }) => {
+      context.setExitCode(
+        await answerInboxCommand(
+          {
+            server: address === undefined ? undefined : { address, type: "address" },
+            signal: context.interruptSignal(),
+            step,
+            values,
+            version,
+            visit,
             workflowId,
           },
           context,

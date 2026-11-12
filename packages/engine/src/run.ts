@@ -10,6 +10,7 @@ import type {
   Intermediate,
   PluginRegistry,
   ScriptRunner,
+  WorkflowEvent,
 } from "@aitw/core";
 import { Client, Connection } from "@temporalio/client";
 import type { WorkflowHandle } from "@temporalio/client";
@@ -227,6 +228,21 @@ const follow = async (
       handle = await open();
       const { workflowId } = handle;
       const current = handle;
+      // The method that asks a step hears of its end before it is shown, so that the notice that
+      // another process answered it comes first.
+      const finishedListeners = new Set<
+        (event: Extract<WorkflowEvent, { type: "stepFinished" }>) => void
+      >();
+      const shownSink: EventSink = {
+        emit: (event) => {
+          if (event.type === "stepFinished") {
+            for (const listener of finishedListeners) {
+              listener(event);
+            }
+          }
+          eventSink.emit(event);
+        },
+      };
       // A log that cannot be read would hide every later event, so it is reported once.
       let warned = false;
       follower = followEvents({
@@ -240,7 +256,7 @@ const follow = async (
           }
         },
         runId: workflowId,
-        sink: eventSink,
+        sink: shownSink,
       });
       const visible = follower;
       const cancel = (): void => {
@@ -265,6 +281,11 @@ const follow = async (
         : answerWaits({
             flush: visible.flush,
             handle: current,
+            notify: (event) => eventSink.emit(event),
+            onStepFinished: (listener) => {
+              finishedListeners.add(listener);
+              return () => finishedListeners.delete(listener);
+            },
             plugins,
             report: async (event) => {
               eventLog.append(workflowId, event);
@@ -303,6 +324,9 @@ const follow = async (
         waitingForResult.abort();
         // The result of a detached run is not needed.
         result.catch(() => {});
+        // The end of a step that another process answered comes before the end of the run, so it
+        // is shown while the method still asks, which then shows the notice first.
+        await visible.flush();
         answering.abort();
         await answered;
         signal?.removeEventListener("abort", cancel);

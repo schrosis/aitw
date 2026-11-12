@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { WriteStream } from "node:tty";
 
 import { configureRuntime } from "@aitw/engine";
 import { Command, Option } from "@commander-js/extra-typings";
@@ -86,9 +87,28 @@ const stopSignal = (): AbortSignal => {
   return controller.signal;
 };
 
+/**
+ * Returns whether to color the text of a stream.
+ *
+ * A terminal follows NO_COLOR, FORCE_COLOR, and what it supports. Another stream, such as a pipe
+ * or a file, is colored only when FORCE_COLOR asks for it, as Node reads it.
+ */
+export const colorsOf = (stream: {
+  isTTY?: boolean;
+  hasColors?: (() => boolean) | undefined;
+}): boolean => {
+  if (stream.isTTY === true && stream.hasColors !== undefined) {
+    return stream.hasColors();
+  }
+  const force = process.env.FORCE_COLOR;
+  // 16 colors are what hasColors() asks for by default.
+  return (
+    force !== undefined && WriteStream.prototype.hasColors.call(stream, 16, { FORCE_COLOR: force })
+  );
+};
+
 const processContext = (): ProgramContext => ({
-  // Only a terminal has hasColors, which honors NO_COLOR and FORCE_COLOR.
-  colors: process.stdout.isTTY && process.stdout.hasColors(),
+  colors: { stderr: colorsOf(process.stderr), stdout: colorsOf(process.stdout) },
   cwd: process.cwd(),
   executable: process.argv[1] ?? "aitw",
   interruptSignal,

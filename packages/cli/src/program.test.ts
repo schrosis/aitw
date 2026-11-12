@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { createProgram } from "./program.ts";
+import { colorsOf, createProgram } from "./program.ts";
 import { createOutput, fixtureProject } from "./testing.ts";
 
 const execute = async (args: string[]) => {
@@ -82,5 +82,33 @@ describe("createProgram", () => {
       exitCode: 1,
       stdout: "",
     });
+  });
+});
+
+describe("colorsOf", () => {
+  const forceColor = process.env.FORCE_COLOR;
+
+  afterEach(() => {
+    if (forceColor === undefined) {
+      delete process.env.FORCE_COLOR;
+    } else {
+      process.env.FORCE_COLOR = forceColor;
+    }
+  });
+
+  it("asks a terminal whether it has colors", () => {
+    expect(colorsOf({ hasColors: () => true, isTTY: true })).toBe(true);
+    expect(colorsOf({ hasColors: () => false, isTTY: true })).toBe(false);
+  });
+
+  it("colors another stream only when FORCE_COLOR asks for it", () => {
+    delete process.env.FORCE_COLOR;
+    expect(colorsOf({})).toBe(false);
+
+    process.env.FORCE_COLOR = "1";
+    expect(colorsOf({})).toBe(true);
+
+    process.env.FORCE_COLOR = "0";
+    expect(colorsOf({})).toBe(false);
   });
 });

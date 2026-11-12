@@ -27,6 +27,24 @@ const stepColors: readonly Style[] = [
 /** Prefix of the lines that belong to a step. */
 const gutter = "│";
 
+/**
+ * Returns the colors of steps, in the order of the definition. A step that is not listed gets the
+ * next color when it first appears.
+ *
+ * @param steps IDs of the steps in the order of the definition.
+ */
+export const createStepColors = (steps: readonly string[] = []): ((step: string) => Style) => {
+  const assigned = new Map(steps.map((step, index) => [step, index]));
+  return (step) => {
+    let index = assigned.get(step);
+    if (index === undefined) {
+      index = assigned.size;
+      assigned.set(step, index);
+    }
+    return stepColors[index % stepColors.length] ?? "cyan";
+  };
+};
+
 /** Formats a duration, such as `4.1s`, `1m 02s`, or `1h 05m`. */
 export const formatDuration = (durationMs: number): string => {
   if (durationMs < 60_000) {
@@ -41,8 +59,8 @@ export const formatDuration = (durationMs: number): string => {
 
 /** Options of {@link createProgressPrinter}. */
 export interface ProgressOptions {
-  /** Whether to color the progress, such as when standard output is a terminal. */
-  colors?: boolean | undefined;
+  /** Whether to color the progress on each stream, such as for a terminal. */
+  colors?: Readonly<Partial<Record<keyof ProgressOutput, boolean>>> | undefined;
   /**
    * IDs of the steps in the order of the definition, which gives each step its color. A step
    * that is not listed gets the next free color when it first runs.
@@ -60,20 +78,15 @@ export interface ProgressOutput {
  * Creates the formatting of progress, which gives each step its color.
  *
  * Without colors, it formats the same text without styles, such as for a file.
+ *
+ * @param colorOf Returns the color of a step, so that formats of several streams share colors.
  */
-export const createProgressFormat = ({ colors = false, steps = [] }: ProgressOptions = {}) => {
+export const createProgressFormat = (
+  colors: boolean,
+  colorOf: (step: string) => Style = createStepColors(),
+) => {
   const style = (format: Style | readonly Style[], text: string): string =>
     colors ? styleText(format, text, { validateStream: false }) : text;
-  const assigned = new Map(steps.map((step, index) => [step, index]));
-  const colorOf = (step: string): Style => {
-    let index = assigned.get(step);
-    if (index === undefined) {
-      index = assigned.size;
-      assigned.set(step, index);
-    }
-    return stepColors[index % stepColors.length] ?? "cyan";
-  };
-
   return {
     /** Returns the prefix of a line of a step, such as of its output. */
     prefix: (step: string): string => `${style(colorOf(step), gutter)} `,
@@ -120,9 +133,14 @@ export const createProgressFormat = ({ colors = false, steps = [] }: ProgressOpt
  */
 export const createProgressPrinter = (
   output: ProgressOutput,
-  options: ProgressOptions = {},
+  { colors = {}, steps }: ProgressOptions = {},
 ): EventSink => {
-  const format = createProgressFormat(options);
+  // Each stream is colored only when it goes to a terminal, and both share the step colors.
+  const colorOf = createStepColors(steps);
+  const formats = {
+    stderr: createProgressFormat(colors.stderr === true, colorOf),
+    stdout: createProgressFormat(colors.stdout === true, colorOf),
+  };
   // Streams whose output does not end with a newline. Their lines are ended before the next step
   // event, on the same stream, so that the output does not run into the next line.
   const open: Record<keyof ProgressOutput, boolean> = { stderr: false, stdout: false };
@@ -135,6 +153,7 @@ export const createProgressPrinter = (
         if (event.text.length === 0) {
           return;
         }
+        const format = formats[event.stream];
         const prefix = format.prefix(event.step);
         // A line starts at the start of the output, unless the previous output on the same
         // stream left its line open.
@@ -163,7 +182,7 @@ export const createProgressPrinter = (
       if (event.type === "stepStarted" && event.provider !== undefined) {
         aiSteps.add(event.step);
       }
-      output.stdout(format.step(event));
+      output.stdout(formats.stdout.step(event));
     },
   };
 };

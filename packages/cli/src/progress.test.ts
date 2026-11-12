@@ -3,7 +3,12 @@ import { stripVTControlCharacters } from "node:util";
 import type { WorkflowEvent } from "@aitw/core";
 import { describe, expect, it } from "vitest";
 
-import { createProgressFormat, createProgressPrinter, formatDuration } from "./progress.ts";
+import {
+  createProgressFormat,
+  createProgressPrinter,
+  createStepColors,
+  formatDuration,
+} from "./progress.ts";
 import type { ProgressOptions } from "./progress.ts";
 
 describe("formatDuration", () => {
@@ -20,7 +25,7 @@ describe("formatDuration", () => {
 });
 
 describe("createProgressFormat", () => {
-  const format = createProgressFormat();
+  const format = createProgressFormat(false);
 
   it("shows the step, and quotes what it runs", () => {
     expect(format.step({ run: 'echo "hoge"', step: "build", type: "stepStarted" })).toBe(
@@ -50,7 +55,7 @@ describe("createProgressFormat", () => {
   });
 
   it("colors each step in the order of the definition, and the outcome", () => {
-    const colored = createProgressFormat({ colors: true, steps: ["fetch", "build"] });
+    const colored = createProgressFormat(true, createStepColors(["fetch", "build"]));
 
     // The second step of the definition gets the second color, even when it runs first.
     expect(colored.step({ run: "make", step: "build", type: "stepStarted" })).toBe(
@@ -131,7 +136,7 @@ describe("createProgressPrinter", () => {
           type: "stepOutput",
         },
       ],
-      { colors: true },
+      { colors: { stdout: true } },
     );
 
     expect(colored).toContain("\u001B[2mRead a.ts\u001B[22m\n");
@@ -139,5 +144,20 @@ describe("createProgressPrinter", () => {
     expect(stripVTControlCharacters(colored)).toBe(
       "review\n│ Read a.ts\ntest\n│ > pnpm test\n│ passed\n",
     );
+  });
+
+  it("colors each stream only when it goes to a terminal", () => {
+    const written = print(
+      [
+        { run: "make", step: "build", type: "stepStarted" },
+        { step: "build", stream: "stderr", text: "warn\n", type: "stepOutput" },
+        { step: "build", stream: "stdout", text: "done\n", type: "stepOutput" },
+      ],
+      { colors: { stdout: true } },
+    );
+
+    // Standard error goes to a file here, so its lines have no escape sequences.
+    expect(written).toContain("[err]│ warn\n");
+    expect(written).toContain("\u001B[36m│\u001B[39m done\n");
   });
 });

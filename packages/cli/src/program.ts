@@ -160,13 +160,7 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .description("Run workflows that combine AI, people, and scripts")
     .version(version);
 
-  program
-    .command("docs")
-    .description("Generate a Markdown document next to each workflow definition")
-    .argument("[workflow]", "workflow name, such as deploy or release/notes. Defaults to all")
-    .action(async (workflow) => {
-      context.setExitCode(await docs(workflow, context));
-    });
+  program.commandsGroup("Getting started:");
 
   program
     .command("init")
@@ -177,30 +171,10 @@ export const createProgram = (context: ProgramContext = processContext()) => {
       context.setExitCode(await init(context));
     });
 
-  program
-    .command("schema")
-    .description(
-      "Generate the JSON Schemas of the workflows and .aitw/config.yaml in .aitw/schemas, with the plugins of the project",
-    )
-    .addHelpText(
-      "after",
-      `
-Refer to them with $schema at the top of each file, which editors use for completion:
-  $schema: ../schemas/workflow.schema.json   (in .aitw/workflows/deploy.yaml)
-  $schema: ./schemas/config.schema.json      (in .aitw/config.yaml)
-Run it again after changing plugins.`,
-    )
-    .action(async () => {
-      context.setExitCode(await schema(context));
-    });
+  // The help command is listed with the commands to start with, instead of in a group of its own.
+  program.helpCommand(true);
 
-  program
-    .command("validate")
-    .description("Validate a workflow definition in .aitw/workflows")
-    .argument("<workflow>", "workflow name, such as deploy or release/notes")
-    .action(async (workflow) => {
-      context.setExitCode(await validate(workflow, context));
-    });
+  program.commandsGroup("Run workflows:");
 
   program
     .command("run")
@@ -293,6 +267,43 @@ ${daemonHelp}`,
         ),
       );
     });
+
+  program.commandsGroup("Write workflows:");
+
+  program
+    .command("validate")
+    .description("Validate a workflow definition in .aitw/workflows")
+    .argument("<workflow>", "workflow name, such as deploy or release/notes")
+    .action(async (workflow) => {
+      context.setExitCode(await validate(workflow, context));
+    });
+
+  program
+    .command("schema")
+    .description(
+      "Generate the JSON Schemas of the workflows and .aitw/config.yaml in .aitw/schemas, with the plugins of the project",
+    )
+    .addHelpText(
+      "after",
+      `
+Refer to them with $schema at the top of each file, which editors use for completion:
+  $schema: ../schemas/workflow.schema.json   (in .aitw/workflows/deploy.yaml)
+  $schema: ./schemas/config.schema.json      (in .aitw/config.yaml)
+Run it again after changing plugins.`,
+    )
+    .action(async () => {
+      context.setExitCode(await schema(context));
+    });
+
+  program
+    .command("docs")
+    .description("Generate a Markdown document next to each workflow definition")
+    .argument("[workflow]", "workflow name, such as deploy or release/notes. Defaults to all")
+    .action(async (workflow) => {
+      context.setExitCode(await docs(workflow, context));
+    });
+
+  program.commandsGroup("Background:");
 
   const daemon = program
     .command("daemon")

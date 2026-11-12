@@ -64,8 +64,24 @@ const describeAnswer = (name: string, declaration: InputDeclaration): string => 
   return `${name}: ${kind}${notes.length === 0 ? "" : ` (${notes.join(", ")})`}${description}`;
 };
 
-/** Formats a question with the command that answers it. */
-const formatQuestion = (question: InboxQuestion): string => {
+/** Where the questions of a project are answered. */
+export interface AnswerTarget {
+  /** Task queue that the resident process serves for the project, when it serves it. */
+  servedTaskQueue?: string | undefined;
+  /** Options that reach the same Temporal Server again, such as ` --address <address>`. */
+  serverOptions: string;
+}
+
+/**
+ * Formats a question with the command that answers it.
+ *
+ * `aitw inbox answer` answers only a run that the resident process runs, so another run is
+ * answered with `aitw resume`, which follows it.
+ */
+export const formatQuestion = (
+  question: InboxQuestion,
+  { servedTaskQueue, serverOptions }: AnswerTarget,
+): string => {
   const { answers, options, run, step, visit, workflowInputs } = question;
   const name = run.memo[workflowMemoKey];
   const header = [
@@ -93,7 +109,9 @@ const formatQuestion = (question: InboxQuestion): string => {
       : `  answers:\n${entries.map(([key, declaration]) => `    ${describeAnswer(key, declaration)}`).join("\n")}`,
   );
   lines.push(
-    `  aitw inbox answer ${run.workflowId} --step ${step} --visit ${visit} --values '{...}' --detach`,
+    run.taskQueue === servedTaskQueue
+      ? `  aitw inbox answer ${run.workflowId} --step ${step} --visit ${visit} --values '{...}' --detach${serverOptions}`
+      : `  aitw resume ${run.workflowId}${serverOptions}  (aitw daemon does not run it)`,
   );
   return `${lines.join("\n")}\n`;
 };
@@ -112,7 +130,12 @@ export const listInboxCommand = async (
     return 1;
   }
   try {
-    const { server } = await openCommandServer(options, root, context, options.signal);
+    const { server, servedTaskQueue } = await openCommandServer(
+      options,
+      root,
+      context,
+      options.signal,
+    );
     try {
       const { questions, unreadable } = await listInbox({
         address: server.address,
@@ -128,7 +151,13 @@ export const listInboxCommand = async (
         context.stdout("No questions in this project\n");
         return unreadable.length === 0 ? 0 : 1;
       }
-      context.stdout(questions.map(formatQuestion).join("\n"));
+      context.stdout(
+        questions
+          .map((question) =>
+            formatQuestion(question, { servedTaskQueue, serverOptions: server.options }),
+          )
+          .join("\n"),
+      );
       return unreadable.length === 0 ? 0 : 1;
     } finally {
       await server.stop();

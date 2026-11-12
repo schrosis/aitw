@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { loadEncryptionKey } from "../encryption.ts";
 import { listProjectRuns } from "../runs.ts";
 import { createOutput, fixtureProject } from "../testing.ts";
-import { answerInboxCommand, listInboxCommand } from "./inbox.ts";
+import { answerInboxCommand, formatQuestion, listInboxCommand } from "./inbox.ts";
 import { cancel } from "./resume.ts";
 import { run } from "./run.ts";
 
@@ -109,7 +109,8 @@ describe("inbox", () => {
           "  answers:",
           "    name: string (required)",
           "    approve: boolean",
-          `  aitw inbox answer ${workflowId} --step ask --visit 0 --values '{...}' --detach`,
+          // The resident process does not run it, so aitw inbox answer would refuse it.
+          `  aitw resume ${workflowId} --address ${environment.address}  (aitw daemon does not run it)`,
         ].join("\n"),
       );
     } finally {
@@ -161,6 +162,28 @@ describe("inbox", () => {
       stdout: "",
     });
   }, 60_000);
+
+  it("tells how to answer a run that the resident process runs", () => {
+    const question = {
+      answers: { ok: { required: true, type: "boolean" as const } },
+      method: "terminal",
+      options: { message: "Deploy?" },
+      run: { memo: {}, startTime: new Date(), taskQueue: "served", workflowId: "deploy-1" },
+      step: "approve",
+      visit: 2,
+    };
+
+    expect(formatQuestion(question, { servedTaskQueue: "served", serverOptions: "" })).toBe(
+      [
+        "deploy-1  approve (visit 2)  started just now",
+        "  │ Deploy?",
+        "  answers:",
+        "    ok: boolean (required)",
+        "  aitw inbox answer deploy-1 --step approve --visit 2 --values '{...}' --detach",
+        "",
+      ].join("\n"),
+    );
+  });
 
   it("needs a project", async () => {
     await expect(list(tmpdir())).resolves.toMatchObject({ exitCode: 1, stdout: "" });

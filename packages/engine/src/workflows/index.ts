@@ -16,6 +16,7 @@ import type {
   WorkflowInput,
 } from "@aitw/core";
 import {
+  ActivityCancellationType,
   ApplicationFailure,
   CancellationScope,
   condition,
@@ -74,6 +75,21 @@ const stepActivities = (timeoutMs: number) =>
     retry: { maximumAttempts: 1 },
     startToCloseTimeout: timeoutMs + activityTimeoutGraceMs,
   });
+
+/**
+ * The activity that answers a wait step with a method that answers in the Worker.
+ *
+ * A wait has no timeout, so the activity may run as long as the run waits. A Worker that stops,
+ * such as when the resident process restarts, misses heartbeats, and another attempt asks
+ * again. A method that fails does not retry, because the activity fails it as non-retryable.
+ * A cancelled wait ends after its method stopped asking, so that no one answers a closed step.
+ */
+const { respondToWait } = proxyActivities<Activities>({
+  cancellationType: ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+  heartbeatTimeout: activityHeartbeatTimeoutMs,
+  retry: { initialInterval: "1 second", maximumInterval: "1 minute" },
+  startToCloseTimeout: "3650 days",
+});
 
 /** Result of {@link aitw}. */
 export interface WorkflowResult {
@@ -194,6 +210,18 @@ const evaluateStrings = (
   return value;
 };
 
+/**
+ * Returns the message of the innermost cause of an error, such as the failure of a method
+ * inside the failure of its activity.
+ */
+const innermostMessage = (error: unknown): string => {
+  let current = error;
+  while (current instanceof Error && current.cause instanceof Error) {
+    current = current.cause;
+  }
+  return current instanceof Error ? current.message : String(current);
+};
+
 /** Evaluates the outputs of a wait step from the answers that it received. */
 const evaluateWaitOutputs = (
   id: string,
@@ -286,6 +314,10 @@ export const aitw = async (
         ) {
           throw new Error(`Step ${step} is not waiting for an answer`);
         }
+        // The definition says where the step is answered, so no other process can answer it.
+        if (current.respondIn === "worker") {
+          throw new Error(`Step ${step} is answered by its wait method ${current.method}`);
+        }
         const accepted = resolveWorkflowInput(current.answers, values);
         if (!accepted.ok) {
           throw new Error(
@@ -303,6 +335,40 @@ export const aitw = async (
       },
     },
   );
+
+  /**
+   * Answers a wait step with a method that answers in the Worker, and validates the answer.
+   *
+   * @returns The answers, with defaults applied.
+   */
+  const answerInWorker = async (
+    step: string,
+    visit: number,
+    method: string,
+    answers: NonNullable<WaitStep["answers"]>,
+    options: Readonly<Record<string, unknown>>,
+  ): Promise<WorkflowInput> => {
+    const run = { inputs: resolved.inputs, workflowId: workflowInfo().workflowId };
+    checkValueSize(step, { options, run });
+    const values = await respondToWait({ answers, method, options, run, step, visit });
+    const accepted = resolveWorkflowInput(answers, values);
+    if (!accepted.ok) {
+      throw ApplicationFailure.nonRetryable(
+        accepted.errors
+          .map(({ message, path }) => `${[`steps.${step}`, ...path].join(".")}: ${message}`)
+          .join("\n"),
+        "InvalidAnswer",
+      );
+    }
+    const answerBytes = jsonBytes(accepted.inputs);
+    if (answerBytes > maxValueBytes) {
+      throw ApplicationFailure.nonRetryable(
+        `steps.${step}: The answer is ${answerBytes} bytes, which exceeds the limit of ${maxValueBytes} bytes`,
+        "AnswerTooLarge",
+      );
+    }
+    return accepted.inputs;
+  };
 
   const { dotenv, start, steps } = validation.intermediate;
   // Sessions of the AI steps of this run, keyed by step, so that each step continues its own.
@@ -418,27 +484,35 @@ export const aitw = async (
           step: waitingStep,
           type: "stepFinished",
         });
+      const waitOptions = typeof options === "object" && options !== null ? { ...options } : {};
       waiting = {
         answers: step.answers,
         method: step.method,
-        options: typeof options === "object" && options !== null ? { ...options } : {},
+        options: waitOptions,
+        ...(step.respondIn === undefined ? {} : { respondIn: step.respondIn }),
         step: id,
         visit: visited,
+        workflowInputs: resolved.inputs,
       };
       answer = undefined;
       try {
         // Cancelling the workflow interrupts the wait.
-        await condition(() => answer !== undefined);
+        const received =
+          step.respondIn === "worker"
+            ? await answerInWorker(id, visited, step.method, step.answers, waitOptions)
+            : await condition(() => answer !== undefined).then(() => answer);
+        // The update clears it for an answer that comes from outside the Worker.
+        waiting = null;
         outputs[id] = evaluateWaitOutputs(id, step, {
           ...context,
           inputs: stepInputs,
-          result: answer,
+          result: received,
         });
         if (step.next.type === "branch") {
           const values: Record<string, unknown> = {
             ...pickReferences([], context, sharedRoots, conditionPaths(step)),
             outputs: outputs[id],
-            result: answer,
+            result: received,
           };
           checkValueSize(id, { values, workflowEnv });
           chosen = await chooseBranch({
@@ -450,10 +524,11 @@ export const aitw = async (
         }
       } catch (error) {
         waiting = null;
+        // It also tells an activity that was cancelled with the run, such as of a wait method.
         if (isCancellation(error)) {
           await CancellationScope.nonCancellable(async () => finish("cancelled"));
         } else {
-          await finish("failed", error instanceof Error ? error.message : String(error));
+          await finish("failed", innermostMessage(error));
         }
         throw error;
       }

@@ -140,8 +140,10 @@ const respondWith = async (
     answers,
     config: undefined,
     options: validated.value,
+    run: { inputs: {}, workflowId: "ask-1" },
     signal,
     step: "ask",
+    visit: 0,
   });
   return { output, values };
 };
@@ -279,8 +281,10 @@ const respondInteractively = async (
     answers: method.answers?.(validated.value, undefined) ?? {},
     config: undefined,
     options: validated.value,
+    run: { inputs: {}, workflowId: "ask-1" },
     signal,
     step: "ask",
+    visit: 0,
   });
 };
 

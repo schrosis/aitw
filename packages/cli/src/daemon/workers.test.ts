@@ -57,6 +57,15 @@ describe("createProjectWorkers", () => {
     expect(started).toHaveLength(1);
   });
 
+  it("gives the Worker the wait methods of the plugins, which answer in the Worker", async () => {
+    await create(succeed).add(project);
+
+    // The registry has the built-in methods, which methods of the project join.
+    expect(started[0]?.plugins?.waitMethodNames()).toEqual(["terminal"]);
+    // The resident process has no terminal, so the terminal does not answer there.
+    expect(started[0]?.plugins?.waitMethod("terminal")).not.toHaveProperty("respond");
+  });
+
   it("rejects a directory without .aitw", async () => {
     await expect(create(succeed).add(directory)).rejects.toThrow("has no .aitw directory");
   });

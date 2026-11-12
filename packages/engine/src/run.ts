@@ -93,7 +93,10 @@ export interface FollowOptions {
    * finish, so that the run can be resumed.
    */
   detach?: AbortSignal;
-  /** Plugins whose wait methods answer the wait steps of the run. */
+  /**
+   * Plugins whose wait methods answer the wait steps of the run: in this process, and in the
+   * Worker of this process for methods that answer in the Worker.
+   */
   plugins?: PluginRegistry;
   /**
    * Whether this process runs a Worker for the run. Without one, another Worker, such as of a
@@ -195,9 +198,18 @@ const follow = async (
     taskQueue,
     workflowsPath: path = workflowsPath,
   } = options;
+  // Waits of the Worker end before it stops, because it waits for them as for running scripts.
+  const stopping = new AbortController();
   const worker = startWorker
     ? await Worker.create({
-        activities: createActivities({ aiRunner, eventLog, readEnvironment, scriptRunner }),
+        activities: createActivities({
+          aiRunner,
+          eventLog,
+          plugins,
+          readEnvironment,
+          scriptRunner,
+          stopping: stopping.signal,
+        }),
         ...workerDataConverter(encryptionKey),
         connection: connections.worker,
         namespace,
@@ -299,7 +311,9 @@ const follow = async (
       }
     };
     // The Worker of this process stops after the run ends or detaches.
-    outcome = await (worker === undefined ? followRun() : worker.runUntil(followRun));
+    outcome = await (worker === undefined
+      ? followRun()
+      : worker.runUntil(async () => followRun().finally(() => stopping.abort())));
   } finally {
     // The Worker has stopped, after the running script finished. Its events are shown before
     // the outcome, also when the run failed.

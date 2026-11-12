@@ -12,4 +12,4 @@ export type { CompileOptions, CompileResult, MissingHint } from "./compile.js";
 
 export { documentMarker, renderMermaid, renderWorkflowDocument } from "./document.js";
 export { buildIntermediate } from "./build.js";
-export type { WaitAnswers } from "./build.js";
+export type { WaitResolution, WaitResolutions } from "./build.js";

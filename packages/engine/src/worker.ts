@@ -1,4 +1,10 @@
-import type { AiRunner, EnvironmentReader, EventLog, ScriptRunner } from "@aitw/core";
+import type {
+  AiRunner,
+  EnvironmentReader,
+  EventLog,
+  PluginRegistry,
+  ScriptRunner,
+} from "@aitw/core";
 import { NativeConnection, Worker } from "@temporalio/worker";
 
 import { createActivities } from "./activities/index.js";
@@ -20,6 +26,8 @@ export interface StartWorkerOptions {
   encryptionKey?: Uint8Array | undefined;
   /** Stores the progress events of the runs of the task queue. */
   eventLog: EventLog;
+  /** Plugins whose wait methods answer in the Worker, such as from a chat. */
+  plugins?: PluginRegistry | undefined;
   /** Path of the workflow code. Defaults to {@link workflowsPath}. */
   workflowsPath?: string;
   /** Receives a failure of the Worker after it started. */
@@ -48,15 +56,24 @@ export const startWorker = async ({
   eventLog,
   namespace = "default",
   onError = () => {},
+  plugins,
   readEnvironment,
   scriptRunner,
   taskQueue,
   workflowsPath: path = workflowsPath,
 }: StartWorkerOptions): Promise<RunningWorker> => {
   const connection = await NativeConnection.connect({ address });
+  const stopping = new AbortController();
   try {
     const worker = await Worker.create({
-      activities: createActivities({ aiRunner, eventLog, readEnvironment, scriptRunner }),
+      activities: createActivities({
+        aiRunner,
+        eventLog,
+        plugins,
+        readEnvironment,
+        scriptRunner,
+        stopping: stopping.signal,
+      }),
       ...workerDataConverter(encryptionKey),
       connection,
       namespace,
@@ -68,6 +85,8 @@ export const startWorker = async ({
     const running = worker.run().catch(onError);
     return {
       stop: async () => {
+        // Waits end first, because the Worker waits for them as for running scripts.
+        stopping.abort();
         if (worker.getState() === "RUNNING") {
           worker.shutdown();
         }

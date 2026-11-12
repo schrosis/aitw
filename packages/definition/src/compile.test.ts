@@ -99,6 +99,12 @@ describe("compileDefinition wait steps", () => {
           }),
           defineWaitMethod({ name: "watch", with: z.strictObject({}) }),
           defineWaitMethod({
+            answers: () => ({}),
+            name: "chat",
+            respondIn: "worker",
+            with: z.strictObject({}),
+          }),
+          defineWaitMethod({
             answers: () => {
               throw new Error("broken plugin");
             },
@@ -133,6 +139,21 @@ describe("compileDefinition wait steps", () => {
     });
   });
 
+  it("builds where the method answers", () => {
+    const inWorker = compileDefinition(waitSource("    method: chat"), { plugins });
+    const inFollower = compileDefinition(
+      waitSource("    method: ask\n    with:\n      message: Name?\n      name: who"),
+      { plugins },
+    );
+
+    expect(inWorker).toMatchObject({
+      intermediate: { steps: { ask: { respondIn: "worker" } } },
+      ok: true,
+    });
+    // A step that the follower answers keeps the representation of earlier versions.
+    expect(inFollower.ok && inFollower.intermediate.steps.ask).not.toHaveProperty("respondIn");
+  });
+
   it("builds a method without answers", () => {
     const result = compileDefinition(waitSource("    method: watch"), { plugins });
 
@@ -146,7 +167,7 @@ describe("compileDefinition wait steps", () => {
         {
           column: 13,
           line: 6,
-          message: "Unknown wait method: slack. Available methods: ask, watch, broken",
+          message: "Unknown wait method: slack. Available methods: ask, watch, chat, broken",
           path: ["steps", "ask", "method"],
         },
       ],

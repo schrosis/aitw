@@ -1,5 +1,11 @@
 import { intermediateVersion } from "@aitw/core";
-import type { InputDeclaration, Intermediate, IntermediateStep, Transition } from "@aitw/core";
+import type {
+  InputDeclaration,
+  Intermediate,
+  IntermediateStep,
+  Transition,
+  WaitRespondIn,
+} from "@aitw/core";
 
 import type { Definition } from "./schema.js";
 
@@ -14,10 +20,16 @@ const toMilliseconds = (duration: string): number => {
   return Number(duration.slice(0, -1)) * unit;
 };
 
-/** Answers of the wait steps, keyed by step ID, as their methods describe them. */
-export type WaitAnswers = Readonly<
-  Record<string, Readonly<Record<string, InputDeclaration>> | undefined>
->;
+/** What the method of a wait step describes. */
+export interface WaitResolution {
+  /** Values that the step receives as answers. */
+  answers?: Readonly<Record<string, InputDeclaration>> | undefined;
+  /** Where the method answers. */
+  respondIn?: WaitRespondIn | undefined;
+}
+
+/** What the methods of the wait steps describe, keyed by step ID. */
+export type WaitResolutions = Readonly<Record<string, WaitResolution | undefined>>;
 
 const toDirectTransition = (name: string) =>
   name === "end" ? { type: "end" as const } : { step: name, type: "step" as const };
@@ -36,7 +48,7 @@ const buildTransition = (next: Definition["steps"][string]["next"]): Transition 
 const buildStep = (
   id: string,
   step: Definition["steps"][string],
-  answers: WaitAnswers,
+  waits: WaitResolutions,
 ): IntermediateStep => {
   const common = {
     ...(step.maxVisits === undefined ? {} : { maxVisits: step.maxVisits }),
@@ -69,10 +81,12 @@ const buildStep = (
       with: step.with ?? {},
     };
   }
-  const stepAnswers = answers[id];
+  const { answers, respondIn } = waits[id] ?? {};
   return {
     ...common,
-    ...(stepAnswers === undefined ? {} : { answers: { ...stepAnswers } }),
+    ...(answers === undefined ? {} : { answers: { ...answers } }),
+    // The process that follows the run answers by default, as in runs without this field.
+    ...(respondIn === "worker" ? { respondIn } : {}),
     method: step.method,
     type: "wait",
     with: step.with ?? {},
@@ -82,18 +96,18 @@ const buildStep = (
 /**
  * Builds the intermediate representation of a definition that passed the schema.
  *
- * @param answers Answers of the wait steps, which come from their methods.
+ * @param waits What the methods of the wait steps describe.
  */
 export const buildIntermediate = (
   definition: Definition,
-  answers: WaitAnswers = {},
+  waits: WaitResolutions = {},
 ): Intermediate => ({
   inputs: definition.inputs ?? {},
   ...(definition.env === undefined ? {} : { env: definition.env }),
   ...(definition.dotenv === undefined ? {} : { dotenv: definition.dotenv }),
   start: definition.start,
   steps: Object.fromEntries(
-    Object.entries(definition.steps).map(([id, step]) => [id, buildStep(id, step, answers)]),
+    Object.entries(definition.steps).map(([id, step]) => [id, buildStep(id, step, waits)]),
   ),
   version: intermediateVersion,
 });

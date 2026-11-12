@@ -58,7 +58,7 @@ const formatPrefixedErrors = (prefix: string, errors: { path: unknown[]; message
 
 /** Asks the method of a waiting step for an answer until the workflow accepts one. */
 const answerStep = async (
-  { answers, method: name, options, step, visit }: WaitingStep,
+  { answers, method: name, options, step, visit, workflowInputs = {} }: WaitingStep,
   { flush, handle, plugins, report, signal }: AnswerWaitsOptions,
 ): Promise<void> => {
   const method = plugins.waitMethod(name);
@@ -79,8 +79,10 @@ const answerStep = async (
         answers,
         config: plugins.waitMethodConfig(name),
         options: validated.value,
+        run: { inputs: workflowInputs, workflowId: handle.workflowId },
         signal,
         step,
+        visit,
       }),
       signal,
     );
@@ -118,7 +120,8 @@ export const answerWaits = async (options: AnswerWaitsOptions): Promise<void> =>
     const waiting = await handle
       .query<WaitingStep | null>(waitingQueryName)
       .catch((): WaitingStep | null => null);
-    if (waiting !== null && !signal.aborted) {
+    // The Worker answers a step whose method answers there, so this process only waits.
+    if (waiting !== null && waiting.respondIn !== "worker" && !signal.aborted) {
       await answerStep(waiting, options);
       interval = minPollIntervalMs;
       continue;

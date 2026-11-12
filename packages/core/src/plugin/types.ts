@@ -27,10 +27,20 @@ export interface WaitMethod<Options = unknown, Config = unknown> {
    */
   answers?(options: Options, config: Config): Readonly<Record<string, InputDeclaration>>;
   /**
+   * Where {@link WaitMethod.respond} runs. Defaults to `follower`.
+   *
+   * - `follower`: the process that follows the run, such as `aitw run`, which has a terminal.
+   *   A run that no process follows is not answered until one resumes it.
+   * - `worker`: the Worker of the run, such as of the resident process, also while no process
+   *   follows the run. Use it for a method that answers outside the terminal, such as from a
+   *   chat. The workflow then accepts answers only from the method.
+   */
+  respondIn?: WaitRespondIn;
+  /**
    * Produces the answers of a step, such as by asking someone in the terminal.
    *
-   * It runs in the process that follows the run, such as `aitw run`, while the workflow waits.
-   * The workflow validates the values again, and a method that has no answers does not use it.
+   * It runs where {@link WaitMethod.respondIn} says, while the workflow waits. The workflow
+   * validates the values again, and a method that has no answers does not use it.
    *
    * @returns Values of the answers, keyed by name.
    */
@@ -39,10 +49,25 @@ export interface WaitMethod<Options = unknown, Config = unknown> {
   ): Promise<Readonly<Record<string, unknown>>>;
 }
 
+/** Where a wait method answers. See {@link WaitMethod.respondIn}. */
+export type WaitRespondIn = "follower" | "worker";
+
+/** The run that a wait step belongs to, which a method can show to tell runs apart. */
+export interface WaitRun {
+  /** ID of the workflow run, such as `deploy-<uuid>`. */
+  workflowId: string;
+  /** Values of the workflow input, after defaults are applied. */
+  inputs: Readonly<Record<string, unknown>>;
+}
+
 /** What {@link WaitMethod.respond} receives. */
 export interface WaitResponseContext<Options, Config = unknown> {
+  /** The run that waits. */
+  run: WaitRun;
   /** ID of the waiting step. */
   step: string;
+  /** How many times the step ran before, which tells the visits of a loop apart. */
+  visit: number;
   /** Options from `with`, after its expressions are evaluated and the schema is applied. */
   options: Options;
   /** Settings of the plugin, after its `config` schema is applied. */

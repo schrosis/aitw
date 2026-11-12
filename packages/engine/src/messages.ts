@@ -1,4 +1,4 @@
-import type { InputDeclaration } from "@aitw/core";
+import type { InputDeclaration, WaitRespondIn } from "@aitw/core";
 
 /**
  * Messages between the interpreter workflow and the processes that follow a run.
@@ -24,6 +24,13 @@ export interface WaitingStep {
   options: Readonly<Record<string, unknown>>;
   /** Declarations of the answers that the workflow accepts. */
   answers: Readonly<Record<string, InputDeclaration>>;
+  /**
+   * Where the method answers. A step that the Worker answers does not accept answers from the
+   * process that follows the run. Runs of earlier versions do not report it.
+   */
+  respondIn?: WaitRespondIn | undefined;
+  /** Values of the workflow input. Runs of earlier versions do not report them. */
+  workflowInputs?: Readonly<Record<string, unknown>> | undefined;
 }
 
 /** Argument of the answer update. */

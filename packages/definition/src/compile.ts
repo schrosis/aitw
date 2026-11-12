@@ -2,7 +2,7 @@ import { createPluginRegistry, validateIntermediate, validateWithSchema } from "
 import type { Intermediate, PluginRegistry, ValidationError } from "@aitw/core";
 
 import { buildIntermediate, toDefinitionPath } from "./build.js";
-import type { WaitAnswers } from "./build.js";
+import type { WaitResolution, WaitResolutions } from "./build.js";
 import { parseDefinition } from "./parse.js";
 import type { DefinitionError } from "./parse.js";
 import type { Definition } from "./schema.js";
@@ -27,8 +27,7 @@ export interface CompileOptions {
 export type MissingHint = (kind: "aiProvider" | "waitMethod", name: string) => string | undefined;
 
 /**
- * Validates the method and `with` of every wait step, and collects the answers that the
- * methods describe.
+ * Validates the method and `with` of every wait step, and collects what the methods describe.
  *
  * The paths of the errors are definition paths.
  */
@@ -36,8 +35,8 @@ const resolveWaitSteps = (
   definition: Definition,
   plugins: PluginRegistry,
   missingHint: MissingHint,
-): { answers: WaitAnswers; errors: ValidationError[] } => {
-  const answers: Record<string, WaitAnswers[string]> = {};
+): { waits: WaitResolutions; errors: ValidationError[] } => {
+  const waits: Record<string, WaitResolution> = {};
   const errors: ValidationError[] = [];
   for (const [id, step] of Object.entries(definition.steps)) {
     if (step.type !== "wait") {
@@ -67,7 +66,10 @@ const resolveWaitSteps = (
     }
     // A bug in a plugin is reported at the step instead of stopping the command.
     try {
-      answers[id] = method.answers?.(options.value, plugins.waitMethodConfig(step.method));
+      waits[id] = {
+        answers: method.answers?.(options.value, plugins.waitMethodConfig(step.method)),
+        respondIn: method.respondIn,
+      };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       errors.push({
@@ -76,7 +78,7 @@ const resolveWaitSteps = (
       });
     }
   }
-  return { answers, errors };
+  return { errors, waits };
 };
 
 /**
@@ -131,10 +133,10 @@ export const compileDefinition = (
     return parsed;
   }
 
-  const waits = resolveWaitSteps(parsed.definition, plugins, missingHint);
-  const validation = validateIntermediate(buildIntermediate(parsed.definition, waits.answers));
+  const { errors: waitErrors, waits } = resolveWaitSteps(parsed.definition, plugins, missingHint);
+  const validation = validateIntermediate(buildIntermediate(parsed.definition, waits));
   const errors = [
-    ...waits.errors,
+    ...waitErrors,
     ...checkAiSteps(parsed.definition, plugins, missingHint),
     ...(validation.ok
       ? []

@@ -1,11 +1,13 @@
 import {
   AiTimeoutError,
   conditionReferences,
+  createPluginRegistry,
   embedValue,
   evaluateCondition,
   evaluateExpression,
   parseCondition,
   ScriptTimeoutError,
+  validateWithSchema,
 } from "@aitw/core";
 import type {
   AiRequest,
@@ -14,6 +16,8 @@ import type {
   AiRunOptions,
   EnvironmentReader,
   EventLog,
+  InputDeclaration,
+  PluginRegistry,
   ScriptOutput,
   ScriptRequest,
   ScriptResult,
@@ -21,6 +25,7 @@ import type {
   ScriptRunOptions,
   StepOutcome,
   Transition,
+  WaitRun,
   WorkflowEvent,
 } from "@aitw/core";
 import { ApplicationFailure, Context } from "@temporalio/activity";
@@ -36,6 +41,16 @@ export interface ActivityDependencies {
   readEnvironment?: EnvironmentReader | undefined;
   /** Stores progress events, keyed by the workflow ID. Events are discarded when it is omitted. */
   eventLog?: EventLog | undefined;
+  /**
+   * Plugins whose wait methods answer in the Worker. A step of such a method fails when its
+   * method is missing.
+   */
+  plugins?: PluginRegistry | undefined;
+  /**
+   * Aborted when the Worker starts to stop. A wait method then stops asking, and the step is
+   * asked again when a Worker runs again, because a Worker waits for running activities.
+   */
+  stopping?: AbortSignal | undefined;
   /**
    * Interval of activity heartbeats, in milliseconds.
    *
@@ -115,6 +130,22 @@ export interface AiStepResult {
   sessionId?: string | undefined;
   /** ID of the step to go to, or `null` to finish, when the step has branches. */
   next?: string | null | undefined;
+}
+
+/** Input of {@link Activities.respondToWait}. */
+export interface WaitRequest {
+  /** ID of the step in the workflow definition. */
+  step: string;
+  /** How many times the step ran before. */
+  visit: number;
+  /** Name of the wait method, as the definition writes it. */
+  method: string;
+  /** Options from `with`, after its expressions are evaluated. */
+  options: Readonly<Record<string, unknown>>;
+  /** Declarations of the answers that the workflow accepts. */
+  answers: Readonly<Record<string, InputDeclaration>>;
+  /** The run that waits. */
+  run: WaitRun;
 }
 
 /** Values that a step publishes to later steps, keyed by name. */
@@ -375,8 +406,10 @@ export const createActivities = ({
   aiRunner,
   eventLog = discardEvents,
   heartbeatIntervalMs = 5000,
+  plugins = createPluginRegistry(),
   readEnvironment,
   scriptRunner,
+  stopping,
 }: ActivityDependencies) => {
   /**
    * Reports the start and the end of a step around its work, and keeps the activity alive.
@@ -677,6 +710,70 @@ export const createActivities = ({
           },
         };
       });
+    },
+
+    /**
+     * Answers a wait step with a method that answers in the Worker, and returns the values.
+     *
+     * The workflow validates the values. A method that fails fails the step. A Worker that stops
+     * stops the method and fails the attempt as retryable, so that the next Worker asks again.
+     */
+    respondToWait: async ({
+      answers,
+      method: name,
+      options,
+      run,
+      step,
+      visit,
+    }: WaitRequest): Promise<Readonly<Record<string, unknown>>> => {
+      const method = plugins.waitMethod(name);
+      if (method?.respond === undefined || method.respondIn !== "worker") {
+        throw ApplicationFailure.nonRetryable(
+          `steps.${step}: Wait method ${name} cannot answer in this Worker`,
+          "WaitMethodUnavailable",
+        );
+      }
+      const validated = validateWithSchema(method.with, options);
+      if (!validated.ok) {
+        throw ApplicationFailure.nonRetryable(
+          validated.errors
+            .map(({ message, path }) => `${["steps", step, "with", ...path].join(".")}: ${message}`)
+            .join("\n"),
+          "InvalidWaitOptions",
+        );
+      }
+      const context = Context.current();
+      const cancelled = context.cancellationSignal;
+      const signal = stopping === undefined ? cancelled : AbortSignal.any([cancelled, stopping]);
+      const heartbeat = setInterval(() => context.heartbeat(), heartbeatIntervalMs);
+      try {
+        return await method.respond({
+          answers,
+          config: plugins.waitMethodConfig(name),
+          options: validated.value,
+          run,
+          signal,
+          step,
+          visit,
+        });
+      } catch (error) {
+        // A cancelled wait reports the cancellation, which the workflow asked for.
+        if (cancelled.aborted) {
+          throw cancelled.reason;
+        }
+        if (stopping?.aborted === true) {
+          throw ApplicationFailure.retryable(
+            `steps.${step}: The Worker stopped while the step waited`,
+            "WorkerStopping",
+          );
+        }
+        throw ApplicationFailure.nonRetryable(
+          `steps.${step}: Wait method ${name} failed: ${error instanceof Error ? error.message : String(error)}`,
+          "WaitMethodFailed",
+        );
+      } finally {
+        clearInterval(heartbeat);
+      }
     },
   };
 };

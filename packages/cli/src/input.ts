@@ -35,18 +35,24 @@ const parseObject = (text: string, origin: string): ReadInputResult => {
 };
 
 /**
- * Reads the value of `--input`.
+ * Reads the value of `--input`, or of another option that takes values in the same way.
  *
  * A value that starts with `{` after leading white space is a JSON object. Any other value is
  * the path of a `.json` file, relative to the current directory.
+ *
+ * @param option Name of the option, such as `--values`, for messages.
  */
-export const readWorkflowInput = async (value: string, cwd: string): Promise<ReadInputResult> => {
+export const readWorkflowInput = async (
+  value: string,
+  cwd: string,
+  option = "--input",
+): Promise<ReadInputResult> => {
   if (value.trimStart().startsWith("{")) {
-    return parseObject(value, "--input");
+    return parseObject(value, option);
   }
   if (extname(value) !== ".json") {
     return {
-      message: `--input must be a JSON object or the path of a .json file: ${value}`,
+      message: `${option} must be a JSON object or the path of a .json file: ${value}`,
       ok: false,
     };
   }

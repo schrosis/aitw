@@ -14,7 +14,9 @@ import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 
+import { answeredElsewhereMessage } from "./answer.ts";
 import { createMemoryEventLog } from "./events.ts";
+import { answerInbox } from "./inbox.ts";
 import { listRunningWorkflows, resumeWorkflow, runWorkflow } from "./run.ts";
 import {
   IncompatibleRunError,
@@ -285,6 +287,57 @@ describe("runWorkflow", () => {
       ).resolves.toMatchObject({ executedSteps: ["ask", "fetch"], status: "completed" });
       // The process that follows the run does not ask too.
       expect(steps).toEqual(["ask"]);
+    }, 60_000);
+
+    it("stops asking when another process answers, and shows why before the end", async () => {
+      const events: WorkflowEvent[] = [];
+      const { promise: started, resolve: start } = Promise.withResolvers<string>();
+      const { promise: asked, resolve: ask } = Promise.withResolvers<void>();
+      let stopped: unknown;
+
+      const running = runWorkflow({
+        address: environment.address,
+        eventSink: { emit: (event) => events.push(event) },
+        intermediate: waiting,
+        name: "ask",
+        onStart: start,
+        plugins: pluginsWith(
+          async ({ signal }) =>
+            new Promise((_resolve, reject) => {
+              ask();
+              signal.addEventListener("abort", () => {
+                stopped = signal.reason;
+                reject(new Error("stopped"));
+              });
+            }),
+        ),
+        scriptRunner: { run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }) },
+        workflowsPath: fileURLToPath(new URL("./workflows/index.ts", import.meta.url)),
+      });
+      const workflowId = await started;
+      // The method asks before another process answers.
+      await asked;
+      await answerInbox({
+        address: environment.address,
+        step: "ask",
+        values: { name: "elsewhere" },
+        visit: 0,
+        workflowId,
+      });
+
+      await expect(running).resolves.toMatchObject({ executedSteps: ["ask", "fetch"] });
+      expect(stopped).toBeDefined();
+      expect(events.filter(({ step }) => step === "ask").map(({ type }) => type)).toEqual([
+        "stepStarted",
+        "stepOutput",
+        "stepFinished",
+      ]);
+      expect(events).toContainEqual({
+        step: "ask",
+        stream: "stderr",
+        text: `${answeredElsewhereMessage}\n`,
+        type: "stepOutput",
+      });
     }, 60_000);
 
     it("fails a run whose wait method cannot answer here", async () => {

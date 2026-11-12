@@ -64,11 +64,26 @@ const createPromptOutput = (
  *
  * When both standard input and output are terminals, wait steps ask with interactive prompts.
  */
-export const createTerminal = (context: CommandContext): TerminalIO & { close: () => void } => {
+export const createTerminal = (
+  context: CommandContext,
+): TerminalIO & { close: () => void; endLine: () => void } => {
   let lines: LineReader | undefined;
   let echo = false;
+  // Whether a question left its line open, such as a prompt that waits for the answer.
+  let lineOpen = false;
+  const write = (text: string): void => {
+    if (text.length > 0) {
+      context.stdout(text);
+      lineOpen = !text.endsWith("\n");
+    }
+  };
   return {
     close: () => lines?.close(),
+    endLine: () => {
+      if (lineOpen) {
+        write("\n");
+      }
+    },
     interactive: (): TerminalStreams | undefined => {
       const { columns, interrupt, stdin } = context;
       if (stdin === undefined || columns === undefined || interrupt === undefined) {
@@ -81,7 +96,7 @@ export const createTerminal = (context: CommandContext): TerminalIO & { close: (
       // A prompt reads the keys, so lines are read again by a new reader after it.
       lines?.close();
       lines = undefined;
-      return { input, interrupt, output: createPromptOutput(context.stdout, columns) };
+      return { input, interrupt, output: createPromptOutput(write, columns) };
     },
     readLine: async (signal) => {
       if (context.stdin === undefined) {
@@ -94,12 +109,16 @@ export const createTerminal = (context: CommandContext): TerminalIO & { close: (
         lines = createLineReader(input);
       }
       const line = await lines.readLine(signal);
-      if (echo && line !== null) {
-        context.stdout(`${line}\n`);
+      if (line !== null) {
+        // A terminal ends the line when Enter is pressed.
+        lineOpen = false;
+        if (echo) {
+          write(`${line}\n`);
+        }
       }
       return line;
     },
-    write: context.stdout,
+    write,
   };
 };
 
@@ -153,6 +172,8 @@ export const followRun = async (
   let runningStep: string | undefined;
   const eventSink: EventSink = {
     emit: (event) => {
+      // A question that another process answered leaves its prompt open.
+      terminal.endLine();
       if (event.type === "stepStarted") {
         runningStep =
           event.run === undefined && event.provider === undefined ? undefined : event.step;

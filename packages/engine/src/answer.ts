@@ -17,6 +17,12 @@ import type { Answer, WaitingStep } from "./messages.js";
 const minPollIntervalMs = 200;
 const maxPollIntervalMs = 2000;
 
+/** Interval of checking whether another process answered the step that this process asks. */
+const answeredPollIntervalMs = 1000;
+
+/** Message that the progress shows when another process answered the step. */
+export const answeredElsewhereMessage = "Answered elsewhere, such as with aitw inbox answer";
+
 /** Options of {@link answerWaits}. */
 export interface AnswerWaitsOptions {
   handle: WorkflowHandle;
@@ -25,6 +31,15 @@ export interface AnswerWaitsOptions {
   report: (event: WorkflowEvent) => Promise<void>;
   /** Shows the events that the run has stored so far. */
   flush: () => Promise<void>;
+  /**
+   * Calls the listener with each `stepFinished` event before the event is shown, and returns a
+   * function that stops calling it. Without it, another answer is noticed only by queries.
+   */
+  onStepFinished?: (
+    listener: (event: Extract<WorkflowEvent, { type: "stepFinished" }>) => void,
+  ) => () => void;
+  /** Shows an event at once, without storing it in the log of the run. */
+  notify?: (event: WorkflowEvent) => void;
   /** Stops answering when aborted, such as when the run ends or is interrupted. */
   signal: AbortSignal;
 }
@@ -56,16 +71,77 @@ const untilAborted = async <T>(promise: Promise<T>, signal: AbortSignal): Promis
 const formatPrefixedErrors = (prefix: string, errors: { path: unknown[]; message: string }[]) =>
   errors.map(({ message, path }) => `${[prefix, ...path].join(".")}: ${message}`).join("\n");
 
+/** Returns whether the run still waits at a visit of a step. A query that fails says nothing. */
+const stillWaits = async (
+  handle: WorkflowHandle,
+  step: string,
+  visit: number,
+): Promise<boolean> => {
+  const waiting = await handle
+    .query<WaitingStep | null>(waitingQueryName)
+    .catch((): "unknown" => "unknown");
+  return waiting === "unknown" || (waiting?.step === step && waiting.visit === visit);
+};
+
+/**
+ * Aborts the returned signal when another process answers the step, such as `aitw inbox answer`,
+ * or when the given signal is aborted.
+ *
+ * The end of the step usually tells first, and the notice is shown before the end. A query
+ * tells when the progress cannot be read.
+ *
+ * @returns The signals, and a function that stops watching.
+ */
+const watchAnswered = (
+  handle: WorkflowHandle,
+  { step, visit }: { step: string; visit: number },
+  { notify = () => {}, onStepFinished, signal }: AnswerWaitsOptions,
+): { answered: AbortSignal; asking: AbortSignal; stop: () => void } => {
+  const answered = new AbortController();
+  const stopped = new AbortController();
+  const markAnswered = (): void => {
+    if (answered.signal.aborted || stopped.signal.aborted) {
+      return;
+    }
+    notify({ step, stream: "stderr", text: `${answeredElsewhereMessage}\n`, type: "stepOutput" });
+    answered.abort(new Error(answeredElsewhereMessage));
+  };
+  // A cancelled step was not answered, and the cancellation stops the method by itself.
+  const unsubscribe = onStepFinished?.((event) => {
+    if (event.step === step && event.outcome !== "cancelled") {
+      markAnswered();
+    }
+  });
+  const check = async (): Promise<void> => {
+    while (!stopped.signal.aborted && !answered.signal.aborted) {
+      await sleep(answeredPollIntervalMs, undefined, { signal: stopped.signal }).catch(() => {});
+      if (!stopped.signal.aborted && !(await stillWaits(handle, step, visit))) {
+        markAnswered();
+      }
+    }
+  };
+  void check();
+  return {
+    answered: answered.signal,
+    asking: AbortSignal.any([signal, answered.signal]),
+    stop: () => {
+      stopped.abort();
+      unsubscribe?.();
+    },
+  };
+};
+
 /** Asks the method of a waiting step for an answer until the workflow accepts one. */
 const answerStep = async (
-  { answers, method: name, options, step, visit, workflowInputs = {} }: WaitingStep,
-  { flush, handle, plugins, report, signal }: AnswerWaitsOptions,
+  { answers, method: name, options: stepOptions, step, visit, workflowInputs = {} }: WaitingStep,
+  options: AnswerWaitsOptions,
 ): Promise<void> => {
+  const { flush, handle, plugins, report, signal } = options;
   const method = plugins.waitMethod(name);
   if (method?.respond === undefined) {
     throw new Error(`steps.${step}: Wait method ${name} cannot answer in this process`);
   }
-  const validated = validateWithSchema(method.with, options);
+  const validated = validateWithSchema(method.with, stepOptions);
   if (!validated.ok) {
     throw new Error(formatPrefixedErrors(`steps.${step}.with`, validated.errors));
   }
@@ -74,18 +150,31 @@ const answerStep = async (
   // questions of the method.
   await flush();
   for (;;) {
-    const values = await untilAborted(
-      method.respond({
-        answers,
-        config: plugins.waitMethodConfig(name),
-        options: validated.value,
-        run: { inputs: workflowInputs, workflowId: handle.workflowId },
-        signal,
-        step,
-        visit,
-      }),
-      signal,
-    );
+    // Another process can answer the step, so the method stops asking when it does.
+    const { answered, asking, stop } = watchAnswered(handle, { step, visit }, options);
+    let values: Readonly<Record<string, unknown>>;
+    try {
+      values = await untilAborted(
+        method.respond({
+          answers,
+          config: plugins.waitMethodConfig(name),
+          options: validated.value,
+          run: { inputs: workflowInputs, workflowId: handle.workflowId },
+          signal: asking,
+          step,
+          visit,
+        }),
+        asking,
+      );
+    } catch (error) {
+      // The notice is already shown.
+      if (answered.aborted && !signal.aborted) {
+        return;
+      }
+      throw error;
+    } finally {
+      stop();
+    }
     try {
       const answer: Answer = { step, values, visit };
       await handle.executeUpdate(answerUpdateName, { args: [answer] });

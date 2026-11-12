@@ -1,0 +1,205 @@
+import { realpath } from "node:fs/promises";
+
+import type { InputDeclaration } from "@aitw/core";
+import { AnswerRejectedError, answerInbox, listInbox } from "@aitw/engine";
+import type { InboxQuestion } from "@aitw/engine";
+
+import { openCommandServer } from "../daemon/connect.js";
+import { loadEncryptionKey } from "../encryption.js";
+import { rootMessage } from "../follow.js";
+import { readWorkflowInput } from "../input.js";
+import { formatAge, listProjectRuns } from "../runs.js";
+import type { ServerOptions } from "../server.js";
+import { projectHash, projectMemoKey, workflowMemoKey } from "../state.js";
+import { aitwDirectory, findProjectRoot } from "../workflows.js";
+import type { CommandContext } from "./load.js";
+
+/** Options of {@link listInboxCommand}. */
+export interface InboxOptions {
+  /**
+   * Temporal Server that keeps the runs. Without it, the server of the project or of the
+   * resident process is used.
+   */
+  server?: ServerOptions | undefined;
+  /** Aborted when the user interrupts. */
+  signal: AbortSignal;
+  /** Version of this aitw, which the resident process must have to serve the project. */
+  version: string;
+}
+
+/** Options of {@link answerInboxCommand}. */
+export interface AnswerOptions extends InboxOptions {
+  workflowId: string;
+  step: string;
+  /** Visit of the step, which keeps an answer from answering a later visit of a loop. */
+  visit?: number | undefined;
+  /** Value of `--values`: a JSON object, or the path of a `.json` file. */
+  values: string;
+}
+
+const findRoot = async (context: CommandContext): Promise<string | undefined> => {
+  const found = await findProjectRoot(context.cwd);
+  if (found === undefined) {
+    context.stderr(`No ${aitwDirectory} directory found in ${context.cwd} or its parents\n`);
+    return undefined;
+  }
+  return realpath(found);
+};
+
+/** Describes a declaration of an answer, such as `decision: OK or 差し戻し (required)`. */
+const describeAnswer = (name: string, declaration: InputDeclaration): string => {
+  const kind =
+    declaration.type === "choice"
+      ? `one of ${declaration.options.join(", ")}`
+      : declaration.type === "string" && declaration.multiline === true
+        ? "multiline string"
+        : declaration.type;
+  const notes = [
+    ...(declaration.required ? ["required"] : []),
+    ...(declaration.default === undefined
+      ? []
+      : [`default ${JSON.stringify(declaration.default)}`]),
+  ];
+  const description = declaration.description === undefined ? "" : ` - ${declaration.description}`;
+  return `${name}: ${kind}${notes.length === 0 ? "" : ` (${notes.join(", ")})`}${description}`;
+};
+
+/** Formats a question with the command that answers it. */
+const formatQuestion = (question: InboxQuestion): string => {
+  const { answers, options, run, step, visit, workflowInputs } = question;
+  const name = run.memo[workflowMemoKey];
+  const header = [
+    run.workflowId,
+    typeof name === "string" ? name : undefined,
+    `${step} (visit ${visit})`,
+    `started ${formatAge(run.startTime)}`,
+  ].filter((part) => part !== undefined);
+  const lines = [header.join("  ")];
+  if (workflowInputs !== undefined && Object.keys(workflowInputs).length > 0) {
+    lines.push(`  inputs: ${JSON.stringify(workflowInputs)}`);
+  }
+  if (typeof options.message === "string") {
+    lines.push(
+      ...options.message
+        .replace(/\n$/u, "")
+        .split("\n")
+        .map((line) => `  │ ${line}`),
+    );
+  }
+  const entries = Object.entries(answers);
+  lines.push(
+    entries.length === 0
+      ? "  answers: none"
+      : `  answers:\n${entries.map(([key, declaration]) => `    ${describeAnswer(key, declaration)}`).join("\n")}`,
+  );
+  lines.push(
+    `  aitw inbox answer ${run.workflowId} --step ${step} --visit ${visit} --values '{...}' --detach`,
+  );
+  return `${lines.join("\n")}\n`;
+};
+
+/**
+ * Lists the wait steps of the runs of the project that wait for someone to answer them.
+ *
+ * @returns The exit code of the command.
+ */
+export const listInboxCommand = async (
+  options: InboxOptions,
+  context: CommandContext,
+): Promise<number> => {
+  const root = await findRoot(context);
+  if (root === undefined) {
+    return 1;
+  }
+  try {
+    const { server } = await openCommandServer(options, root, context, options.signal);
+    try {
+      const { questions, unreadable } = await listInbox({
+        address: server.address,
+        encryptionKey: loadEncryptionKey(),
+        memo: { [projectMemoKey]: projectHash(root) },
+      });
+      for (const { reason, run } of unreadable) {
+        context.stderr(
+          `${run.workflowId}: cannot read what it waits for: ${reason}. Run "aitw resume ${run.workflowId}${server.options}" to follow it\n`,
+        );
+      }
+      if (questions.length === 0) {
+        context.stdout("No questions in this project\n");
+        return unreadable.length === 0 ? 0 : 1;
+      }
+      context.stdout(questions.map(formatQuestion).join("\n"));
+      return unreadable.length === 0 ? 0 : 1;
+    } finally {
+      await server.stop();
+    }
+  } catch (error) {
+    context.stderr(`${rootMessage(error)}\n`);
+    return 1;
+  }
+};
+
+/**
+ * Answers a wait step of a run of the project, and leaves the run to the resident process.
+ *
+ * @returns The exit code of the command.
+ */
+export const answerInboxCommand = async (
+  options: AnswerOptions,
+  context: CommandContext,
+): Promise<number> => {
+  const { step, values: valuesOption, visit, workflowId } = options;
+  const root = await findRoot(context);
+  if (root === undefined) {
+    return 1;
+  }
+  const values = await readWorkflowInput(valuesOption, context.cwd, "--values");
+  if (!values.ok) {
+    context.stderr(`${values.message}\n`);
+    return 1;
+  }
+  try {
+    const { server, servedTaskQueue } = await openCommandServer(
+      options,
+      root,
+      context,
+      options.signal,
+    );
+    try {
+      const run = (await listProjectRuns(server.address, root)).find(
+        (candidate) => candidate.workflowId === workflowId,
+      );
+      if (run === undefined) {
+        context.stderr(`No running run ${workflowId} in this project\n`);
+        return 1;
+      }
+      // The answer needs a Worker, and the run goes on after this command only in the resident
+      // process.
+      if (servedTaskQueue === undefined || run.taskQueue !== servedTaskQueue) {
+        context.stderr(
+          `${run.name}: aitw daemon does not run ${workflowId}, so it would stop after the answer. Run "aitw resume ${workflowId}${server.options}" to answer and follow it\n`,
+        );
+        return 1;
+      }
+      await answerInbox({
+        address: server.address,
+        encryptionKey: loadEncryptionKey(),
+        step,
+        values: values.values,
+        visit,
+        workflowId,
+      });
+      context.stdout(`${run.name}: answered ${step}. The run goes on in aitw daemon\n`);
+      return 0;
+    } finally {
+      await server.stop();
+    }
+  } catch (error) {
+    if (error instanceof AnswerRejectedError) {
+      context.stderr(`${workflowId}: ${error.message}\n`);
+      return 1;
+    }
+    context.stderr(`${rootMessage(error)}\n`);
+    return 1;
+  }
+};

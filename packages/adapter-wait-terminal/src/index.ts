@@ -95,14 +95,25 @@ export const formatPrompt = (name: string, declaration: InputDeclaration): strin
 
 const inputEnded = (): Error => new Error("The input ended before the answer was entered");
 
+/** Options of {@link createTerminalPlugin}. */
+export interface TerminalPluginOptions {
+  /**
+   * Whether the method writes `message` before it asks. Turn it off when the progress of the
+   * run already shows the message of the step.
+   */
+  showMessage?: boolean;
+}
+
 const respond =
-  ({ readLine, write }: TerminalIO) =>
+  ({ readLine, write }: TerminalIO, { showMessage = true }: TerminalPluginOptions) =>
   async ({
     answers,
     options,
     signal,
   }: WaitResponseContext<TerminalOptions>): Promise<Record<string, unknown>> => {
-    write(`${options.message}\n`);
+    if (showMessage) {
+      write(`${options.message}\n`);
+    }
     const entries = Object.entries(answers);
     if (entries.length === 0) {
       write("Press Enter to continue: ");
@@ -133,11 +144,14 @@ const respond =
     return values;
   };
 
-const createMethod = (io?: TerminalIO): WaitMethod<TerminalOptions> =>
+const createMethod = (
+  io?: TerminalIO,
+  options: TerminalPluginOptions = {},
+): WaitMethod<TerminalOptions> =>
   defineWaitMethod({
     answers: ({ schema }) => schema,
     name: "terminal",
-    ...(io === undefined ? {} : { respond: respond(io) }),
+    ...(io === undefined ? {} : { respond: respond(io, options) }),
     with: optionsSchema,
   });
 
@@ -156,5 +170,5 @@ export const terminalPlugin = definePlugin({
 });
 
 /** Creates the built-in plugin of the `terminal` wait method that asks in a terminal. */
-export const createTerminalPlugin = (io: TerminalIO) =>
-  definePlugin({ name: "terminal", waitMethods: [createMethod(io)] });
+export const createTerminalPlugin = (io: TerminalIO, options: TerminalPluginOptions = {}) =>
+  definePlugin({ name: "terminal", waitMethods: [createMethod(io, options)] });

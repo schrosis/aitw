@@ -135,7 +135,7 @@ describe("run", () => {
 
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
     expect(result.stdout).toMatch(
-      /^ask\nHello, what is your name\?\nname \(string, required\): schrosis\napprove \(y\/n\): maybe\nEnter y or n\napprove \(y\/n\): y\n✓ ask {2}\d+\.\ds\n\ngreet\n│ > echo "Hello schrosis!!"\n│ Hello schrosis!!\n/u,
+      /^ask\n│ > Hello, what is your name\?\nname \(string, required\): schrosis\napprove \(y\/n\): maybe\nEnter y or n\napprove \(y\/n\): y\n✓ ask {2}\d+\.\ds\n\ngreet\n│ > echo "Hello schrosis!!"\n│ Hello schrosis!!\n/u,
     );
   }, 60_000);
 

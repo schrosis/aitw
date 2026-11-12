@@ -9,6 +9,7 @@ import {
   terminalPlugin,
   terminalWaitMethod,
 } from "./index.ts";
+import type { TerminalPluginOptions } from "./index.ts";
 
 describe("terminalWaitMethod", () => {
   it("is provided by the terminal plugin", () => {
@@ -109,14 +110,18 @@ const respondWith = async (
   lines: string[],
   options: unknown,
   signal = new AbortController().signal,
+  pluginOptions: TerminalPluginOptions = {},
 ) => {
   let output = "";
-  const method = createTerminalPlugin({
-    readLine: async () => lines.shift() ?? null,
-    write: (text) => {
-      output += text;
+  const method = createTerminalPlugin(
+    {
+      readLine: async () => lines.shift() ?? null,
+      write: (text) => {
+        output += text;
+      },
     },
-  }).waitMethods?.[0];
+    pluginOptions,
+  ).waitMethods?.[0];
   const validated = validateWithSchema(terminalWaitMethod.with, options);
   if (method?.respond === undefined || !validated.ok) {
     throw new Error("The test setup is invalid");
@@ -147,6 +152,17 @@ describe("createTerminalPlugin", () => {
         "Enter your name\nname (string, required): A value is required\nname (string, required): approve (y/n): Enter y or n\napprove (y/n): ",
       values: { approve: true, name: "schrosis" },
     });
+  });
+
+  it("leaves the message to the progress of the run, when asked", async () => {
+    await expect(
+      respondWith(
+        ["schrosis"],
+        { message: "Enter your name", schema: { name: { type: "string" } } },
+        undefined,
+        { showMessage: false },
+      ),
+    ).resolves.toMatchObject({ output: "name (string): " });
   });
 
   it("does not send an empty optional answer", async () => {

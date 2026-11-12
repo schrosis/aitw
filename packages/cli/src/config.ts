@@ -20,6 +20,17 @@ export const projectConfigSchema = z
       .string()
       .optional()
       .describe("JSON Schema of the file for editors, such as ./schemas/config.schema.json"),
+    output: z
+      .strictObject({
+        showCommands: z
+          .boolean()
+          .optional()
+          .describe(
+            "Whether the progress shows what a step runs: the run of a script step and the prompt of an AI step. It is shown by default",
+          ),
+      })
+      .optional()
+      .describe("How aitw run and aitw resume show the progress of a run"),
     plugins: z
       .record(
         z

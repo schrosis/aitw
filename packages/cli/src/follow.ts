@@ -11,6 +11,7 @@ import { loadEncryptionKey } from "./encryption.js";
 import { createEnvironmentReader } from "./environment.js";
 import { createLineReader } from "./lines.js";
 import type { LineReader } from "./lines.js";
+import { loadProjectConfig } from "./config.js";
 import { createRegistry, loadProjectPlugins } from "./plugins.js";
 import { createProgressPrinter } from "./progress.js";
 import type { OpenedServer } from "./server.js";
@@ -109,7 +110,8 @@ export const followRun = async (
   context: CommandContext,
 ): Promise<number> => {
   const terminal = given ?? createTerminal(context);
-  const printer = createProgressPrinter(context, { colors: context.colors, steps });
+  // The configuration file decides what the progress shows, once it is read below.
+  let printer = createProgressPrinter(context, { colors: context.colors, steps });
   // The script or AI step that runs now, so that an interrupt can tell that the run waits for it.
   let runningStep: string | undefined;
   const eventSink: EventSink = {
@@ -142,6 +144,12 @@ export const followRun = async (
   interrupt.addEventListener("abort", onInterrupt, { once: true });
 
   try {
+    const { output } = await loadProjectConfig(root, context.cwd);
+    printer = createProgressPrinter(context, {
+      colors: context.colors,
+      showCommands: output?.showCommands,
+      steps,
+    });
     // Plugins load before the run starts, so that a broken one stops nothing.
     const loaded = await loadProjectPlugins(root, context.cwd);
     const outcome = await follow({

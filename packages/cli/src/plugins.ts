@@ -46,7 +46,10 @@ export const createRegistry = (
 ): PluginRegistry =>
   createPluginRegistry({
     builtins: [
-      terminal === undefined ? terminalPlugin : createTerminalPlugin(terminal),
+      // The progress of the run shows the message of a wait step, as it does for other methods.
+      terminal === undefined
+        ? terminalPlugin
+        : createTerminalPlugin(terminal, { showMessage: false }),
       ...loaded
         .filter(({ packageName }) => packageName.startsWith(officialScope))
         .map(({ plugin }) => plugin),

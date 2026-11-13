@@ -1,7 +1,7 @@
 import { createTerminalPlugin, terminalPlugin } from "@aitw/adapter-wait-terminal";
 import type { TerminalIO } from "@aitw/adapter-wait-terminal";
 import { createPluginRegistry, validatePluginConfig } from "@aitw/core";
-import type { PluginRegistry } from "@aitw/core";
+import type { Plugin, PluginRegistry } from "@aitw/core";
 import type { MissingHint } from "@aitw/definition";
 
 import { readProjectConfig } from "./config.js";
@@ -44,12 +44,27 @@ export const createRegistry = (
   terminal?: TerminalIO,
   loaded: readonly LoadedPlugin[] = [],
 ): PluginRegistry =>
+  createRegistryWith(
+    // The progress of the run shows the message of a wait step, as it does for other methods.
+    terminal === undefined
+      ? terminalPlugin
+      : createTerminalPlugin(terminal, { showMessage: false }),
+    loaded,
+  );
+
+/**
+ * Creates the registry of the plugins that the CLI loads, with a plugin that provides the
+ * `terminal` wait method, such as one that hands the questions to an AI.
+ *
+ * @throws When two plugins or extensions have the same name.
+ */
+export const createRegistryWith = (
+  terminal: Plugin,
+  loaded: readonly LoadedPlugin[] = [],
+): PluginRegistry =>
   createPluginRegistry({
     builtins: [
-      // The progress of the run shows the message of a wait step, as it does for other methods.
-      terminal === undefined
-        ? terminalPlugin
-        : createTerminalPlugin(terminal, { showMessage: false }),
+      terminal,
       ...loaded
         .filter(({ packageName }) => packageName.startsWith(officialScope))
         .map(({ plugin }) => plugin),

@@ -15,6 +15,19 @@ import { run } from "./run.ts";
 
 const root = realpathSync(fixtureProject);
 
+/** Parses the JSON lines of --from-ai. */
+const lines = (stdout: string): Record<string, unknown>[] =>
+  stdout
+    .trimEnd()
+    .split("\n")
+    .map((line): Record<string, unknown> => {
+      const parsed: unknown = JSON.parse(line);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new Error(`Not a JSON object: ${line}`);
+      }
+      return { ...parsed };
+    });
+
 describe("inbox", () => {
   let environment: TestWorkflowEnvironment;
 
@@ -184,6 +197,115 @@ describe("inbox", () => {
       ].join("\n"),
     );
   });
+
+  it("lets a program run a workflow question by question, without the resident process", async () => {
+    const started = createOutput();
+    const runExitCode = await run(
+      "wait-valid",
+      { fromAi: true, server: server(), signal, version: "0.0.0" },
+      { cwd: fixtureProject, stderr: started.stderr, stdout: started.stdout },
+    );
+
+    expect(runExitCode).toBe(3);
+    const runLines = lines(started.written.stdout);
+    const workflowId = runLines[0]?.workflowId;
+    expect(runLines).toEqual([
+      { name: "wait-valid", type: "started", workflowId },
+      { message: "Hello, what is your name?", step: "ask", type: "stepStarted" },
+      {
+        answers: {
+          approve: { required: false, type: "boolean" },
+          name: { required: true, type: "string" },
+        },
+        inputs: { greeting: "Hello" },
+        message: "Hello, what is your name?",
+        name: "wait-valid",
+        step: "ask",
+        type: "question",
+        visit: 0,
+        workflowId,
+      },
+    ]);
+    if (typeof workflowId !== "string") {
+      throw new Error("The run reported no workflow ID");
+    }
+
+    // No Worker serves the run after the command exited.
+    const listed = createOutput();
+    await listInboxCommand(
+      { fromAi: true, server: server(), signal, version: "0.0.0" },
+      { cwd: fixtureProject, ...listed },
+    );
+    expect(lines(listed.written.stdout)).toContainEqual({
+      reason: expect.any(String) as unknown,
+      type: "unreadable",
+      workflowId,
+    });
+
+    const answered = createOutput();
+    const answerExitCode = await answerInboxCommand(
+      {
+        fromAi: true,
+        server: server(),
+        signal,
+        step: "ask",
+        values: '{"name":"aitw"}',
+        version: "0.0.0",
+        visit: 0,
+        workflowId,
+      },
+      { cwd: fixtureProject, ...answered },
+    );
+
+    expect({ exitCode: answerExitCode, stderr: answered.written.stderr }).toEqual({
+      exitCode: 0,
+      stderr: "",
+    });
+    const answerLines = lines(answered.written.stdout);
+    // The program saw the progress up to the question, so only what follows the answer comes.
+    expect(answerLines[0]).toEqual({ step: "ask", type: "answered", visit: 0, workflowId });
+    expect(answerLines.map(({ step, type }) => `${String(type)} ${String(step)}`)).toEqual([
+      "answered ask",
+      "stepFinished ask",
+      "stepStarted greet",
+      "stepFinished greet",
+      "completed undefined",
+    ]);
+    expect(answerLines.at(-1)).toEqual({
+      executedSteps: ["ask", "greet"],
+      type: "completed",
+      workflowId,
+    });
+  }, 60_000);
+
+  it("reports a rejected answer as the last line, and the run keeps waiting", async () => {
+    const { workflowId } = await detachWaiting();
+    try {
+      const output = createOutput();
+      const exitCode = await answerInboxCommand(
+        {
+          fromAi: true,
+          server: server(),
+          signal,
+          step: "ask",
+          values: '{"name":1}',
+          version: "0.0.0",
+          visit: 0,
+          workflowId,
+        },
+        { cwd: fixtureProject, ...output },
+      );
+
+      expect(exitCode).toBe(1);
+      expect(lines(output.written.stdout)).toEqual([
+        { message: "ask.name: Must be a string", type: "failed" },
+      ]);
+      const runs = await listProjectRuns(environment.address, root);
+      expect(runs.map((candidate) => candidate.workflowId)).toContain(workflowId);
+    } finally {
+      await cancelRun(workflowId);
+    }
+  }, 60_000);
 
   it("needs a project", async () => {
     await expect(list(tmpdir())).resolves.toMatchObject({ exitCode: 1, stdout: "" });

@@ -3,6 +3,7 @@ import { jsonBytes, maxValueBytes, runWorkflow, startWorkflow } from "@aitw/engi
 
 import { realpath } from "node:fs/promises";
 
+import { reportAiFailure, writeAiLine } from "../ai.js";
 import { cancelledExitCode, followRun, rootMessage } from "../follow.js";
 import { readWorkflowInput } from "../input.js";
 import { acquireRunLock } from "../lock.js";
@@ -36,6 +37,11 @@ export interface RunOptions {
    */
   detach?: boolean | undefined;
   /**
+   * Writes JSON lines for a program such as an AI agent, and exits at the first question, which
+   * `aitw inbox answer --from-ai` answers. See {@link followRun}.
+   */
+  fromAi?: boolean | undefined;
+  /**
    * Version of this aitw. When the server is not given, a resident process of the same version
    * runs the steps.
    */
@@ -51,7 +57,26 @@ export interface RunOptions {
  */
 export const run = async (
   name: string,
-  { detach = false, input: inputOption, prepareEngine, server, signal, version }: RunOptions,
+  options: RunOptions,
+  context: CommandContext,
+): Promise<number> => {
+  if (options.fromAi !== true) {
+    return runWorkflowCommand(name, options, context);
+  }
+  return reportAiFailure(context, async (watched) => runWorkflowCommand(name, options, watched));
+};
+
+const runWorkflowCommand = async (
+  name: string,
+  {
+    detach = false,
+    fromAi = false,
+    input: inputOption,
+    prepareEngine,
+    server,
+    signal,
+    version,
+  }: RunOptions,
   context: CommandContext,
 ): Promise<number> => {
   const workflow = await loadWorkflow(name, context);
@@ -126,6 +151,7 @@ export const run = async (
     try {
       return await followRun(
         {
+          fromAi,
           follow: async (options) =>
             runWorkflow({
               ...options,
@@ -137,6 +163,9 @@ export const run = async (
               // aitw resume does not follow a run that this process follows.
               onStart: (workflowId) => {
                 lock = acquireRunLock(projectLockDirectory(root), workflowId);
+                if (fromAi) {
+                  writeAiLine(context.stdout, { name, type: "started", workflowId });
+                }
               },
               // The resident process runs the steps on the task queue of the project.
               ...(servedTaskQueue === undefined

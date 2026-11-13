@@ -1,4 +1,5 @@
 import { Client, Connection, WorkflowUpdateFailedError } from "@temporalio/client";
+import type { WorkflowHandle } from "@temporalio/client";
 
 import { clientDataConverter } from "./encryption.js";
 import { answerUpdateName, waitingQueryName } from "./messages.js";
@@ -108,6 +109,20 @@ export class AnswerRejectedError extends Error {
   }
 }
 
+/**
+ * Sends an answer to a run, which a Worker of the run must serve.
+ *
+ * @throws {AnswerRejectedError} When the run rejects the answer.
+ */
+export const sendAnswer = async (handle: WorkflowHandle, answer: Answer): Promise<void> => {
+  await handle.executeUpdate(answerUpdateName, { args: [answer] }).catch((error: unknown) => {
+    if (error instanceof WorkflowUpdateFailedError) {
+      throw new AnswerRejectedError(reasonOf(error));
+    }
+    throw error;
+  });
+};
+
 /** Options of {@link answerInbox}. */
 export interface AnswerInboxOptions extends Answer {
   address: string;
@@ -135,16 +150,7 @@ export const answerInbox = async ({
   const connection = await Connection.connect({ address });
   try {
     const client = new Client({ connection, namespace, ...clientDataConverter(encryptionKey) });
-    const answer: Answer = { step, values, visit };
-    await client.workflow
-      .getHandle(workflowId)
-      .executeUpdate(answerUpdateName, { args: [answer] })
-      .catch((error: unknown) => {
-        if (error instanceof WorkflowUpdateFailedError) {
-          throw new AnswerRejectedError(reasonOf(error));
-        }
-        throw error;
-      });
+    await sendAnswer(client.workflow.getHandle(workflowId), { step, values, visit });
   } finally {
     await connection.close();
   }

@@ -1,16 +1,24 @@
 import { realpath } from "node:fs/promises";
 
 import type { InputDeclaration } from "@aitw/core";
-import { AnswerRejectedError, answerInbox, listInbox } from "@aitw/engine";
+import {
+  AnswerRejectedError,
+  answerInbox,
+  listInbox,
+  resumeWorkflow,
+  sendAnswer,
+} from "@aitw/engine";
 import type { InboxQuestion } from "@aitw/engine";
 
+import { reportAiFailure, writeAiLine } from "../ai.js";
 import { openCommandServer } from "../daemon/connect.js";
 import { loadEncryptionKey } from "../encryption.js";
-import { rootMessage } from "../follow.js";
+import { followRun, rootMessage } from "../follow.js";
 import { readWorkflowInput } from "../input.js";
+import { acquireRunLock, RunLockedError } from "../lock.js";
 import { formatAge, listProjectRuns } from "../runs.js";
-import type { ServerOptions } from "../server.js";
-import { projectHash, projectMemoKey, workflowMemoKey } from "../state.js";
+import type { OpenedServer, ServerOptions } from "../server.js";
+import { projectHash, projectLockDirectory, projectMemoKey, workflowMemoKey } from "../state.js";
 import { aitwDirectory, findProjectRoot } from "../workflows.js";
 import type { CommandContext } from "./load.js";
 
@@ -25,6 +33,8 @@ export interface InboxOptions {
   signal: AbortSignal;
   /** Version of this aitw, which the resident process must have to serve the project. */
   version: string;
+  /** Writes JSON lines for a program such as an AI agent. */
+  fromAi?: boolean | undefined;
 }
 
 /** Options of {@link answerInboxCommand}. */
@@ -35,6 +45,14 @@ export interface AnswerOptions extends InboxOptions {
   visit?: number | undefined;
   /** Value of `--values`: a JSON object, or the path of a `.json` file. */
   values: string;
+  /**
+   * With `fromAi`, follows the run after the answer until its next question or its end, with a
+   * Worker of this process unless the resident process runs it. Otherwise, exits after the
+   * answer, and leaves the run to the resident process.
+   */
+  fromAi?: boolean | undefined;
+  /** Called before the command runs a Worker. */
+  prepareEngine?: (() => void) | undefined;
 }
 
 const findRoot = async (context: CommandContext): Promise<string | undefined> => {
@@ -124,7 +142,12 @@ export const formatQuestion = (
 export const listInboxCommand = async (
   options: InboxOptions,
   context: CommandContext,
-): Promise<number> => {
+): Promise<number> =>
+  options.fromAi === true
+    ? reportAiFailure(context, async (watched) => listQuestions(options, watched))
+    : listQuestions(options, context);
+
+const listQuestions = async (options: InboxOptions, context: CommandContext): Promise<number> => {
   const root = await findRoot(context);
   if (root === undefined) {
     return 1;
@@ -142,6 +165,27 @@ export const listInboxCommand = async (
         encryptionKey: loadEncryptionKey(),
         memo: { [projectMemoKey]: projectHash(root) },
       });
+      if (options.fromAi === true) {
+        for (const question of questions) {
+          const { answers, options: methodOptions, run, step, visit, workflowInputs } = question;
+          const name = run.memo[workflowMemoKey];
+          writeAiLine(context.stdout, {
+            answers,
+            inDaemon: run.taskQueue === servedTaskQueue,
+            inputs: workflowInputs,
+            message: typeof methodOptions.message === "string" ? methodOptions.message : undefined,
+            name: typeof name === "string" ? name : undefined,
+            step,
+            type: "question",
+            visit,
+            workflowId: run.workflowId,
+          });
+        }
+        for (const { reason, run } of unreadable) {
+          writeAiLine(context.stdout, { reason, type: "unreadable", workflowId: run.workflowId });
+        }
+        return unreadable.length === 0 ? 0 : 1;
+      }
       for (const { reason, run } of unreadable) {
         context.stderr(
           `${run.workflowId}: cannot read what it waits for: ${reason}. Run "aitw resume ${run.workflowId}${server.options}" to follow it\n`,
@@ -169,14 +213,20 @@ export const listInboxCommand = async (
 };
 
 /**
- * Answers a wait step of a run of the project, and leaves the run to the resident process.
+ * Answers a wait step of a run of the project. With `fromAi`, follows the run until its next
+ * question. Otherwise, leaves the run to the resident process.
  *
  * @returns The exit code of the command.
  */
 export const answerInboxCommand = async (
   options: AnswerOptions,
   context: CommandContext,
-): Promise<number> => {
+): Promise<number> =>
+  options.fromAi === true
+    ? reportAiFailure(context, async (watched) => answerQuestion(options, watched))
+    : answerQuestion(options, context);
+
+const answerQuestion = async (options: AnswerOptions, context: CommandContext): Promise<number> => {
   const { step, values: valuesOption, visit, workflowId } = options;
   const root = await findRoot(context);
   if (root === undefined) {
@@ -201,6 +251,13 @@ export const answerInboxCommand = async (
       if (run === undefined) {
         context.stderr(`No running run ${workflowId} in this project\n`);
         return 1;
+      }
+      if (options.fromAi === true) {
+        return await answerAndFollow(
+          { ...options, values: values.values },
+          { name: run.name, root, server, servedTaskQueue, taskQueue: run.taskQueue },
+          context,
+        );
       }
       // The answer needs a Worker, and the run goes on after this command only in the resident
       // process.
@@ -230,5 +287,75 @@ export const answerInboxCommand = async (
     }
     context.stderr(`${rootMessage(error)}\n`);
     return 1;
+  }
+};
+
+/**
+ * Answers a run with a Worker that serves it, and follows it until its next question or its end.
+ *
+ * @returns The exit code of the command.
+ */
+const answerAndFollow = async (
+  {
+    prepareEngine,
+    signal,
+    step,
+    values,
+    visit,
+    workflowId,
+  }: Omit<AnswerOptions, "values"> & { values: Readonly<Record<string, unknown>> },
+  {
+    name,
+    root,
+    server,
+    servedTaskQueue,
+    taskQueue,
+  }: {
+    name: string;
+    root: string;
+    server: OpenedServer;
+    servedTaskQueue: string | undefined;
+    taskQueue: string;
+  },
+  context: CommandContext,
+): Promise<number> => {
+  let lock;
+  try {
+    lock = acquireRunLock(projectLockDirectory(root), workflowId);
+  } catch (error) {
+    if (error instanceof RunLockedError) {
+      context.stderr(`${name}: ${error.message}\n`);
+      return 1;
+    }
+    throw error;
+  }
+  try {
+    prepareEngine?.();
+    return await followRun(
+      {
+        follow: async (followOptions) =>
+          resumeWorkflow({
+            ...followOptions,
+            // The answer needs a Worker, which serves the run from now on.
+            beforeFollow: async (handle) => {
+              await sendAnswer(handle, { step, values, visit });
+              writeAiLine(context.stdout, { step, type: "answered", visit, workflowId });
+            },
+            servedTaskQueue,
+            // The program saw the progress up to the question.
+            skipEarlierEvents: true,
+            workflowId,
+          }),
+        fromAi: true,
+        interrupt: signal,
+        name,
+        ownsWorker: taskQueue !== servedTaskQueue,
+        root,
+        server,
+      },
+      context,
+    );
+  } finally {
+    lock.release();
   }
 };

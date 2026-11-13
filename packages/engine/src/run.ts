@@ -109,6 +109,16 @@ export interface FollowOptions {
    * Each kind of problem is reported once per run.
    */
   onWarning?: (message: string) => void;
+  /**
+   * Called with the run once a Worker can serve it, before this process follows it, such as to
+   * answer the step that it waits at. The run is not followed when it throws.
+   */
+  beforeFollow?: (handle: WorkflowHandle) => Promise<void>;
+  /**
+   * Shows only the events that the run stores from now on. By default, a resumed run shows its
+   * earlier events first.
+   */
+  skipEarlierEvents?: boolean;
 }
 
 /** Options of {@link runWorkflow}. */
@@ -184,7 +194,9 @@ const follow = async (
 ): Promise<RunOutcome> => {
   const {
     aiRunner,
+    beforeFollow,
     cancelNow = false,
+    skipEarlierEvents = false,
     encryptionKey,
     detach,
     eventLog = createMemoryEventLog(),
@@ -228,6 +240,9 @@ const follow = async (
       handle = await open();
       const { workflowId } = handle;
       const current = handle;
+      // The position is read before the answer of beforeFollow, so that its events are shown.
+      const cursor = skipEarlierEvents ? (await eventLog.read(workflowId)).cursor : undefined;
+      await beforeFollow?.(current);
       // The method that asks a step hears of its end before it is shown, so that the notice that
       // another process answered it comes first.
       const finishedListeners = new Set<
@@ -246,6 +261,7 @@ const follow = async (
       // A log that cannot be read would hide every later event, so it is reported once.
       let warned = false;
       follower = followEvents({
+        cursor,
         log: eventLog,
         onError: (error) => {
           if (!warned) {

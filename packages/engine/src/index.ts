@@ -9,6 +9,7 @@ export type {
 } from "./activities/index.js";
 export {
   configureRuntime,
+  isWorkflowRunning,
   listRunningWorkflows,
   resumeWorkflow,
   runWorkflow,
@@ -26,6 +27,7 @@ export { createMemoryEventLog, followEvents } from "./events.js";
 export type { EventFollower, FollowEventsOptions } from "./events.js";
 export type {
   FollowOptions,
+  IsWorkflowRunningOptions,
   ListRunningWorkflowsOptions,
   ResumeWorkflowOptions,
   RunningWorkflow,

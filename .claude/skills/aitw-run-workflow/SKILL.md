@@ -75,7 +75,7 @@ aitw run <workflow> --input '<JSON>' --from-ai
 | `cancelled` | 130        | キャンセルされたことを伝える                                                                                                                                       |
 | `detached`  | 3          | 質問なしで切り離された（バックグラウンドのタスクが中断されたときなど）。実行は Temporal で続いている。`aitw inbox list --from-ai` で答え待ちを確かめ、状況を伝える |
 
-ステップの出力（スクリプトや AI の出力）は JSON Lines に出ない。ユーザーが中身を見たがったら、ステップが書いたファイルやリポジトリの変更を見て伝える。
+ステップの出力（スクリプトや AI の出力）は JSON Lines に出ない。ユーザーが中身を見たがったとき、失敗の理由を調べるときは、`aitw log <workflowId> --tail <行数>` で進捗を見る。全部を読むとコンテキストを使うため、まず `--tail` で最後の数十行を見る。
 
 ## 質問の中継
 
@@ -106,6 +106,7 @@ aitw inbox answer <workflowId> --step <step> --visit <visit> --values '<JSON>' -
 
 | したいこと                         | コマンド                                                                                                               |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 実行の進捗とステップの出力を見る   | `aitw log <workflowId> --tail <行数>`（終わった実行も見られる。`--json` で 1 行に 1 つのイベント）                     |
 | 答え待ちを一覧にする               | `aitw inbox list --from-ai`（1 行に 1 つの `question`。読めない実行は `unreadable`）                                   |
 | 端末を占有せずに始めるだけ         | `aitw run <workflow> --input '<JSON>' --detach`（答え待ちは `inbox list` に出る）                                      |
 | 答えて、あとは常駐プロセスに任せる | `aitw inbox answer ... --detach`（常駐プロセスが動かしている実行だけ。`inbox list --from-ai` の `inDaemon` が `true`） |

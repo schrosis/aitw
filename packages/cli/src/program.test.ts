@@ -62,6 +62,7 @@ describe("createProgram", () => {
       "resume",
       "cancel",
       "inbox",
+      "log",
       "Write workflows:",
       "validate",
       "schema",

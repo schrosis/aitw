@@ -53,7 +53,7 @@ type Selected = { ok: true; run: ProjectRun } | { ok: false; exitCode: number };
  * The definition may have changed or gone since the run started, so the steps then get colors in
  * the order that they run.
  */
-const stepOrder = async (root: string, name: string): Promise<string[] | undefined> => {
+export const stepOrder = async (root: string, name: string): Promise<string[] | undefined> => {
   const resolved = await resolveWorkflow(root, name);
   if (!resolved.ok) {
     return undefined;

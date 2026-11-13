@@ -12,7 +12,7 @@ import type {
   ScriptRunner,
   WorkflowEvent,
 } from "@aitw/core";
-import { Client, Connection } from "@temporalio/client";
+import { Client, Connection, WorkflowNotFoundError } from "@temporalio/client";
 import type { WorkflowHandle } from "@temporalio/client";
 import { DefaultLogger, NativeConnection, Runtime, Worker } from "@temporalio/worker";
 import type { LogLevel } from "@temporalio/worker";
@@ -502,6 +502,41 @@ export const terminateWorkflow = async ({
   const connection = await Connection.connect({ address });
   try {
     await new Client({ connection, namespace }).workflow.getHandle(workflowId).terminate(reason);
+  } finally {
+    await connection.close();
+  }
+};
+
+/** Options of {@link isWorkflowRunning}. */
+export interface IsWorkflowRunningOptions {
+  address: string;
+  namespace?: string;
+  workflowId: string;
+  /** Key that decrypts the memo of the run, which the description reads. */
+  encryptionKey?: Uint8Array | undefined;
+}
+
+/**
+ * Returns whether a run is still running, such as to stop following its progress after it ends.
+ *
+ * @returns `false` also when the run does not exist.
+ */
+export const isWorkflowRunning = async ({
+  address,
+  encryptionKey,
+  namespace = "default",
+  workflowId,
+}: IsWorkflowRunningOptions): Promise<boolean> => {
+  const connection = await Connection.connect({ address });
+  try {
+    const client = new Client({ connection, namespace, ...listingDataConverter(encryptionKey) });
+    const { status } = await client.workflow.getHandle(workflowId).describe();
+    return status.name === "RUNNING";
+  } catch (error) {
+    if (error instanceof WorkflowNotFoundError) {
+      return false;
+    }
+    throw error;
   } finally {
     await connection.close();
   }

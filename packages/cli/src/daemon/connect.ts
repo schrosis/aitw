@@ -10,13 +10,32 @@ import { daemonPaths } from "./paths.js";
 
 /** Thrown when a command needs the resident process, and it does not run or cannot be reached. */
 export class DaemonUnavailableError extends Error {
-  constructor(reason: string) {
+  /**
+   * @param detach Whether the command leaves the run to the resident process, so that no other
+   *   server can run it.
+   */
+  constructor(reason: string, detach = false) {
     super(
-      `aitw daemon ${reason}. Run "aitw daemon start", choose a server with --dev or --address, or set temporal.address in .aitw/config.yaml`,
+      detach
+        ? `aitw daemon ${reason}, and --detach needs it to run the steps. Run "aitw daemon start"`
+        : `aitw daemon ${reason}. Run "aitw daemon start", choose a server with --dev or --address, or set temporal.address in .aitw/config.yaml`,
     );
     this.name = "DaemonUnavailableError";
   }
 }
+
+/** Options that tell what the command needs from the resident process. */
+export interface DaemonUse {
+  /**
+   * Whether the command leaves the run to the resident process, such as with `--detach`. Without
+   * the resident process, the command then cannot run its own Worker instead.
+   */
+  detach?: boolean | undefined;
+}
+
+/** Says what the command does when the resident process does not run the steps. */
+const withoutDaemon = ({ detach = false }: DaemonUse): string =>
+  detach ? "so it cannot run a detached run" : "so this command runs its own Worker";
 
 /** The Temporal Server of the resident process, for a command. */
 export interface DaemonConnection {
@@ -43,15 +62,17 @@ export const connectDaemon = async (
   root: string,
   version: string,
   context: CommandContext,
+  use: DaemonUse = {},
 ): Promise<DaemonConnection> => {
   const paths = daemonPaths();
   const status = await getDaemonStatus(paths).catch((error: unknown) => {
     throw new DaemonUnavailableError(
       `cannot be reached: ${error instanceof Error ? error.message : String(error)}`,
+      use.detach,
     );
   });
   if (status === undefined) {
-    throw new DaemonUnavailableError("is not running");
+    throw new DaemonUnavailableError("is not running", use.detach);
   }
   const server: OpenedServer = {
     address: status.address,
@@ -62,7 +83,7 @@ export const connectDaemon = async (
   };
   if (status.version !== version || status.workflowCodeVersion !== workflowCodeVersion) {
     context.stderr(
-      `aitw daemon: runs aitw ${status.version}, and this is aitw ${version}, so this command runs its own Worker. Run "aitw daemon stop" and start it again to use it\n`,
+      `aitw daemon: runs aitw ${status.version}, and this is aitw ${version}, ${withoutDaemon(use)}. Run "aitw daemon stop" and start it again to use it\n`,
     );
     return { server };
   }
@@ -91,6 +112,7 @@ const daemonOn = async (
   root: string,
   version: string,
   context: CommandContext,
+  use: DaemonUse,
 ): Promise<string | undefined> => {
   const paths = daemonPaths();
   let status;
@@ -98,16 +120,22 @@ const daemonOn = async (
     status = await getDaemonStatus(paths);
   } catch (error) {
     context.stderr(
-      `aitw daemon: cannot be reached, so this command runs its own Worker: ${error instanceof Error ? error.message : String(error)}\n`,
+      `aitw daemon: cannot be reached, ${withoutDaemon(use)}: ${error instanceof Error ? error.message : String(error)}\n`,
     );
     return undefined;
   }
   if (status === undefined) {
+    // A run without the resident process is usual for a project that names its server.
+    if (use.detach === true) {
+      context.stderr(
+        `aitw daemon: is not running, ${withoutDaemon(use)}. Run "aitw daemon start"\n`,
+      );
+    }
     return undefined;
   }
   if (status.version !== version || status.workflowCodeVersion !== workflowCodeVersion) {
     context.stderr(
-      `aitw daemon: runs aitw ${status.version}, and this is aitw ${version}, so this command runs its own Worker. Run "aitw daemon stop" and start it again to use it\n`,
+      `aitw daemon: runs aitw ${status.version}, and this is aitw ${version}, ${withoutDaemon(use)}. Run "aitw daemon stop" and start it again to use it\n`,
     );
     return undefined;
   }
@@ -115,7 +143,7 @@ const daemonOn = async (
   // The resident process reads the configuration file again, which may have changed since.
   if (project.address !== address) {
     context.stderr(
-      `aitw daemon: serves the project at ${project.address ?? status.address}, and temporal.address of the project is ${address}, so this command runs its own Worker\n`,
+      `aitw daemon: serves the project at ${project.address ?? status.address}, and temporal.address of the project is ${address}, ${withoutDaemon(use)}\n`,
     );
     return undefined;
   }
@@ -129,13 +157,16 @@ const daemonOn = async (
  * `temporal.address` in the configuration file of the project names, or that of the resident
  * process.
  *
+ * The messages about the resident process say what the command does without it, which depends on
+ * whether the command leaves the run to it (`detach`).
+ *
  * @param version Version of this aitw, which the resident process must have to run the steps.
  * @throws {DaemonUnavailableError} When no server is named and the resident process is not
  *   available.
  * @throws {ProjectConfigError} When the configuration file of the project is invalid.
  */
 export const openCommandServer = async (
-  { server, version }: { server?: ServerOptions | undefined; version: string },
+  { detach, server, version }: { server?: ServerOptions | undefined; version: string } & DaemonUse,
   root: string,
   context: CommandContext,
   signal: AbortSignal,
@@ -149,9 +180,9 @@ export const openCommandServer = async (
     return {
       // Later commands read the configuration file again.
       server: { ...opened, options: "" },
-      servedTaskQueue: await daemonOn(address, root, version, context),
+      servedTaskQueue: await daemonOn(address, root, version, context, { detach }),
     };
   }
-  const daemon = await connectDaemon(root, version, context);
+  const daemon = await connectDaemon(root, version, context, { detach });
   return { server: daemon.server, servedTaskQueue: daemon.project?.taskQueue };
 };

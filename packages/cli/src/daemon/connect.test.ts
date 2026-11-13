@@ -11,9 +11,9 @@ import { connectDaemon, DaemonUnavailableError, openCommandServer } from "./conn
 import { daemonPaths } from "./paths.ts";
 
 /** Opens the server of a command for a project without server options. */
-const open = async (root: string, output = createOutput()) =>
+const open = async (root: string, output = createOutput(), detach = false) =>
   openCommandServer(
-    { version: "1.2.3" },
+    { detach, version: "1.2.3" },
     root,
     { cwd: root, ...output },
     new AbortController().signal,
@@ -116,6 +116,30 @@ describe("connectDaemon", () => {
     expect(requests.map(({ url }) => url)).toEqual(["/status"]);
   });
 
+  it("says that a detached run needs the resident process of the same version", async () => {
+    await serve("0.9.0");
+    const output = createOutput();
+
+    await connectDaemon("/project", "1.2.3", { cwd: "/", ...output }, { detach: true });
+
+    expect(output.written.stderr).toBe(
+      'aitw daemon: runs aitw 0.9.0, and this is aitw 1.2.3, so it cannot run a detached run. Run "aitw daemon stop" and start it again to use it\n',
+    );
+  });
+
+  it("tells a detached run to start the resident process when none runs", async () => {
+    await expect(
+      connectDaemon(
+        join(state, "project"),
+        "1.2.3",
+        { cwd: "/", ...createOutput() },
+        { detach: true },
+      ),
+    ).rejects.toThrow(
+      'aitw daemon is not running, and --detach needs it to run the steps. Run "aitw daemon start"',
+    );
+  });
+
   it("tells how to choose a server when no resident process runs", async () => {
     const output = createOutput();
 
@@ -183,6 +207,24 @@ describe("connectDaemon", () => {
       await open(project("temporal.example.com:7233"), output);
 
       expect(output.written).toEqual({ stderr: "", stdout: "" });
+    });
+
+    it("tells a detached run why the resident process does not run the steps", async () => {
+      const output = createOutput();
+
+      await expect(open(project("temporal.example.com:7233"), output, true)).resolves.toMatchObject(
+        { servedTaskQueue: undefined },
+      );
+      expect(output.written.stderr).toBe(
+        'aitw daemon: is not running, so it cannot run a detached run. Run "aitw daemon start"\n',
+      );
+
+      await serve("1.2.3", "127.0.0.1:7233");
+      const elsewhere = createOutput();
+      await open(project("temporal.example.com:7233"), elsewhere, true);
+      expect(elsewhere.written.stderr).toBe(
+        "aitw daemon: serves the project at 127.0.0.1:7233, and temporal.address of the project is temporal.example.com:7233, so it cannot run a detached run\n",
+      );
     });
 
     it("prefers the options of the command", async () => {

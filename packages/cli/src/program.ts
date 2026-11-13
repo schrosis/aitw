@@ -236,7 +236,7 @@ export const createProgram = (context: ProgramContext = processContext()) => {
       new Option(
         "--detach",
         "start the run and exit. aitw daemon runs it, and its questions wait in aitw inbox list",
-      ).conflicts("dev"),
+      ).conflicts(["address", "dev"]),
     )
     .option("--dev", "start a temporary Temporal development server for this run")
     .option("--dev-db <path>", devDbDescription)

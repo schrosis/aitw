@@ -87,7 +87,7 @@ export const run = async (
   try {
     const root = await realpath(workflow.root);
     const { server: commandServer, servedTaskQueue } = await openCommandServer(
-      { server, version },
+      { detach, server, version },
       root,
       context,
       signal,
@@ -100,11 +100,10 @@ export const run = async (
 
     const memo = { [projectMemoKey]: projectHash(root), [workflowMemoKey]: name };
     if (detach) {
-      // The run goes on after this command only in the resident process.
+      // The run goes on after this command only in the resident process. The reason why it does
+      // not run the steps is already shown.
       if (servedTaskQueue === undefined) {
-        context.stderr(
-          `${name}: --detach needs aitw daemon to run the steps of the project. Run "aitw daemon start", or run it without --detach\n`,
-        );
+        context.stderr(`${name}: cannot detach, because aitw daemon does not run the steps\n`);
         return 1;
       }
       const workflowId = await startWorkflow({

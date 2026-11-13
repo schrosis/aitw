@@ -97,6 +97,29 @@ describe("colorsOf", () => {
     }
   });
 
+  it.each([["--address", "localhost:7233"], ["--dev"]])(
+    "does not detach a run on a server that aitw daemon may not run (%s)",
+    async (...server) => {
+      let error = "";
+      const program = createProgram({
+        cwd: fixtureProject,
+        interruptSignal: () => new AbortController().signal,
+        prepareEngine: () => {},
+        setExitCode: () => {},
+        ...createOutput(),
+      })
+        .exitOverride()
+        .configureOutput({ writeErr: (text) => (error += text) });
+      const run = program.commands.find((command) => command.name() === "run");
+      run?.exitOverride().configureOutput({ writeErr: (text) => (error += text) });
+
+      await expect(
+        program.parseAsync(["run", "valid", "--detach", ...server], { from: "user" }),
+      ).rejects.toMatchObject({ code: "commander.conflictingOption" });
+      expect(error).toContain("option '--detach' cannot be used with option");
+    },
+  );
+
   it("asks a terminal whether it has colors", () => {
     expect(colorsOf({ hasColors: () => true, isTTY: true })).toBe(true);
     expect(colorsOf({ hasColors: () => false, isTTY: true })).toBe(false);

@@ -17,7 +17,8 @@ import { z } from "zod";
 import { answeredElsewhereMessage } from "./answer.ts";
 import { createMemoryEventLog } from "./events.ts";
 import { answerInbox } from "./inbox.ts";
-import { listRunningWorkflows, resumeWorkflow, runWorkflow } from "./run.ts";
+import { listRunningWorkflows, resumeWorkflow, runWorkflow, startWorkflow } from "./run.ts";
+import { startWorker } from "./worker.ts";
 import {
   IncompatibleRunError,
   workflowCodeVersion,
@@ -100,6 +101,48 @@ describe("runWorkflow", () => {
       workflowId: expect.stringMatching(/^release\/notes-[0-9a-f-]{36}$/u) as unknown,
     });
     expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh"]);
+  }, 60_000);
+
+  it("starts a run for the Worker of another process, without following it", async () => {
+    const taskQueue = randomUUID();
+    const workflowId = await startWorkflow({
+      address: environment.address,
+      inputs: {},
+      intermediate,
+      memo: { "test.project": "detached" },
+      name: "release/notes",
+      taskQueue,
+    });
+
+    expect(workflowId).toMatch(/^release\/notes-[0-9a-f-]{36}$/u);
+    await expect(
+      listRunningWorkflows({ address: environment.address, memo: { "test.project": "detached" } }),
+    ).resolves.toEqual([
+      {
+        memo: {
+          "test.project": "detached",
+          [workflowCodeVersionMemoKey]: String(workflowCodeVersion),
+        },
+        startTime: expect.any(Date) as unknown,
+        taskQueue,
+        workflowId,
+      },
+    ]);
+    // A Worker that serves the task queue, as the resident process does, runs the steps.
+    const worker = await startWorker({
+      address: environment.address,
+      eventLog: createMemoryEventLog(),
+      scriptRunner: { run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }) },
+      taskQueue,
+      workflowsPath: fileURLToPath(new URL("./workflows/index.ts", import.meta.url)),
+    });
+    try {
+      await expect(environment.client.workflow.getHandle(workflowId).result()).resolves.toEqual({
+        executedSteps: ["fetch"],
+      });
+    } finally {
+      await worker.stop();
+    }
   }, 60_000);
 
   it("passes the workflow input", async () => {

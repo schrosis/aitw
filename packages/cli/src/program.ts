@@ -232,6 +232,12 @@ export const createProgram = (context: ProgramContext = processContext()) => {
     .argument("<workflow>", "workflow name, such as deploy or release/notes")
     .addOption(addressOption())
     .option("--input <json-or-file>", "workflow input as a JSON object or the path of a .json file")
+    .addOption(
+      new Option(
+        "--detach",
+        "start the run and exit. aitw daemon runs it, and its questions wait in aitw inbox list",
+      ).conflicts(["address", "dev"]),
+    )
     .option("--dev", "start a temporary Temporal development server for this run")
     .option("--dev-db <path>", devDbDescription)
     .option("--temporal-bin <path>", temporalBinDescription)
@@ -241,7 +247,7 @@ export const createProgram = (context: ProgramContext = processContext()) => {
       `${interruptHelp}
 ${daemonHelp}`,
     )
-    .action(async (workflow, { input, ...options }, command) => {
+    .action(async (workflow, { detach, input, ...options }, command) => {
       const server = toServerOptions(options, command);
       const signal = context.interruptSignal();
       context.setExitCode(
@@ -249,6 +255,7 @@ ${daemonHelp}`,
           workflow,
           {
             version,
+            detach,
             input,
             prepareEngine: context.prepareEngine,
             server,

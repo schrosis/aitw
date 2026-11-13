@@ -507,8 +507,8 @@ export const terminateWorkflow = async ({
   }
 };
 
-/** Options of {@link isWorkflowRunning}. */
-export interface IsWorkflowRunningOptions {
+/** Options of {@link watchWorkflowStatus}. */
+export interface WatchWorkflowStatusOptions {
   address: string;
   namespace?: string;
   workflowId: string;
@@ -516,30 +516,42 @@ export interface IsWorkflowRunningOptions {
   encryptionKey?: Uint8Array | undefined;
 }
 
+/** Tells whether a run still runs, over one connection to the Temporal Server. */
+export interface WorkflowStatusWatcher {
+  /** Returns whether the run still runs. It returns `false` also when the run does not exist. */
+  running: () => Promise<boolean>;
+  /** Closes the connection. */
+  close: () => Promise<void>;
+}
+
 /**
- * Returns whether a run is still running, such as to stop following its progress after it ends.
- *
- * @returns `false` also when the run does not exist.
+ * Connects to the Temporal Server to tell whether a run still runs, such as to stop following
+ * its progress after it ends. The connection is kept until it is closed, because a run is
+ * asked about again and again.
  */
-export const isWorkflowRunning = async ({
+export const watchWorkflowStatus = async ({
   address,
   encryptionKey,
   namespace = "default",
   workflowId,
-}: IsWorkflowRunningOptions): Promise<boolean> => {
+}: WatchWorkflowStatusOptions): Promise<WorkflowStatusWatcher> => {
   const connection = await Connection.connect({ address });
-  try {
-    const client = new Client({ connection, namespace, ...listingDataConverter(encryptionKey) });
-    const { status } = await client.workflow.getHandle(workflowId).describe();
-    return status.name === "RUNNING";
-  } catch (error) {
-    if (error instanceof WorkflowNotFoundError) {
-      return false;
-    }
-    throw error;
-  } finally {
-    await connection.close();
-  }
+  const client = new Client({ connection, namespace, ...listingDataConverter(encryptionKey) });
+  const handle = client.workflow.getHandle(workflowId);
+  return {
+    close: async () => connection.close(),
+    running: async () => {
+      try {
+        const { status } = await handle.describe();
+        return status.name === "RUNNING";
+      } catch (error) {
+        if (error instanceof WorkflowNotFoundError) {
+          return false;
+        }
+        throw error;
+      }
+    },
+  };
 };
 
 /** A running workflow that {@link listRunningWorkflows} returns. */

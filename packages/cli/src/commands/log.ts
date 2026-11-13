@@ -3,7 +3,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { createFileEventLog } from "@aitw/adapter-event-log-file";
 import type { WorkflowEvent } from "@aitw/core";
-import { followEvents, isWorkflowRunning } from "@aitw/engine";
+import { followEvents, watchWorkflowStatus } from "@aitw/engine";
+import type { WorkflowStatusWatcher } from "@aitw/engine";
 
 import { readProjectConfig } from "../config.js";
 import { openCommandServer } from "../daemon/connect.js";
@@ -121,50 +122,53 @@ export const log = async (options: LogOptions, context: CommandContext): Promise
   }
   const root = await realpath(found);
   const eventLog = createFileEventLog({ directory: projectLogDirectory(root) });
+  let watcher: WorkflowStatusWatcher | undefined;
+  let stopServer: (() => Promise<void>) | undefined;
   try {
-    const { cursor, events } = await eventLog.read(workflowId);
-    let running: (() => Promise<boolean>) | undefined;
-    let stopServer: (() => Promise<void>) | undefined;
     if (follow) {
       const { server } = await openCommandServer(options, root, context, signal);
       stopServer = server.stop;
-      const encryptionKey = loadEncryptionKey();
-      running = async () =>
-        isWorkflowRunning({ address: server.address, encryptionKey, workflowId });
+      watcher = await watchWorkflowStatus({
+        address: server.address,
+        encryptionKey: loadEncryptionKey(),
+        workflowId,
+      });
     }
+    // The status is asked before the log is read. A run that ended then has stored all of its
+    // events, and one that runs is followed until its end, so no event is missed.
+    const stillRunning = (await watcher?.running()) ?? false;
+    const { cursor, events } = await eventLog.read(workflowId);
+    if (events.length === 0 && !stillRunning) {
+      context.stderr(`No progress of ${workflowId} in this project\n`);
+      return 1;
+    }
+    const view = await createView(options, root, context);
     try {
-      const stillRunning = (await running?.()) ?? false;
-      if (events.length === 0 && !stillRunning) {
-        context.stderr(`No progress of ${workflowId} in this project\n`);
-        return 1;
+      for (const event of events) {
+        view.emit(event);
       }
-      const view = await createView(options, root, context);
-      try {
-        for (const event of events) {
-          view.emit(event);
-        }
-        view.flush(tail);
-        if (running === undefined || !stillRunning) {
-          return 0;
-        }
-        const follower = followEvents({ cursor, log: eventLog, runId: workflowId, sink: view });
-        try {
-          while (!signal.aborted && (await running())) {
-            await sleep(runningPollIntervalMs, undefined, { signal }).catch(() => {});
-          }
-        } finally {
-          // The last events of the run are stored before it ends.
-          await follower.stop();
-        }
+      view.flush(tail);
+      if (watcher === undefined || !stillRunning) {
         return 0;
-      } finally {
-        view.close();
       }
+      const follower = followEvents({ cursor, log: eventLog, runId: workflowId, sink: view });
+      try {
+        while (!signal.aborted && (await watcher.running())) {
+          await sleep(runningPollIntervalMs, undefined, { signal }).catch(() => {});
+        }
+      } finally {
+        // The last events of the run are stored before it ends.
+        await follower.stop();
+      }
+      return 0;
     } finally {
-      await stopServer?.();
+      view.close();
     }
   } catch (error) {
     context.stderr(`${rootMessage(error)}\n`);
     return 1;
+  } finally {
+    await watcher?.close();
+    await stopServer?.();
   }
 };

@@ -9,12 +9,12 @@ export type {
 } from "./activities/index.js";
 export {
   configureRuntime,
-  isWorkflowRunning,
   listRunningWorkflows,
   resumeWorkflow,
   runWorkflow,
   startWorkflow,
   terminateWorkflow,
+  watchWorkflowStatus,
   workflowsPath,
 } from "./run.js";
 export {
@@ -27,7 +27,6 @@ export { createMemoryEventLog, followEvents } from "./events.js";
 export type { EventFollower, FollowEventsOptions } from "./events.js";
 export type {
   FollowOptions,
-  IsWorkflowRunningOptions,
   ListRunningWorkflowsOptions,
   ResumeWorkflowOptions,
   RunningWorkflow,
@@ -36,6 +35,8 @@ export type {
   RuntimeOptions,
   StartWorkflowOptions,
   TerminateWorkflowOptions,
+  WatchWorkflowStatusOptions,
+  WorkflowStatusWatcher,
 } from "./run.js";
 export type { WorkflowResult } from "./workflows/index.js";
 export { answerUpdateName, waitingQueryName } from "./messages.js";

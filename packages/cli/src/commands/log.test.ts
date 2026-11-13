@@ -93,6 +93,17 @@ describe("log", () => {
     await expect(started.finished).resolves.toBe(0);
   }, 60_000);
 
+  it("shows all of the progress when it follows a run that ended", async () => {
+    const started = start("run-progress");
+    const workflowId = await started.workflowId;
+    await started.finished;
+
+    const followed = await show({ follow: true, workflowId });
+
+    expect(followed).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(followed.stdout).toMatch(/│ line 3\n✓ count .*\n\nfinish\n.*\n│ done\n✓ finish/su);
+  }, 60_000);
+
   it("reports a run without progress in the project", async () => {
     await expect(show({ workflowId: "missing-1" })).resolves.toEqual({
       exitCode: 1,

@@ -12,7 +12,7 @@ import type {
   ScriptRunner,
   WorkflowEvent,
 } from "@aitw/core";
-import { Client, Connection } from "@temporalio/client";
+import { Client, Connection, WorkflowNotFoundError } from "@temporalio/client";
 import type { WorkflowHandle } from "@temporalio/client";
 import { DefaultLogger, NativeConnection, Runtime, Worker } from "@temporalio/worker";
 import type { LogLevel } from "@temporalio/worker";
@@ -505,6 +505,53 @@ export const terminateWorkflow = async ({
   } finally {
     await connection.close();
   }
+};
+
+/** Options of {@link watchWorkflowStatus}. */
+export interface WatchWorkflowStatusOptions {
+  address: string;
+  namespace?: string;
+  workflowId: string;
+  /** Key that decrypts the memo of the run, which the description reads. */
+  encryptionKey?: Uint8Array | undefined;
+}
+
+/** Tells whether a run still runs, over one connection to the Temporal Server. */
+export interface WorkflowStatusWatcher {
+  /** Returns whether the run still runs. It returns `false` also when the run does not exist. */
+  running: () => Promise<boolean>;
+  /** Closes the connection. */
+  close: () => Promise<void>;
+}
+
+/**
+ * Connects to the Temporal Server to tell whether a run still runs, such as to stop following
+ * its progress after it ends. The connection is kept until it is closed, because a run is
+ * asked about again and again.
+ */
+export const watchWorkflowStatus = async ({
+  address,
+  encryptionKey,
+  namespace = "default",
+  workflowId,
+}: WatchWorkflowStatusOptions): Promise<WorkflowStatusWatcher> => {
+  const connection = await Connection.connect({ address });
+  const client = new Client({ connection, namespace, ...listingDataConverter(encryptionKey) });
+  const handle = client.workflow.getHandle(workflowId);
+  return {
+    close: async () => connection.close(),
+    running: async () => {
+      try {
+        const { status } = await handle.describe();
+        return status.name === "RUNNING";
+      } catch (error) {
+        if (error instanceof WorkflowNotFoundError) {
+          return false;
+        }
+        throw error;
+      }
+    },
+  };
 };
 
 /** A running workflow that {@link listRunningWorkflows} returns. */

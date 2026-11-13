@@ -14,6 +14,7 @@ export {
   runWorkflow,
   startWorkflow,
   terminateWorkflow,
+  watchWorkflowStatus,
   workflowsPath,
 } from "./run.js";
 export {
@@ -34,6 +35,8 @@ export type {
   RuntimeOptions,
   StartWorkflowOptions,
   TerminateWorkflowOptions,
+  WatchWorkflowStatusOptions,
+  WorkflowStatusWatcher,
 } from "./run.js";
 export type { WorkflowResult } from "./workflows/index.js";
 export { answerUpdateName, waitingQueryName } from "./messages.js";

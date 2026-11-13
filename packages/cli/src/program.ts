@@ -6,6 +6,7 @@ import { Command, InvalidArgumentError, Option } from "@commander-js/extra-typin
 
 import { answerInboxCommand, listInboxCommand } from "./commands/inbox.js";
 import type { CommandContext } from "./commands/load.js";
+import { log } from "./commands/log.js";
 import { cancel, resume } from "./commands/resume.js";
 import { run } from "./commands/run.js";
 import { showDaemonStatus, startDaemon, stopDaemon } from "./daemon/commands.js";
@@ -194,8 +195,8 @@ const toServerOptions = (
   return address === undefined ? undefined : { address, type: "address" };
 };
 
-/** Parses the value of `--visit`, which counts the earlier visits of a step from 0. */
-const parseVisit = (value: string): number => {
+/** Parses a whole number from 0, such as the value of `--visit` or `--tail`. */
+const parseCount = (value: string): number => {
   if (!/^\d+$/u.test(value)) {
     throw new InvalidArgumentError("Enter a whole number from 0");
   }
@@ -360,7 +361,7 @@ ${daemonHelp}`,
     .description("Answer a wait step of a run, such as one that aitw inbox list shows")
     .argument("<workflow-id>", "ID of the run")
     .requiredOption("--step <step>", "ID of the waiting step")
-    .option("--visit <number>", "visit of the step, which aitw inbox list shows", parseVisit)
+    .option("--visit <number>", "visit of the step, which aitw inbox list shows", parseCount)
     .requiredOption(
       "--values <json-or-file>",
       "answers as a JSON object or the path of a .json file",
@@ -395,6 +396,37 @@ as a run that was detached from "aitw run". To answer a run and follow it in the
             values,
             version,
             visit,
+            workflowId,
+          },
+          context,
+        ),
+      );
+    });
+
+  program
+    .command("log")
+    .description("Show the progress of a run of the project, also after it ended")
+    .argument("<workflow-id>", "ID of the run, such as aitw run and aitw inbox list show")
+    .option("--tail <lines>", "show only the last lines of the progress so far", parseCount)
+    .option("--follow", "keep showing the progress until the run ends")
+    .option("--json", "write each event as a line of JSON")
+    .addOption(new Option("--address <address>", "address of the Temporal Server"))
+    .addHelpText(
+      "after",
+      `
+Both the standard output and the standard error of the steps are shown on standard output.
+--follow asks the Temporal Server whether the run still runs.`,
+    )
+    .action(async (workflowId, { address, follow, json, tail }) => {
+      context.setExitCode(
+        await log(
+          {
+            follow,
+            json,
+            server: address === undefined ? undefined : { address, type: "address" },
+            signal: context.interruptSignal(),
+            tail,
+            version,
             workflowId,
           },
           context,

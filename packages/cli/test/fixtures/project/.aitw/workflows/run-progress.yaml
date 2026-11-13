@@ -1,0 +1,11 @@
+version: v0.1
+start: count
+steps:
+  count:
+    type: script
+    run: for i in 1 2 3; do echo "line $i"; sleep 1; done
+    next: finish
+  finish:
+    type: script
+    run: echo done
+    next: end

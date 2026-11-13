@@ -38,6 +38,8 @@ export interface FollowEventsOptions {
   intervalMs?: number;
   /** Receives a failure to read the log or to deliver an event. Following continues. */
   onError?: (error: unknown) => void;
+  /** Position to start after, from an earlier read. Without it, following starts from the first event. */
+  cursor?: string | undefined;
 }
 
 /**
@@ -46,13 +48,14 @@ export interface FollowEventsOptions {
  * Reads never overlap, so each event is delivered once.
  */
 export const followEvents = ({
+  cursor: start,
   intervalMs = 100,
   log,
   onError = () => {},
   runId,
   sink,
 }: FollowEventsOptions): EventFollower => {
-  let cursor: string | undefined;
+  let cursor = start;
   let reading: Promise<void> = Promise.resolve();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;

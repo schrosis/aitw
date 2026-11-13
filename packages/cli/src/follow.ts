@@ -8,13 +8,15 @@ import type { EventSink } from "@aitw/core";
 import { IncompatibleRunError } from "@aitw/engine";
 import type { FollowOptions, RunOutcome } from "@aitw/engine";
 
+import { createAiTerminalPlugin, writeAiLine } from "./ai.js";
+import type { AiLine } from "./ai.js";
 import type { CommandContext } from "./commands/load.js";
 import { loadEncryptionKey } from "./encryption.js";
 import { createEnvironmentReader } from "./environment.js";
 import { createLineReader } from "./lines.js";
 import type { LineReader } from "./lines.js";
 import { readProjectConfig } from "./config.js";
-import { createRegistry, loadConfiguredPlugins } from "./plugins.js";
+import { createRegistry, createRegistryWith, loadConfiguredPlugins } from "./plugins.js";
 import { createProgressPrinter } from "./progress.js";
 import type { ProgressPrinter } from "./progress.js";
 import type { OpenedServer } from "./server.js";
@@ -145,6 +147,12 @@ export interface FollowRunOptions {
    * detaches at once, because its scripts keep running there.
    */
   ownsWorker?: boolean;
+  /**
+   * Writes JSON lines for a program such as an AI agent, instead of the progress for a person,
+   * and detaches the run at the first question of a `terminal` step, which `aitw inbox answer`
+   * answers. Steps that a Worker answers, such as a wait for CI, are followed through.
+   */
+  fromAi?: boolean;
 }
 
 /**
@@ -155,6 +163,7 @@ export interface FollowRunOptions {
 export const followRun = async (
   {
     follow,
+    fromAi = false,
     interrupt,
     name,
     ownsWorker = true,
@@ -166,29 +175,41 @@ export const followRun = async (
   context: CommandContext,
 ): Promise<number> => {
   const terminal = given ?? createTerminal(context);
+  const write = (line: AiLine): void => writeAiLine(context.stdout, line);
   // The configuration file decides what the progress shows, once it is read below.
   let printer: ProgressPrinter | undefined;
   // The script or AI step that runs now, so that an interrupt can tell that the run waits for it.
   let runningStep: string | undefined;
   const eventSink: EventSink = {
     emit: (event) => {
-      // A question that another process answered leaves its prompt open.
-      terminal.endLine();
       if (event.type === "stepStarted") {
         runningStep =
           event.run === undefined && event.provider === undefined ? undefined : event.step;
       } else if (event.type === "stepFinished") {
         runningStep = undefined;
       }
+      if (fromAi) {
+        // The output of steps can be long, and a program reads it with aitw resume if needed.
+        if (event.type !== "stepOutput") {
+          write(event);
+        }
+        return;
+      }
+      // A question that another process answered leaves its prompt open.
+      terminal.endLine();
       printer?.emit(event);
     },
   };
 
   const detach = new AbortController();
+  // Whether the run detached at a question of --from-ai, which is then the last line.
+  let asked = false;
   const onInterrupt = (): void => {
     printer?.clear();
     // The interrupt can come while a question waits on the same line.
-    context.stdout("\n");
+    if (!fromAi) {
+      context.stdout("\n");
+    }
     if (!server.durable) {
       return;
     }
@@ -203,15 +224,26 @@ export const followRun = async (
   interrupt.addEventListener("abort", onInterrupt, { once: true });
 
   try {
+    // Stopping at a question leaves the run waiting, which a server without runs would lose.
+    if (fromAi && !server.durable) {
+      write({
+        message:
+          "--from-ai needs a server that keeps its runs, such as of aitw daemon, or --dev with --dev-db",
+        type: "failed",
+      });
+      return 1;
+    }
     // The file is read once, so that the progress and the plugins follow the same contents.
     const read = await readProjectConfig(root, context.cwd);
-    printer = createProgressPrinter(context, {
-      colors: context.colors,
-      showCommands: read.config.output?.showCommands,
-      // A status line needs a terminal, which can move the cursor back over it.
-      status: context.columns === undefined ? undefined : { columns: context.columns },
-      steps,
-    });
+    printer = fromAi
+      ? undefined
+      : createProgressPrinter(context, {
+          colors: context.colors,
+          showCommands: read.config.output?.showCommands,
+          // A status line needs a terminal, which can move the cursor back over it.
+          status: context.columns === undefined ? undefined : { columns: context.columns },
+          steps,
+        });
     // Plugins load before the run starts, so that a broken one stops nothing.
     const loaded = await loadConfiguredPlugins(read, root);
     const following = follow({
@@ -219,13 +251,28 @@ export const followRun = async (
       eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
       eventSink,
       onWarning: (message) => {
+        if (fromAi) {
+          write({ message, type: "warning" });
+          return;
+        }
         // A warning comes while a step runs, so it must not run into the status line.
         printer?.clear();
         context.stderr(`${name}: warning: ${message}\n`);
       },
       aiRunner: createAiRunner({ cwd: root, plugins: createRegistry(undefined, loaded) }),
       encryptionKey: loadEncryptionKey(),
-      plugins: createRegistry(terminal, loaded),
+      plugins: fromAi
+        ? createRegistryWith(
+            createAiTerminalPlugin((question) => {
+              if (!asked) {
+                asked = true;
+                write({ ...question, name });
+                detach.abort();
+              }
+            }),
+            loaded,
+          )
+        : createRegistry(terminal, loaded),
       readEnvironment: createEnvironmentReader(root),
       scriptRunner: createLocalScriptRunner({ cwd: root }),
       ...(server.durable ? { detach: detach.signal } : { signal: interrupt }),
@@ -233,12 +280,34 @@ export const followRun = async (
     // The status line is removed before the result of the run is written.
     const outcome = await following.finally(() => printer?.close());
     if (outcome.status === "detached") {
+      if (fromAi) {
+        if (!asked) {
+          write({ type: "detached", workflowId: outcome.workflowId });
+        }
+        return detachedExitCode;
+      }
       context.stderr(`${name}: detached. Run "aitw resume${server.options}" to continue\n`);
       return detachedExitCode;
+    }
+    if (fromAi) {
+      write({
+        executedSteps: outcome.executedSteps,
+        type: "completed",
+        workflowId: outcome.workflowId,
+      });
+      return 0;
     }
     context.stdout(`${name}: completed (${outcome.executedSteps.join(", ")})\n`);
     return 0;
   } catch (error) {
+    if (fromAi) {
+      if (isCancelled(error) || interrupt.aborted) {
+        write({ type: "cancelled" });
+        return cancelledExitCode;
+      }
+      write({ message: rootMessage(error), type: "failed" });
+      return 1;
+    }
     if (isCancelled(error) || interrupt.aborted) {
       const note = server.durable
         ? ""

@@ -238,6 +238,12 @@ export const createProgram = (context: ProgramContext = processContext()) => {
         "start the run and exit. aitw daemon runs it, and its questions wait in aitw inbox list",
       ).conflicts(["address", "dev"]),
     )
+    .addOption(
+      new Option(
+        "--from-ai",
+        "write JSON lines for a program such as an AI agent, and exit at the first question, which aitw inbox answer --from-ai answers",
+      ).conflicts("detach"),
+    )
     .option("--dev", "start a temporary Temporal development server for this run")
     .option("--dev-db <path>", devDbDescription)
     .option("--temporal-bin <path>", temporalBinDescription)
@@ -247,7 +253,7 @@ export const createProgram = (context: ProgramContext = processContext()) => {
       `${interruptHelp}
 ${daemonHelp}`,
     )
-    .action(async (workflow, { detach, input, ...options }, command) => {
+    .action(async (workflow, { detach, fromAi, input, ...options }, command) => {
       const server = toServerOptions(options, command);
       const signal = context.interruptSignal();
       context.setExitCode(
@@ -256,6 +262,7 @@ ${daemonHelp}`,
           {
             version,
             detach,
+            fromAi,
             input,
             prepareEngine: context.prepareEngine,
             server,
@@ -332,11 +339,13 @@ ${daemonHelp}`,
   inbox
     .command("list")
     .description("List the wait steps that wait for an answer, with the command that answers each")
+    .option("--from-ai", "write a JSON line for each question, for a program such as an AI agent")
     .addOption(new Option("--address <address>", "address of the Temporal Server"))
-    .action(async ({ address }) => {
+    .action(async ({ address, fromAi }) => {
       context.setExitCode(
         await listInboxCommand(
           {
+            fromAi,
             server: address === undefined ? undefined : { address, type: "address" },
             signal: context.interruptSignal(),
             version,
@@ -356,18 +365,30 @@ ${daemonHelp}`,
       "--values <json-or-file>",
       "answers as a JSON object or the path of a .json file",
     )
-    .requiredOption("--detach", "exit after answering. The run goes on in aitw daemon")
+    .addOption(
+      new Option(
+        "--from-ai",
+        "follow the run after answering until its next question or its end, writing JSON lines for a program such as an AI agent",
+      ).conflicts("detach"),
+    )
+    .option("--detach", "exit after answering. The run goes on in aitw daemon")
     .addOption(new Option("--address <address>", "address of the Temporal Server"))
     .addHelpText(
       "after",
       `
-The run must be one that aitw daemon runs, such as a run that was detached from "aitw run".
-To answer a run and follow it in the terminal, use "aitw resume".`,
+One of --from-ai and --detach is required. --detach needs a run that aitw daemon runs, such
+as a run that was detached from "aitw run". To answer a run and follow it in the terminal, use
+"aitw resume".`,
     )
-    .action(async (workflowId, { address, step, values, visit }) => {
+    .action(async (workflowId, { address, detach, fromAi, step, values, visit }, command) => {
+      if (detach !== true && fromAi !== true) {
+        command.error("error: aitw inbox answer needs --from-ai or --detach");
+      }
       context.setExitCode(
         await answerInboxCommand(
           {
+            fromAi,
+            prepareEngine: context.prepareEngine,
             server: address === undefined ? undefined : { address, type: "address" },
             signal: context.interruptSignal(),
             step,

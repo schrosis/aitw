@@ -38,7 +38,7 @@ export type {
 export type { WorkflowResult } from "./workflows/index.js";
 export { answerUpdateName, waitingQueryName } from "./messages.js";
 export { answeredElsewhereMessage } from "./answer.js";
-export { AnswerRejectedError, answerInbox, listInbox } from "./inbox.js";
+export { AnswerRejectedError, answerInbox, listInbox, sendAnswer } from "./inbox.js";
 export type {
   AnswerInboxOptions,
   Inbox,

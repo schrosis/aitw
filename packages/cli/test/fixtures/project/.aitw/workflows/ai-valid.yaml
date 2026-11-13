@@ -12,6 +12,7 @@ steps:
         verdict:
           type: string
     with:
+      agent: reviewer
       allowedTools: [Read, Grep]
       maxBudgetUsd: 2
     outputs:

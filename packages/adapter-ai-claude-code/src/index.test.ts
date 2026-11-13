@@ -27,6 +27,26 @@ const assistant = (content: object[], parent: string | null = null): Message => 
   type: "assistant",
 });
 
+/** The message that Claude Code sends first, with the agents that the session can use. */
+const init = (agents?: string[]): Message => ({
+  apiKeySource: "none",
+  claude_code_version: "1.0.0",
+  cwd: "/repository",
+  mcp_servers: [],
+  model: "claude-opus-5-5",
+  output_style: "default",
+  permissionMode: "dontAsk",
+  plugins: [],
+  session_id: "session-1",
+  skills: [],
+  slash_commands: [],
+  subtype: "init",
+  tools: [],
+  type: "system",
+  uuid: "00000000-0000-0000-0000-000000000000",
+  ...(agents === undefined ? {} : { agents }),
+});
+
 const request = (fields: Partial<AiRequest> = {}): AiRequest => ({
   options: {},
   prompt: "Review",
@@ -101,7 +121,7 @@ describe("claude-code provider", () => {
     await runner([success()]).run(
       request({
         model: "claude-opus-5-5",
-        options: { allowedTools: ["Read"], maxBudgetUsd: 2 },
+        options: { agent: "reviewer", allowedTools: ["Read"], maxBudgetUsd: 2 },
         sessionId: "session-0",
       }),
       { signal },
@@ -110,6 +130,7 @@ describe("claude-code provider", () => {
     expect(seen).toMatchObject([
       {
         options: {
+          agent: "reviewer",
           allowedTools: ["Read"],
           cwd,
           maxBudgetUsd: 2,
@@ -125,9 +146,64 @@ describe("claude-code provider", () => {
   it("omits what the step does not set", async () => {
     await runner([success()]).run(request(), { signal });
 
-    for (const option of ["allowedTools", "maxBudgetUsd", "model", "outputFormat", "resume"]) {
+    for (const option of [
+      "agent",
+      "allowedTools",
+      "maxBudgetUsd",
+      "model",
+      "outputFormat",
+      "resume",
+      "systemPrompt",
+    ]) {
       expect(seen[0]?.options).not.toHaveProperty(option);
     }
+  });
+
+  it("uses the system prompt of Claude Code with an agent, so that the prompt of the agent applies", async () => {
+    await runner([init(["reviewer"]), success()]).run(request({ options: { agent: "reviewer" } }), {
+      signal,
+    });
+
+    expect(seen[0]?.options.systemPrompt).toEqual({ preset: "claude_code", type: "preset" });
+  });
+
+  it("runs with an agent that Claude Code knows", async () => {
+    await expect(
+      runner([init(["general-purpose", "reviewer"]), success()]).run(
+        request({ options: { agent: "reviewer" } }),
+        { signal },
+      ),
+    ).resolves.toEqual({ data: "done", sessionId: "session-1" });
+  });
+
+  it("fails and stops Claude Code when it does not know the agent", async () => {
+    await expect(
+      runner([init(["general-purpose"]), success()]).run(
+        request({ options: { agent: "missing" } }),
+        { signal },
+      ),
+    ).rejects.toThrow("Claude Code agent not found: missing");
+    expect(seen[0]?.options.abortController?.signal.aborted).toBe(true);
+  });
+
+  it("fails when Claude Code does not tell the agents", async () => {
+    await expect(
+      runner([init(), success()]).run(request({ options: { agent: "reviewer" } }), { signal }),
+    ).rejects.toThrow("Claude Code agent not found: reviewer");
+  });
+
+  it("does not look at the agents without an agent", async () => {
+    await expect(runner([init([]), success()]).run(request(), { signal })).resolves.toEqual({
+      data: "done",
+      sessionId: "session-1",
+    });
+  });
+
+  it.each([[""], [1]])("rejects the agent %j", async (agent) => {
+    await expect(
+      runner([success()]).run(request({ options: { agent } }), { signal }),
+    ).rejects.toThrow("Invalid options of AI provider claude-code: agent:");
+    expect(seen).toEqual([]);
   });
 
   it("denies edits of the definition of the workflow", async () => {

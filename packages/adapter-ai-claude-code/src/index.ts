@@ -8,6 +8,13 @@ import { z } from "zod";
 
 /** Options of the `with` field of a step. */
 const optionsSchema = z.strictObject({
+  agent: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Name of the Claude Code agent that runs the main thread of the step. The model of the agent takes precedence over the model of the step. The tools of the agent still need allowedTools.",
+    ),
   allowedTools: z.array(z.string().min(1)).optional(),
   maxBudgetUsd: z.number().positive().optional(),
 });
@@ -85,6 +92,13 @@ const describeBlock = (block: ContentBlock): string | undefined => {
   return block.type === "tool_use" ? `${describeTool(block)}\n` : undefined;
 };
 
+/** The message that Claude Code sends first, with what the session can use. */
+type InitMessage = Extract<ClaudeMessage, { type: "system"; subtype: "init" }>;
+
+/** Returns whether the session of Claude Code can use the agent. */
+const knowsAgent = (message: InitMessage, agent: string): boolean =>
+  message.agents?.includes(agent) ?? false;
+
 const describeFailure = (message: Extract<ClaudeMessage, { type: "result" }>): string => {
   const reasons = message.errors?.join("; ") || message.result || message.subtype;
   return `Claude Code failed: ${reasons}`;
@@ -105,7 +119,7 @@ const createProvider = (query: ClaudeQuery): AiProvider<z.output<typeof optionsS
         dotenv,
         env,
         model,
-        options: { allowedTools, maxBudgetUsd },
+        options: { agent, allowedTools, maxBudgetUsd },
         prompt,
         schema,
         sessionId,
@@ -142,6 +156,10 @@ const createProvider = (query: ClaudeQuery): AiProvider<z.output<typeof optionsS
             env: { ...environment.values, ...env },
             // Nobody can answer a question during a step, so what is not allowed is denied.
             permissionMode: "dontAsk",
+            // The SDK sends an empty system prompt by default, which replaces the prompt of the agent.
+            ...(agent === undefined
+              ? {}
+              : { agent, systemPrompt: { preset: "claude_code", type: "preset" } }),
             ...(allowedTools === undefined ? {} : { allowedTools }),
             ...(maxBudgetUsd === undefined ? {} : { maxBudgetUsd }),
             ...(model === undefined ? {} : { model }),
@@ -152,6 +170,16 @@ const createProvider = (query: ClaudeQuery): AiProvider<z.output<typeof optionsS
           },
           prompt,
         })) {
+          // Claude Code runs the default agent without an error when it does not know the agent.
+          if (
+            agent !== undefined &&
+            message.type === "system" &&
+            message.subtype === "init" &&
+            !knowsAgent(message, agent)
+          ) {
+            controller.abort();
+            throw new Error(`Claude Code agent not found: ${agent}`);
+          }
           // What a subagent does is part of the step that started it.
           if (message.type === "assistant" && message.parent_tool_use_id === null) {
             for (const block of message.message.content) {

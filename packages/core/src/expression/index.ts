@@ -7,10 +7,10 @@ export type { Condition, EvaluateConditionResult, ParseConditionResult } from ".
 export { embedValue, evaluateTemplate, pickReferences } from "./evaluate.js";
 export type { EvaluateResult } from "./evaluate.js";
 export { parseTemplate } from "./template.js";
-export type { ParseTemplateResult, Template, TemplatePart } from "./template.js";
+export type { ParseTemplateResult, ReferenceOrCall, Template, TemplatePart } from "./template.js";
 export type { ValueExpression } from "./value.js";
 
-/** Parses and evaluates a string that may contain `${{ }}` references. */
+/** Parses and evaluates a string that may contain `${{ }}` expressions. */
 export const evaluateExpression = (
   text: string,
   context: Readonly<Record<string, unknown>>,

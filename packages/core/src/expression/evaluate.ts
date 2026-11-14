@@ -1,5 +1,7 @@
+import { ExpressionError } from "./lexer.js";
 import { parseTemplate } from "./template.js";
 import type { Template } from "./template.js";
+import { evaluateValue, expressionReferences } from "./value.js";
 
 /** Result of {@link evaluateTemplate}. */
 export type EvaluateResult = { ok: true; value: unknown } | { ok: false; message: string };
@@ -76,10 +78,10 @@ const setPicked = (
 };
 
 /**
- * Returns the part of a context that the `${{ }}` references in some strings read.
+ * Returns the part of a context that the `${{ }}` expressions in some strings read.
  *
- * It keeps only the referenced values, so that a step receives what its definition uses and
- * not every value that the workflow holds.
+ * It keeps only the referenced values, including those in the arguments of calls, so that a step
+ * receives what its definition uses and not every value that the workflow holds.
  *
  * @param roots Names of the top-level context entries to pick from. Other references are left
  *   out, such as references to values that are not known yet.
@@ -92,24 +94,24 @@ export const pickReferences = (
   paths: readonly (readonly string[])[] = [],
 ): Tree => {
   const picked: Tree = {};
-  for (const path of paths) {
-    const resolved = roots.has(path[0] ?? "") ? resolve(context, path) : { ok: false as const };
+  const pick = (path: readonly string[]): void => {
+    if (!roots.has(path[0] ?? "")) {
+      return;
+    }
+    const resolved = resolve(context, path);
     if (resolved.ok) {
       setPicked(picked, path, resolved);
     }
-  }
+  };
+  paths.forEach(pick);
   for (const text of texts) {
     const parsed = parseTemplate(text);
     if (!parsed.ok) {
       continue;
     }
     for (const part of parsed.template) {
-      if (part.type !== "reference" || !roots.has(part.path[0] ?? "")) {
-        continue;
-      }
-      const resolved = resolve(context, part.path);
-      if (resolved.ok) {
-        setPicked(picked, part.path, resolved);
+      if (part.type === "expression") {
+        expressionReferences(part.expression).forEach(pick);
       }
     }
   }
@@ -142,8 +144,12 @@ export const embedValue = (value: unknown): string => {
 /**
  * Evaluates a parsed template against the values that its references may read.
  *
- * A template that consists of a single reference keeps the type of the value. Otherwise the
- * values are embedded into a string.
+ * A template that consists of a single expression, a reference or a call, keeps the type of the
+ * value. Otherwise the values are embedded into a string.
+ *
+ * A reference to a step that is not in the context reads as `null`, because a step on another
+ * branch may not have run. Any other reference that cannot be read is an error. The same rules
+ * apply to the references in the arguments of a call.
  */
 export const evaluateTemplate = (
   template: Template,
@@ -155,19 +161,29 @@ export const evaluateTemplate = (
       values.push(part.value);
       continue;
     }
-    const resolved = resolve(context, part.path);
-    if (resolved.ok) {
-      values.push(resolved.value);
-    } else if (part.path[0] === "steps") {
+    const read = (path: readonly string[]): unknown => {
+      const resolved = resolve(context, path);
+      if (resolved.ok) {
+        return resolved.value;
+      }
       // A step on another branch may not have run. Validation checks that the step exists.
-      values.push(null);
-    } else {
-      return { message: `Unknown reference: ${part.source}`, ok: false };
+      if (path[0] === "steps") {
+        return null;
+      }
+      throw new ExpressionError(`Unknown reference: ${part.source}`);
+    };
+    try {
+      values.push(evaluateValue(part.expression, read));
+    } catch (error) {
+      if (error instanceof ExpressionError) {
+        return { message: error.message, ok: false };
+      }
+      throw error;
     }
   }
 
   const [only] = template;
-  if (template.length === 1 && only?.type === "reference") {
+  if (template.length === 1 && only?.type === "expression") {
     return { ok: true, value: values[0] };
   }
   try {

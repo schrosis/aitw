@@ -68,7 +68,7 @@ describe("compileDefinition", () => {
         {
           column: 14,
           line: 8,
-          message: "Step missing does not run before fetch: ${{ steps.missing.outputs.title }}",
+          message: "Step missing does not run before fetch: steps.missing.outputs.title",
           path: ["steps", "fetch", "inputs", "title"],
         },
       ],

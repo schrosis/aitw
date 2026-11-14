@@ -1,14 +1,14 @@
 import { realpath } from "node:fs/promises";
 
-import type { InputDeclaration } from "@aitw/core";
+import type { InputDeclaration } from "@ugoke/core";
 import {
   AnswerRejectedError,
   answerInbox,
   attachWorkflow,
   listInbox,
   sendAnswer,
-} from "@aitw/engine";
-import type { InboxQuestion } from "@aitw/engine";
+} from "@ugoke/engine";
+import type { InboxQuestion } from "@ugoke/engine";
 
 import { reportAiFailure, writeAiLine } from "../ai.js";
 import { openCommandServer } from "../daemon/connect.js";
@@ -19,7 +19,7 @@ import { acquireRunLock, RunLockedError } from "../lock.js";
 import { formatAge, listProjectRuns } from "../runs.js";
 import type { OpenedServer, ServerOptions } from "../server.js";
 import { projectHash, projectLockDirectory, projectMemoKey, workflowMemoKey } from "../state.js";
-import { aitwDirectory, findProjectRoot } from "../workflows.js";
+import { ugokeDirectory, findProjectRoot } from "../workflows.js";
 import type { CommandContext } from "./load.js";
 
 /** Options of {@link listInboxCommand}. */
@@ -31,7 +31,7 @@ export interface InboxOptions {
   server?: ServerOptions | undefined;
   /** Aborted when the user interrupts. */
   signal: AbortSignal;
-  /** Version of this aitw, which the resident process must have to serve the project. */
+  /** Version of this ugoke, which the resident process must have to serve the project. */
   version: string;
   /** Writes JSON lines for a program such as an AI agent. */
   fromAi?: boolean | undefined;
@@ -58,7 +58,7 @@ export interface AnswerOptions extends InboxOptions {
 const findRoot = async (context: CommandContext): Promise<string | undefined> => {
   const found = await findProjectRoot(context.cwd);
   if (found === undefined) {
-    context.stderr(`No ${aitwDirectory} directory found in ${context.cwd} or its parents\n`);
+    context.stderr(`No ${ugokeDirectory} directory found in ${context.cwd} or its parents\n`);
     return undefined;
   }
   return realpath(found);
@@ -93,8 +93,8 @@ export interface AnswerTarget {
 /**
  * Formats a question with the command that answers it.
  *
- * `aitw inbox answer` answers only a run that the resident process runs, so another run is
- * answered with `aitw attach`, which follows it.
+ * `ugoke inbox answer` answers only a run that the resident process runs, so another run is
+ * answered with `ugoke attach`, which follows it.
  */
 export const formatQuestion = (
   question: InboxQuestion,
@@ -128,8 +128,8 @@ export const formatQuestion = (
   );
   lines.push(
     run.taskQueue === servedTaskQueue
-      ? `  aitw inbox answer ${run.workflowId} --step ${step} --visit ${visit} --values '{...}' --detach${serverOptions}`
-      : `  aitw attach ${run.workflowId}${serverOptions}  (aitw daemon does not run it)`,
+      ? `  ugoke inbox answer ${run.workflowId} --step ${step} --visit ${visit} --values '{...}' --detach${serverOptions}`
+      : `  ugoke attach ${run.workflowId}${serverOptions}  (ugoke daemon does not run it)`,
   );
   return `${lines.join("\n")}\n`;
 };
@@ -188,7 +188,7 @@ const listQuestions = async (options: InboxOptions, context: CommandContext): Pr
       }
       for (const { reason, run } of unreadable) {
         context.stderr(
-          `${run.workflowId}: cannot read what it waits for: ${reason}. Run "aitw attach ${run.workflowId}${server.options}" to follow it\n`,
+          `${run.workflowId}: cannot read what it waits for: ${reason}. Run "ugoke attach ${run.workflowId}${server.options}" to follow it\n`,
         );
       }
       if (questions.length === 0) {
@@ -263,7 +263,7 @@ const answerQuestion = async (options: AnswerOptions, context: CommandContext): 
       // process.
       if (servedTaskQueue === undefined || run.taskQueue !== servedTaskQueue) {
         context.stderr(
-          `${run.name}: aitw daemon does not run ${workflowId}, so it would stop after the answer. Run "aitw attach ${workflowId}${server.options}" to answer and follow it\n`,
+          `${run.name}: ugoke daemon does not run ${workflowId}, so it would stop after the answer. Run "ugoke attach ${workflowId}${server.options}" to answer and follow it\n`,
         );
         return 1;
       }
@@ -275,7 +275,7 @@ const answerQuestion = async (options: AnswerOptions, context: CommandContext): 
         visit,
         workflowId,
       });
-      context.stdout(`${run.name}: answered ${step}. The run goes on in aitw daemon\n`);
+      context.stdout(`${run.name}: answered ${step}. The run goes on in ugoke daemon\n`);
       return 0;
     } finally {
       await server.stop();

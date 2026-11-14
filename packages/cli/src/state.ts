@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
-import { workflowCodeVersion } from "@aitw/engine";
+import { workflowCodeVersion } from "@ugoke/engine";
 
 import { ensurePrivateDirectory } from "./private-directory.js";
 
 /**
- * Returns the directory that keeps the state of aitw, such as logs, creating it when needed.
+ * Returns the directory that keeps the state of ugoke, such as logs, creating it when needed.
  *
  * The socket of the resident process, the locks of runs, and their logs are all in this
  * directory, so checking it protects them.
@@ -17,7 +17,7 @@ import { ensurePrivateDirectory } from "./private-directory.js";
  */
 export const stateDirectory = (): string =>
   ensurePrivateDirectory(
-    join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "aitw"),
+    join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "ugoke"),
     "state directory",
   );
 
@@ -34,10 +34,10 @@ export const projectLogDirectory = (root: string): string =>
   join(stateDirectory(), "logs", projectHash(root));
 
 /** Key of the memo of a run that holds the hash of its project. */
-export const projectMemoKey = "aitwProject";
+export const projectMemoKey = "ugokeProject";
 
 /** Key of the memo of a run that holds the name of its workflow, such as `release/notes`. */
-export const workflowMemoKey = "aitwWorkflow";
+export const workflowMemoKey = "ugokeWorkflow";
 
 /** Returns the directory that keeps the locks of the runs of a project. */
 export const projectLockDirectory = (root: string): string =>
@@ -48,12 +48,12 @@ export const projectLockDirectory = (root: string): string =>
  *
  * The host name keeps the projects of hosts that share a Temporal Server apart. The workflow code
  * version keeps runs of other versions away from this Worker, because replaying them with this
- * code can fail (C12a). A run of another version stays on its task queue until a matching aitw,
- * or `aitw attach --force`, continues it.
+ * code can fail (C12a). A run of another version stays on its task queue until a matching ugoke,
+ * or `ugoke attach --force`, continues it.
  */
 export const projectTaskQueue = (root: string): string => {
   const host = hostname()
     .toLowerCase()
     .replaceAll(/[^a-z0-9-]/gu, "-");
-  return `aitw-${host}-${projectHash(root)}-v${workflowCodeVersion}`;
+  return `ugoke-${host}-${projectHash(root)}-v${workflowCodeVersion}`;
 };

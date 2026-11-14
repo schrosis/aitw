@@ -1,8 +1,8 @@
 import { join } from "node:path";
 
-import { AiTimeoutError, defineAiProvider, definePlugin } from "@aitw/core";
-import type { AiProvider, AiResult, Plugin } from "@aitw/core";
-import { readEnvironment } from "@aitw/dotenv";
+import { AiTimeoutError, defineAiProvider, definePlugin } from "@ugoke/core";
+import type { AiProvider, AiResult, Plugin } from "@ugoke/core";
+import { readEnvironment } from "@ugoke/dotenv";
 import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 
@@ -51,7 +51,7 @@ export type ClaudeQuery = (params: {
   options: Options;
 }) => AsyncIterable<ClaudeMessage>;
 
-/** The SDK is loaded when a step runs, so that other commands of aitw start quickly. */
+/** The SDK is loaded when a step runs, so that other commands of ugoke start quickly. */
 const sdkQuery: ClaudeQuery = async function* sdkQuery(params) {
   const { query } = await import("@anthropic-ai/claude-agent-sdk");
   yield* query(params);
@@ -151,7 +151,7 @@ const createProvider = (query: ClaudeQuery): AiProvider<z.output<typeof optionsS
             abortController: controller,
             cwd,
             // The definition of the workflow must not change while it runs.
-            disallowedTools: [`Edit(/${join(cwd, ".aitw")}/**)`],
+            disallowedTools: [`Edit(/${join(cwd, ".ugoke")}/**)`],
             // The definition sets variables over what the step inherits.
             env: { ...environment.values, ...env },
             // Nobody can answer a question during a step, so what is not allowed is denied.
@@ -229,5 +229,5 @@ export const createClaudeCodePlugin = ({
 /** The plugin that runs `ai` steps with Claude Code, through the Claude Agent SDK. */
 export const claudeCodePlugin: Plugin = createClaudeCodePlugin();
 
-// aitw loads the default export of the packages that `plugins` in `.aitw/config.yaml` names.
+// ugoke loads the default export of the packages that `plugins` in `.ugoke/config.yaml` names.
 export default claudeCodePlugin;

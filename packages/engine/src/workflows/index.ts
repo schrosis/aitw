@@ -6,7 +6,7 @@ import {
   pickReferences,
   resolveWorkflowInput,
   validateIntermediate,
-} from "@aitw/core";
+} from "@ugoke/core";
 import type {
   AiStep,
   IntermediateStep,
@@ -14,7 +14,7 @@ import type {
   StepOutcome,
   WaitStep,
   WorkflowInput,
-} from "@aitw/core";
+} from "@ugoke/core";
 import {
   ActivityCancellationType,
   ApplicationFailure,
@@ -53,7 +53,7 @@ const answerUpdate = defineUpdate<void, [Answer]>(answerUpdateName);
  * Extra time that lets a script runner report its own timeout before the activity times out.
  *
  * Keep it longer than the time a script runner needs to stop a script, such as `killGraceMs`
- * in `@aitw/adapter-script-local`.
+ * in `@ugoke/adapter-script-local`.
  */
 const activityTimeoutGraceMs = 10_000;
 
@@ -91,7 +91,7 @@ const { respondToWait } = proxyActivities<Activities>({
   startToCloseTimeout: "3650 days",
 });
 
-/** Result of {@link aitw}. */
+/** Result of {@link ugoke}. */
 export interface WorkflowResult {
   /** IDs of the executed steps, in execution order. */
   executedSteps: string[];
@@ -258,7 +258,7 @@ const evaluateWaitOutputs = (
  * @param intermediate The workflow in the intermediate representation.
  * @param inputs Values of the workflow input, keyed by name. Defaults are applied here.
  */
-export const aitw = async (
+export const ugoke = async (
   intermediate: unknown,
   inputs: unknown = {},
 ): Promise<WorkflowResult> => {

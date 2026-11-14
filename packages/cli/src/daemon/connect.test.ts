@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import type { Server } from "node:http";
 import { join } from "node:path";
 
-import { workflowCodeVersion } from "@aitw/engine";
+import { workflowCodeVersion } from "@ugoke/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createOutput } from "../testing.ts";
@@ -27,7 +27,7 @@ describe("connectDaemon", () => {
 
   beforeEach(() => {
     // A short directory keeps the socket path within the limit of the platform.
-    state = mkdtempSync("/tmp/aitw-connect-");
+    state = mkdtempSync("/tmp/ugoke-connect-");
     previous = process.env.XDG_STATE_HOME;
     process.env.XDG_STATE_HOME = state;
     requests.length = 0;
@@ -78,7 +78,7 @@ describe("connectDaemon", () => {
                   version,
                   workflowCodeVersion,
                 }
-              : { address: projectAddress, root: "/project", taskQueue: "aitw-host-hash" },
+              : { address: projectAddress, root: "/project", taskQueue: "ugoke-host-hash" },
           ),
         );
       });
@@ -94,7 +94,7 @@ describe("connectDaemon", () => {
     await expect(
       connectDaemon("/project", "1.2.3", { cwd: "/", ...output }),
     ).resolves.toMatchObject({
-      project: { address: "127.0.0.1:7233", root: "/project", taskQueue: "aitw-host-hash" },
+      project: { address: "127.0.0.1:7233", root: "/project", taskQueue: "ugoke-host-hash" },
       server: { address: "127.0.0.1:7233", durable: true },
     });
     expect(requests).toEqual([
@@ -111,7 +111,7 @@ describe("connectDaemon", () => {
       server: expect.objectContaining({ address: "127.0.0.1:7233", durable: true }) as unknown,
     });
     expect(output.written.stderr).toBe(
-      'aitw daemon: runs aitw 0.9.0, and this is aitw 1.2.3, so this command runs its own Worker. Run "aitw daemon stop" and start it again to use it\n',
+      'ugoke daemon: runs ugoke 0.9.0, and this is ugoke 1.2.3, so this command runs its own Worker. Run "ugoke daemon stop" and start it again to use it\n',
     );
     expect(requests.map(({ url }) => url)).toEqual(["/status"]);
   });
@@ -123,7 +123,7 @@ describe("connectDaemon", () => {
     await connectDaemon("/project", "1.2.3", { cwd: "/", ...output }, { detach: true });
 
     expect(output.written.stderr).toBe(
-      'aitw daemon: runs aitw 0.9.0, and this is aitw 1.2.3, so it cannot run a detached run. Run "aitw daemon stop" and start it again to use it\n',
+      'ugoke daemon: runs ugoke 0.9.0, and this is ugoke 1.2.3, so it cannot run a detached run. Run "ugoke daemon stop" and start it again to use it\n',
     );
   });
 
@@ -136,7 +136,7 @@ describe("connectDaemon", () => {
         { detach: true },
       ),
     ).rejects.toThrow(
-      'aitw daemon is not running, and --detach needs it to run the steps. Run "aitw daemon start"',
+      'ugoke daemon is not running, and --detach needs it to run the steps. Run "ugoke daemon start"',
     );
   });
 
@@ -151,8 +151,8 @@ describe("connectDaemon", () => {
 
   const project = (address: string): string => {
     const root = join(state, "project");
-    mkdirSync(join(root, ".aitw"), { recursive: true });
-    writeFileSync(join(root, ".aitw", "config.yaml"), `temporal:\n  address: ${address}\n`);
+    mkdirSync(join(root, ".ugoke"), { recursive: true });
+    writeFileSync(join(root, ".ugoke", "config.yaml"), `temporal:\n  address: ${address}\n`);
     return root;
   };
 
@@ -172,7 +172,7 @@ describe("connectDaemon", () => {
 
       await expect(open(project("temporal.example.com:7233"))).resolves.toMatchObject({
         server: { address: "temporal.example.com:7233" },
-        servedTaskQueue: "aitw-host-hash",
+        servedTaskQueue: "ugoke-host-hash",
       });
       expect(requests.map(({ url }) => url)).toEqual(["/status", "/projects"]);
     });
@@ -187,7 +187,7 @@ describe("connectDaemon", () => {
         servedTaskQueue: undefined,
       });
       expect(output.written.stderr).toBe(
-        "aitw daemon: serves the project at 127.0.0.1:7233, and temporal.address of the project is temporal.example.com:7233, so this command runs its own Worker\n",
+        "ugoke daemon: serves the project at 127.0.0.1:7233, and temporal.address of the project is temporal.example.com:7233, so this command runs its own Worker\n",
       );
     });
 
@@ -198,7 +198,7 @@ describe("connectDaemon", () => {
       await expect(open(project("127.0.0.1:7233"), output)).resolves.toMatchObject({
         servedTaskQueue: undefined,
       });
-      expect(output.written.stderr).toContain("runs aitw 0.9.0, and this is aitw 1.2.3");
+      expect(output.written.stderr).toContain("runs ugoke 0.9.0, and this is ugoke 1.2.3");
     });
 
     it("says nothing when no resident process runs", async () => {
@@ -216,14 +216,14 @@ describe("connectDaemon", () => {
         { servedTaskQueue: undefined },
       );
       expect(output.written.stderr).toBe(
-        'aitw daemon: is not running, so it cannot run a detached run. Run "aitw daemon start"\n',
+        'ugoke daemon: is not running, so it cannot run a detached run. Run "ugoke daemon start"\n',
       );
 
       await serve("1.2.3", "127.0.0.1:7233");
       const elsewhere = createOutput();
       await open(project("temporal.example.com:7233"), elsewhere, true);
       expect(elsewhere.written.stderr).toBe(
-        "aitw daemon: serves the project at 127.0.0.1:7233, and temporal.address of the project is temporal.example.com:7233, so it cannot run a detached run\n",
+        "ugoke daemon: serves the project at 127.0.0.1:7233, and temporal.address of the project is temporal.example.com:7233, so it cannot run a detached run\n",
       );
     });
 

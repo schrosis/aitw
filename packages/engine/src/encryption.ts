@@ -3,7 +3,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { DataConverter, Payload, PayloadCodec } from "@temporalio/common";
 
 /** Encoding of a payload that {@link createEncryptionCodec} encrypted. */
-export const encryptedEncoding = "binary/aitw-aes-256-gcm";
+export const encryptedEncoding = "binary/ugoke-aes-256-gcm";
 
 /** Size of an encryption key in bytes. */
 export const encryptionKeyBytes = 32;

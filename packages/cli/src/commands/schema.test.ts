@@ -28,8 +28,8 @@ describe("schema", () => {
   let root: string;
 
   beforeEach(() => {
-    root = realpathSync(mkdtempSync(join(tmpdir(), "aitw-schema-")));
-    mkdirSync(join(root, ".aitw"));
+    root = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-schema-")));
+    mkdirSync(join(root, ".ugoke"));
   });
 
   afterEach(() => {
@@ -37,19 +37,19 @@ describe("schema", () => {
   });
 
   const read = (name: string): unknown =>
-    JSON.parse(readFileSync(join(root, ".aitw", "schemas", name), "utf8"));
+    JSON.parse(readFileSync(join(root, ".ugoke", "schemas", name), "utf8"));
 
   it("writes the JSON Schemas with the extensions and settings of the plugins", async () => {
-    const plugin = join(root, "node_modules", "aitw-notify");
+    const plugin = join(root, "node_modules", "ugoke-notify");
     mkdirSync(plugin, { recursive: true });
     writeFileSync(
       join(plugin, "package.json"),
-      '{"name":"aitw-notify","type":"module","main":"index.js"}',
+      '{"name":"ugoke-notify","type":"module","main":"index.js"}',
     );
     writeFileSync(join(plugin, "index.js"), pluginSource);
     writeFileSync(
-      join(root, ".aitw", "config.yaml"),
-      '$schema: ./schemas/config.schema.json\nplugins:\n  "aitw-notify":\n    channel: deploy\n',
+      join(root, ".ugoke", "config.yaml"),
+      '$schema: ./schemas/config.schema.json\nplugins:\n  "ugoke-notify":\n    channel: deploy\n',
     );
     const output = createOutput();
 
@@ -57,7 +57,8 @@ describe("schema", () => {
 
     expect(output.written).toEqual({
       stderr: "",
-      stdout: "wrote .aitw/schemas/workflow.schema.json\nwrote .aitw/schemas/config.schema.json\n",
+      stdout:
+        "wrote .ugoke/schemas/workflow.schema.json\nwrote .ugoke/schemas/config.schema.json\n",
     });
     const steps = "properties.steps.additionalProperties.oneOf";
     expect(read("workflow.schema.json")).toHaveProperty(`${steps}.1.properties.method.enum`, [
@@ -69,7 +70,7 @@ describe("schema", () => {
       "string",
     );
     expect(read("config.schema.json")).toHaveProperty(
-      "anyOf.0.properties.plugins.properties.aitw-notify.anyOf",
+      "anyOf.0.properties.plugins.properties.ugoke-notify.anyOf",
       [{ type: "null" }, { properties: { channel: { type: "string" } }, type: "object" }],
     );
   });
@@ -82,20 +83,20 @@ describe("schema", () => {
   });
 
   it("fails when a plugin of the project cannot be loaded", async () => {
-    writeFileSync(join(root, ".aitw", "config.yaml"), 'plugins:\n  "aitw-missing":\n');
+    writeFileSync(join(root, ".ugoke", "config.yaml"), 'plugins:\n  "ugoke-missing":\n');
     const output = createOutput();
 
     await expect(schema({ cwd: root, ...output })).resolves.toBe(1);
-    expect(output.written.stderr).toContain("Plugin aitw-missing is not installed");
+    expect(output.written.stderr).toContain("Plugin ugoke-missing is not installed");
   });
 
   it("fails outside a project", async () => {
-    const outside = realpathSync(mkdtempSync(join(tmpdir(), "aitw-outside-")));
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-outside-")));
     try {
       const output = createOutput();
 
       await expect(schema({ cwd: outside, ...output })).resolves.toBe(1);
-      expect(output.written.stderr).toContain("No .aitw directory found");
+      expect(output.written.stderr).toContain("No .ugoke directory found");
     } finally {
       rmSync(outside, { force: true, recursive: true });
     }

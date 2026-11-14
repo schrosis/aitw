@@ -39,11 +39,11 @@ const host = "127.0.0.1";
 /**
  * Host that the HTTP API accepts, which no browser can send.
  *
- * aitw talks to the server through gRPC only. The HTTP API accepts any content type and does not
+ * ugoke talks to the server through gRPC only. The HTTP API accepts any content type and does not
  * check the origin, so a web page could start a run through it. Accepting only a reserved name
  * that never resolves turns it off, including against DNS rebinding.
  */
-const httpAllowedHost = "aitw.invalid";
+const httpAllowedHost = "ugoke.invalid";
 
 /** Size of the server log that is kept to explain a failed start, in characters. */
 const maxLogLength = 4096;
@@ -148,7 +148,7 @@ const startOnce = async ({
     }
   };
 
-  // The server is in another process group, so it would outlive aitw if aitw exited without
+  // The server is in another process group, so it would outlive ugoke if ugoke exited without
   // stopping it, such as by process.exit() on a second interrupt.
   const killOnExit = (): void => kill("SIGKILL");
   process.once("exit", killOnExit);
@@ -219,7 +219,7 @@ const startOnce = async ({
  * Starts `temporal server start-dev` on free local ports and waits until it accepts connections.
  *
  * The server runs in its own process group, so that an interrupt in the terminal reaches only
- * aitw. aitw then cancels the workflow and stops the server itself.
+ * ugoke. ugoke then cancels the workflow and stops the server itself.
  */
 export const startDevServer = async (options: DevServerOptions): Promise<DevServer> => {
   try {

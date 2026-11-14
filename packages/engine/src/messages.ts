@@ -1,4 +1,4 @@
-import type { InputDeclaration, WaitRespondIn } from "@aitw/core";
+import type { InputDeclaration, WaitRespondIn } from "@ugoke/core";
 
 /**
  * Messages between the interpreter workflow and the processes that follow a run.
@@ -7,10 +7,10 @@ import type { InputDeclaration, WaitRespondIn } from "@aitw/core";
  */
 
 /** Name of the query that returns the wait step that the workflow waits on, if any. */
-export const waitingQueryName = "aitw.waiting";
+export const waitingQueryName = "ugoke.waiting";
 
 /** Name of the update that answers a waiting step. */
-export const answerUpdateName = "aitw.answer";
+export const answerUpdateName = "ugoke.answer";
 
 /** A wait step that waits for an answer. */
 export interface WaitingStep {

@@ -25,7 +25,7 @@ describe("init", () => {
   let cwd: string;
 
   beforeEach(() => {
-    cwd = realpathSync(mkdtempSync(join(tmpdir(), "aitw-init-")));
+    cwd = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-init-")));
   });
 
   afterEach(() => {
@@ -41,22 +41,22 @@ describe("init", () => {
     expect(output.written).toEqual({
       stderr: "",
       stdout: [
-        "wrote .aitw/config.yaml",
-        "wrote .aitw/workflows/hello.yaml",
-        "wrote .aitw/schemas/workflow.schema.json",
-        "wrote .aitw/schemas/config.schema.json",
+        "wrote .ugoke/config.yaml",
+        "wrote .ugoke/workflows/hello.yaml",
+        "wrote .ugoke/schemas/workflow.schema.json",
+        "wrote .ugoke/schemas/config.schema.json",
         "",
         "Next:",
-        "  aitw daemon start",
-        "  aitw run hello",
+        "  ugoke daemon start",
+        "  ugoke run hello",
         "",
       ].join("\n"),
     });
     // The files refer to the schemas that were generated next to them.
-    expect(readFileSync(join(cwd, ".aitw", "config.yaml"), "utf8")).toMatch(
+    expect(readFileSync(join(cwd, ".ugoke", "config.yaml"), "utf8")).toMatch(
       /^\$schema: \.\/schemas\/config\.schema\.json\n/u,
     );
-    expect(readFileSync(join(cwd, ".aitw", "workflows", "hello.yaml"), "utf8")).toMatch(
+    expect(readFileSync(join(cwd, ".ugoke", "workflows", "hello.yaml"), "utf8")).toMatch(
       /^\$schema: \.\.\/schemas\/workflow\.schema\.json\n/u,
     );
     await expect(loadProjectConfig(cwd, cwd)).resolves.toEqual({
@@ -65,17 +65,17 @@ describe("init", () => {
     await expect(validate("hello", { cwd, ...createOutput() })).resolves.toBe(0);
   });
 
-  it("leaves a directory that already has .aitw as it is", async () => {
-    mkdirSync(join(cwd, ".aitw"));
+  it("leaves a directory that already has .ugoke as it is", async () => {
+    mkdirSync(join(cwd, ".ugoke"));
     const output = createOutput();
 
     await expect(init({ cwd, ...output })).resolves.toBe(1);
 
     expect(output.written).toEqual({
-      stderr: `.aitw already exists in ${cwd}\n`,
+      stderr: `.ugoke already exists in ${cwd}\n`,
       stdout: "",
     });
-    expect(existsSync(join(cwd, ".aitw", "config.yaml"))).toBe(false);
+    expect(existsSync(join(cwd, ".ugoke", "config.yaml"))).toBe(false);
   });
 
   it("removes what it created when it fails, so that it can run again", async () => {
@@ -85,7 +85,7 @@ describe("init", () => {
     await expect(init({ cwd, ...output })).resolves.toBe(1);
 
     expect(output.written).toEqual({ stderr: "The disk is full\n", stdout: "" });
-    expect(existsSync(join(cwd, ".aitw"))).toBe(false);
+    expect(existsSync(join(cwd, ".ugoke"))).toBe(false);
     schemas.fail = false;
     await expect(init({ cwd, ...createOutput() })).resolves.toBe(0);
   });

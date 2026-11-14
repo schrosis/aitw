@@ -10,7 +10,7 @@ describe("readWorkflowInput", () => {
   let directory: string;
 
   beforeAll(() => {
-    directory = mkdtempSync(join(tmpdir(), "aitw-input-"));
+    directory = mkdtempSync(join(tmpdir(), "ugoke-input-"));
     writeFileSync(join(directory, "input.json"), '{"level": "high", "threshold": 1.5}');
     writeFileSync(join(directory, "list.json"), "[1]");
     writeFileSync(join(directory, "input.yaml"), "level: high");

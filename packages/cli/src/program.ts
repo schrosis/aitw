@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { WriteStream } from "node:tty";
 
-import { configureRuntime } from "@aitw/engine";
+import { configureRuntime } from "@ugoke/engine";
 import { Command, InvalidArgumentError, Option } from "@commander-js/extra-typings";
 
 import { answerInboxCommand, listInboxCommand } from "./commands/inbox.js";
@@ -44,7 +44,7 @@ export interface ProgramContext extends CommandContext {
   prepareEngine: () => void;
   /** Returns a signal that is aborted on SIGTERM or SIGINT, for the resident process. */
   stopSignal?: () => AbortSignal;
-  /** Path of the aitw executable, which `aitw daemon start` runs in the background. */
+  /** Path of the ugoke executable, which `ugoke daemon start` runs in the background. */
   executable?: string;
 }
 
@@ -130,7 +130,7 @@ const processContext = (): ProgramContext => ({
   colors: { stderr: colorsOf(process.stderr), stdout: colorsOf(process.stdout) },
   columns: process.stdout.isTTY ? () => process.stdout.columns : undefined,
   cwd: process.cwd(),
-  executable: process.argv[1] ?? "aitw",
+  executable: process.argv[1] ?? "ugoke",
   interrupt,
   interruptSignal,
   stopSignal,
@@ -144,7 +144,7 @@ const processContext = (): ProgramContext => ({
 });
 
 /** Where the resident process keeps the runs of its development server by default. */
-const defaultDevDbHelp = "temporal.db in the state directory, such as ~/.local/state/aitw";
+const defaultDevDbHelp = "temporal.db in the state directory, such as ~/.local/state/ugoke";
 
 const devDbDescription = "keep the state of the development server in a SQLite file";
 const devUiDescription =
@@ -152,14 +152,14 @@ const devUiDescription =
 const temporalBinDescription =
   "Temporal CLI to start the development server with, as a path or a name in PATH";
 const daemonHelp = `
-Without server options, the command uses temporal.address in .aitw/config.yaml, or the
-Temporal Server of the resident process that "aitw daemon start" starts. When the resident
+Without server options, the command uses temporal.address in .ugoke/config.yaml, or the
+Temporal Server of the resident process that "ugoke daemon start" starts. When the resident
 process runs, it runs the steps on that server, so the run keeps going after this command exits.`;
 const interruptHelp = `
-Press Ctrl+C to detach: the run waits in Temporal, and "aitw attach" continues it.
+Press Ctrl+C to detach: the run waits in Temporal, and "ugoke attach" continues it.
 A running script finishes first. Press Ctrl+C again to exit now, which fails the running
 step so that the run cannot be continued. A development server without --dev-db keeps no
-runs, so Ctrl+C cancels the run there. Use "aitw cancel" to stop a run.`;
+runs, so Ctrl+C cancels the run there. Use "ugoke cancel" to stop a run.`;
 
 const addressOption = () =>
   new Option("--address <address>", "address of the Temporal Server").conflicts("dev");
@@ -203,11 +203,11 @@ const parseCount = (value: string): number => {
   return Number(value);
 };
 
-/** Creates the `aitw` command line program. */
+/** Creates the `ugoke` command line program. */
 export const createProgram = (context: ProgramContext = processContext()) => {
   const version = readVersion();
   const program = new Command()
-    .name("aitw")
+    .name("ugoke")
     .description("Run workflows that combine AI, people, and scripts")
     .version(version);
 
@@ -216,7 +216,7 @@ export const createProgram = (context: ProgramContext = processContext()) => {
   program
     .command("init")
     .description(
-      "Create .aitw in the current directory with a configuration file, a sample workflow, and JSON Schemas",
+      "Create .ugoke in the current directory with a configuration file, a sample workflow, and JSON Schemas",
     )
     .action(async () => {
       context.setExitCode(await init(context));
@@ -229,20 +229,20 @@ export const createProgram = (context: ProgramContext = processContext()) => {
 
   program
     .command("run")
-    .description("Run a workflow in .aitw/workflows and wait for it to finish")
+    .description("Run a workflow in .ugoke/workflows and wait for it to finish")
     .argument("<workflow>", "workflow name, such as deploy or release/notes")
     .addOption(addressOption())
     .option("--input <json-or-file>", "workflow input as a JSON object or the path of a .json file")
     .addOption(
       new Option(
         "--detach",
-        "start the run and exit. aitw daemon runs it, and its questions wait in aitw inbox list",
+        "start the run and exit. ugoke daemon runs it, and its questions wait in ugoke inbox list",
       ).conflicts(["address", "dev"]),
     )
     .addOption(
       new Option(
         "--from-ai",
-        "write JSON lines for a program such as an AI agent, and exit at the first question, which aitw inbox answer --from-ai answers",
+        "write JSON lines for a program such as an AI agent, and exit at the first question, which ugoke inbox answer --from-ai answers",
       ).conflicts("detach"),
     )
     .option("--dev", "start a temporary Temporal development server for this run")
@@ -283,7 +283,7 @@ ${daemonHelp}`,
     .option("--dev-db <path>", devDbDescription)
     .option("--temporal-bin <path>", temporalBinDescription)
     .option("--dev-ui", devUiDescription)
-    .option("--force", "attach to a run that another version of aitw started, which can fail")
+    .option("--force", "attach to a run that another version of ugoke started, which can fail")
     .addHelpText(
       "after",
       `${interruptHelp}
@@ -358,10 +358,10 @@ ${daemonHelp}`,
 
   inbox
     .command("answer")
-    .description("Answer a wait step of a run, such as one that aitw inbox list shows")
+    .description("Answer a wait step of a run, such as one that ugoke inbox list shows")
     .argument("<workflow-id>", "ID of the run")
     .requiredOption("--step <step>", "ID of the waiting step")
-    .option("--visit <number>", "visit of the step, which aitw inbox list shows", parseCount)
+    .option("--visit <number>", "visit of the step, which ugoke inbox list shows", parseCount)
     .requiredOption(
       "--values <json-or-file>",
       "answers as a JSON object or the path of a .json file",
@@ -372,18 +372,18 @@ ${daemonHelp}`,
         "follow the run after answering until its next question or its end, writing JSON lines for a program such as an AI agent",
       ).conflicts("detach"),
     )
-    .option("--detach", "exit after answering. The run goes on in aitw daemon")
+    .option("--detach", "exit after answering. The run goes on in ugoke daemon")
     .addOption(new Option("--address <address>", "address of the Temporal Server"))
     .addHelpText(
       "after",
       `
-One of --from-ai and --detach is required. --detach needs a run that aitw daemon runs, such
-as a run that was detached from "aitw run". To answer a run and follow it in the terminal, use
-"aitw attach".`,
+One of --from-ai and --detach is required. --detach needs a run that ugoke daemon runs, such
+as a run that was detached from "ugoke run". To answer a run and follow it in the terminal, use
+"ugoke attach".`,
     )
     .action(async (workflowId, { address, detach, fromAi, step, values, visit }, command) => {
       if (detach !== true && fromAi !== true) {
-        command.error("error: aitw inbox answer needs --from-ai or --detach");
+        command.error("error: ugoke inbox answer needs --from-ai or --detach");
       }
       context.setExitCode(
         await answerInboxCommand(
@@ -406,7 +406,7 @@ as a run that was detached from "aitw run". To answer a run and follow it in the
   program
     .command("log")
     .description("Show the progress of a run of the project, also after it ended")
-    .argument("<workflow-id>", "ID of the run, such as aitw run and aitw inbox list show")
+    .argument("<workflow-id>", "ID of the run, such as ugoke run and ugoke inbox list show")
     .option("--tail <lines>", "show only the last lines of the progress so far", parseCount)
     .option("--follow", "keep showing the progress until the run ends")
     .option("--json", "write each event as a line of JSON")
@@ -438,7 +438,7 @@ Both the standard output and the standard error of the steps are shown on standa
 
   program
     .command("validate")
-    .description("Validate a workflow definition in .aitw/workflows")
+    .description("Validate a workflow definition in .ugoke/workflows")
     .argument("<workflow>", "workflow name, such as deploy or release/notes")
     .action(async (workflow) => {
       context.setExitCode(await validate(workflow, context));
@@ -447,14 +447,14 @@ Both the standard output and the standard error of the steps are shown on standa
   program
     .command("schema")
     .description(
-      "Generate the JSON Schemas of the workflows and .aitw/config.yaml in .aitw/schemas, with the plugins of the project",
+      "Generate the JSON Schemas of the workflows and .ugoke/config.yaml in .ugoke/schemas, with the plugins of the project",
     )
     .addHelpText(
       "after",
       `
 Refer to them with $schema at the top of each file, which editors use for completion:
-  $schema: ../schemas/workflow.schema.json   (in .aitw/workflows/deploy.yaml)
-  $schema: ./schemas/config.schema.json      (in .aitw/config.yaml)
+  $schema: ../schemas/workflow.schema.json   (in .ugoke/workflows/deploy.yaml)
+  $schema: ./schemas/config.schema.json      (in .ugoke/config.yaml)
 Run it again after changing plugins.`,
     )
     .action(async () => {
@@ -488,7 +488,7 @@ ${defaultDevDbHelp}.
 With --address, it uses that Temporal Server instead.
 
 Scripts that the resident process runs inherit its environment variables as they were when it
-started, not those of the terminal that runs "aitw run". Pass the values that a workflow needs
+started, not those of the terminal that runs "ugoke run". Pass the values that a workflow needs
 with env and dotenv in the definition.`,
     )
     .addOption(
@@ -504,7 +504,7 @@ with env and dotenv in the definition.`,
       context.setExitCode(
         await startDaemon(
           {
-            executable: context.executable ?? "aitw",
+            executable: context.executable ?? "ugoke",
             server:
               address === undefined
                 ? { dbFilename: devDb, temporalBin, type: "dev", ui: devUi }
@@ -530,7 +530,7 @@ with env and dotenv in the definition.`,
       context.setExitCode(await showDaemonStatus(context));
     });
 
-  // aitw daemon start runs this command in the background.
+  // ugoke daemon start runs this command in the background.
   daemon
     .command("run", { hidden: true })
     .addOption(addressOption())
@@ -541,7 +541,7 @@ with env and dotenv in the definition.`,
     .action(async (options, command) => {
       const server = toServerOptions(options, command);
       if (server === undefined) {
-        command.error("error: aitw daemon run needs --dev or --address");
+        command.error("error: ugoke daemon run needs --dev or --address");
         return;
       }
       const signal = (context.stopSignal ?? context.interruptSignal)();

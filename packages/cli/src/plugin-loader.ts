@@ -3,11 +3,11 @@ import { findPackageJSON } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { Plugin } from "@aitw/core";
+import type { Plugin } from "@ugoke/core";
 
 /** A plugin that a project loads, and the package that provides it. */
 export interface LoadedPlugin {
-  /** Name of the package, such as `@acme/aitw-slack`. */
+  /** Name of the package, such as `@acme/ugoke-slack`. */
   packageName: string;
   plugin: Plugin;
   /** Settings of the plugin, after its `config` schema is applied. */
@@ -25,10 +25,10 @@ export class PluginLoadError extends Error {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Conditions of `exports` that aitw loads a plugin with. */
+/** Conditions of `exports` that ugoke loads a plugin with. */
 const conditions: ReadonlySet<string> = new Set(["node", "import", "default"]);
 
-/** Returns the target of `exports` for the conditions of aitw, or `undefined`. */
+/** Returns the target of `exports` for the conditions of ugoke, or `undefined`. */
 const exportTarget = (value: unknown): string | undefined => {
   if (typeof value === "string") {
     return value;
@@ -71,9 +71,9 @@ const entryOf = (manifest: Record<string, unknown>): string | undefined => {
 };
 
 /**
- * Finds the `package.json` of a package, from the project first and then from aitw itself.
+ * Finds the `package.json` of a package, from the project first and then from ugoke itself.
  *
- * Looking next to aitw lets a plugin that is installed globally with aitw be used.
+ * Looking next to ugoke lets a plugin that is installed globally with ugoke be used.
  */
 const findManifest = (packageName: string, root: string): string | undefined => {
   for (const base of [pathToFileURL(join(root, "/")).href, import.meta.url]) {
@@ -113,7 +113,7 @@ export const loadPlugin = async (packageName: string, root: string): Promise<Loa
   const manifestFile = findManifest(packageName, root);
   if (manifestFile === undefined) {
     throw new PluginLoadError(
-      `Plugin ${packageName} is not installed in the project or next to aitw. Install it, such as with "npm install --save-dev ${packageName}"`,
+      `Plugin ${packageName} is not installed in the project or next to ugoke. Install it, such as with "npm install --save-dev ${packageName}"`,
     );
   }
   let manifest: unknown;

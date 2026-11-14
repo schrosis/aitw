@@ -10,7 +10,7 @@ describe("readDotenv", () => {
   let cwd: string;
 
   beforeEach(() => {
-    cwd = realpathSync(mkdtempSync(join(tmpdir(), "aitw-dotenv-")));
+    cwd = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-dotenv-")));
   });
 
   afterEach(() => {
@@ -39,7 +39,7 @@ describe("readDotenv", () => {
   });
 
   it("does not read a file outside of the working directory through a link", () => {
-    const outside = mkdtempSync(join(tmpdir(), "aitw-outside-"));
+    const outside = mkdtempSync(join(tmpdir(), "ugoke-outside-"));
     try {
       writeFileSync(join(outside, "secrets.env"), "SECRET=x\n");
       symlinkSync(join(outside, "secrets.env"), join(cwd, ".env"));
@@ -58,7 +58,7 @@ describe("readEnvironment", () => {
   let cwd: string;
 
   beforeEach(() => {
-    cwd = realpathSync(mkdtempSync(join(tmpdir(), "aitw-environment-")));
+    cwd = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-environment-")));
   });
 
   afterEach(() => {

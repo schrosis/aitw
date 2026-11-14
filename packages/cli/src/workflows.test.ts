@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { fixtureProject } from "./testing.ts";
 import { findProjectRoot, resolveWorkflow } from "./workflows.ts";
 
-const workflows = join(fixtureProject, ".aitw", "workflows");
+const workflows = join(fixtureProject, ".ugoke", "workflows");
 
 describe("findProjectRoot", () => {
   it("finds the project root from a subdirectory", async () => {
@@ -17,7 +17,7 @@ describe("findProjectRoot", () => {
   });
 
   it("returns undefined outside a project", async () => {
-    const directory = realpathSync(mkdtempSync(join(tmpdir(), "aitw-no-project-")));
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-no-project-")));
     try {
       await expect(findProjectRoot(directory)).resolves.toBeUndefined();
     } finally {

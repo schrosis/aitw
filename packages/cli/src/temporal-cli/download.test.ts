@@ -28,7 +28,7 @@ describe("ensureTemporalCli", () => {
   let requests: string[];
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), "aitw-temporal-cli-"));
+    root = mkdtempSync(join(tmpdir(), "ugoke-temporal-cli-"));
     const source = join(root, "source");
     mkdirSync(source);
     writeFileSync(join(source, "temporal"), "#!/bin/sh\necho fake temporal\n");

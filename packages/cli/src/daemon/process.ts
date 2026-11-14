@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { workflowCodeVersion } from "@aitw/engine";
+import { workflowCodeVersion } from "@ugoke/engine";
 
 import type { CommandContext } from "../commands/load.js";
 import { acquireRunLock, RunLockedError } from "../lock.js";
@@ -22,7 +22,7 @@ import type { ProjectWorkers } from "./workers.js";
 export interface RunDaemonOptions {
   /** Temporal Server that the resident process uses. It must keep its runs. */
   server: ServerOptions;
-  /** Version of the aitw that runs the resident process. */
+  /** Version of the ugoke that runs the resident process. */
   version: string;
   /** Stops the resident process when aborted, such as on SIGTERM. */
   signal: AbortSignal;
@@ -75,7 +75,10 @@ const stopLeftoverDevServer = async (file: string, context: CommandContext): Pro
     return;
   }
   if (Number.isInteger(pid) && pid > 0 && isDevServer(pid)) {
-    log(context, `aitw daemon: stopping the development server that was left running (pid ${pid})`);
+    log(
+      context,
+      `ugoke daemon: stopping the development server that was left running (pid ${pid})`,
+    );
     try {
       process.kill(-pid, "SIGTERM");
       for (let attempt = 0; attempt < 50 && isDevServer(pid); attempt += 1) {
@@ -98,7 +101,7 @@ const log = (context: CommandContext, message: string): void => {
 /**
  * Runs the resident process of this host in the foreground until it is stopped.
  *
- * `aitw daemon start` runs it in the background, with its output in the log file.
+ * `ugoke daemon start` runs it in the background, with its output in the log file.
  *
  * @returns The exit code of the command.
  */
@@ -115,7 +118,7 @@ export const runDaemon = async (
     lock = acquireRunLock(paths.directory, "daemon");
   } catch (error) {
     if (error instanceof RunLockedError) {
-      log(context, `aitw daemon: already running (pid ${error.pid ?? "unknown"})`);
+      log(context, `ugoke daemon: already running (pid ${error.pid ?? "unknown"})`);
       return 1;
     }
     throw error;
@@ -134,7 +137,7 @@ export const runDaemon = async (
     await stopLeftoverDevServer(paths.devServer, context);
     opened = await openServer(server, context, signal);
     if (!opened.durable) {
-      throw new Error("aitw daemon needs a Temporal Server that keeps its runs");
+      throw new Error("ugoke daemon needs a Temporal Server that keeps its runs");
     }
     if (opened.pid !== undefined) {
       writeFileSync(paths.devServer, `${opened.pid}\n`, { mode: 0o600 });
@@ -146,7 +149,7 @@ export const runDaemon = async (
     workers = createProjectWorkers({
       address,
       file: paths.projects,
-      log: (message) => log(context, `aitw daemon: ${message}`),
+      log: (message) => log(context, `ugoke daemon: ${message}`),
       prepareEngine,
     });
     const projects = workers;
@@ -197,17 +200,17 @@ export const runDaemon = async (
         resolve();
       });
     });
-    log(context, `aitw daemon: started (pid ${process.pid}), server ${opened.address}`);
+    log(context, `ugoke daemon: started (pid ${process.pid}), server ${opened.address}`);
 
     if (!stopping.signal.aborted) {
       await new Promise<void>((resolve) => {
         stopping.signal.addEventListener("abort", () => resolve(), { once: true });
       });
     }
-    log(context, "aitw daemon: stopping");
+    log(context, "ugoke daemon: stopping");
     return 0;
   } catch (error) {
-    log(context, `aitw daemon: failed: ${error instanceof Error ? error.message : String(error)}`);
+    log(context, `ugoke daemon: failed: ${error instanceof Error ? error.message : String(error)}`);
     return 1;
   } finally {
     await new Promise<void>((resolve) => {
@@ -220,6 +223,6 @@ export const runDaemon = async (
     await opened?.stop();
     rmSync(paths.devServer, { force: true });
     lock.release();
-    log(context, "aitw daemon: stopped");
+    log(context, "ugoke daemon: stopped");
   }
 };

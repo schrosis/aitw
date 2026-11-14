@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import type { CommandContext } from "../commands/load.js";
-import { workflowCodeVersion } from "@aitw/engine";
+import { workflowCodeVersion } from "@ugoke/engine";
 
 import { quote, serverArguments } from "../server.js";
 import type { ServerOptions } from "../server.js";
@@ -23,9 +23,9 @@ export interface StartDaemonOptions {
    * its runs in the state directory.
    */
   server: ServerOptions;
-  /** Version of this aitw, to tell whether a running resident process differs. */
+  /** Version of this ugoke, to tell whether a running resident process differs. */
   version: string;
-  /** Path of the aitw executable that runs the resident process. */
+  /** Path of the ugoke executable that runs the resident process. */
   executable: string;
 }
 
@@ -49,7 +49,7 @@ const withAbsolutePaths = (server: ServerOptions, cwd: string): ServerOptions =>
 const differences = (running: DaemonStatus, version: string, requested: string[]): string[] => {
   const notes: string[] = [];
   if (running.version !== version || running.workflowCodeVersion !== workflowCodeVersion) {
-    notes.push(`it runs aitw ${running.version}, and this is aitw ${version}`);
+    notes.push(`it runs ugoke ${running.version}, and this is ugoke ${version}`);
   }
   const runningOptions = running.serverOptions.trim();
   // The running process quotes its options for a command line, so the request is quoted too.
@@ -78,7 +78,7 @@ const isAlive = (pid: number): boolean => {
 };
 
 const describe = ({ address, pid, version }: DaemonStatus): string =>
-  `pid ${pid}, server ${address}, aitw ${version}`;
+  `pid ${pid}, server ${address}, ugoke ${version}`;
 
 /**
  * Starts the resident process of this host in the background.
@@ -99,11 +99,11 @@ export const startDaemon = async (
   const requested = serverArguments(withAbsolutePaths(kept, context.cwd));
   const running = await getDaemonStatus(paths);
   if (running !== undefined) {
-    context.stdout(`aitw daemon: already running (${describe(running)})\n`);
+    context.stdout(`ugoke daemon: already running (${describe(running)})\n`);
     const notes = differences(running, version, requested);
     if (notes.length > 0) {
       context.stderr(
-        `aitw daemon: ${notes.join(", and ")}. Run "aitw daemon stop" and start it again to change it\n`,
+        `ugoke daemon: ${notes.join(", and ")}. Run "ugoke daemon stop" and start it again to change it\n`,
       );
     }
     return 0;
@@ -132,19 +132,19 @@ export const startDaemon = async (
   while (Date.now() < deadline) {
     const status = await getDaemonStatus(paths).catch(() => undefined);
     if (status !== undefined) {
-      context.stdout(`aitw daemon: started (${describe(status)})\n`);
+      context.stdout(`ugoke daemon: started (${describe(status)})\n`);
       return 0;
     }
     if (exited !== undefined) {
       const tail = logTail(paths.log);
-      context.stderr(`aitw daemon: failed to start${tail === "" ? "" : `:\n${tail}`}\n`);
+      context.stderr(`ugoke daemon: failed to start${tail === "" ? "" : `:\n${tail}`}\n`);
       return 1;
     }
     await sleep(100);
   }
   // It may still start, such as after downloading the Temporal CLI on a slow network.
   context.stderr(
-    `aitw daemon: did not answer within ${waitTimeoutMs / 1000} seconds, and may still be starting. Run "aitw daemon status" later, or see ${paths.log}\n`,
+    `ugoke daemon: did not answer within ${waitTimeoutMs / 1000} seconds, and may still be starting. Run "ugoke daemon status" later, or see ${paths.log}\n`,
   );
   return 1;
 };
@@ -158,7 +158,7 @@ export const stopDaemon = async (context: CommandContext): Promise<number> => {
   const paths = daemonPaths();
   const status = await getDaemonStatus(paths);
   if (status === undefined) {
-    context.stdout("aitw daemon: not running\n");
+    context.stdout("ugoke daemon: not running\n");
     return 0;
   }
   await requestDaemonStop(paths);
@@ -166,13 +166,13 @@ export const stopDaemon = async (context: CommandContext): Promise<number> => {
   while (isAlive(status.pid)) {
     if (Date.now() > deadline) {
       context.stderr(
-        `aitw daemon: did not stop within ${waitTimeoutMs / 1000} seconds (pid ${status.pid})\n`,
+        `ugoke daemon: did not stop within ${waitTimeoutMs / 1000} seconds (pid ${status.pid})\n`,
       );
       return 1;
     }
     await sleep(100);
   }
-  context.stdout("aitw daemon: stopped\n");
+  context.stdout("ugoke daemon: stopped\n");
   return 0;
 };
 
@@ -185,12 +185,12 @@ export const showDaemonStatus = async (context: CommandContext): Promise<number>
   const paths = daemonPaths();
   const status = await getDaemonStatus(paths);
   if (status === undefined) {
-    context.stdout("aitw daemon: not running\n");
+    context.stdout("ugoke daemon: not running\n");
     return 1;
   }
   context.stdout(
     [
-      `aitw daemon: running (${describe(status)})`,
+      `ugoke daemon: running (${describe(status)})`,
       `started: ${status.startedAt}`,
       `log: ${paths.log}`,
       ...(status.uiUrl === undefined ? [] : [`web ui: ${status.uiUrl}`]),

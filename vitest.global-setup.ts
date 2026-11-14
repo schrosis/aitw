@@ -19,7 +19,7 @@ const isExecutable = (path: string): boolean => {
  * Finds the Temporal CLI that mise installs from mise.toml.
  *
  * Tests use it instead of letting the Temporal SDK download a server at run time, and its
- * version must match the release that aitw pins for the development server.
+ * version must match the release that ugoke pins for the development server.
  */
 const findTemporalCli = (): string => {
   const path = (process.env.PATH ?? "")

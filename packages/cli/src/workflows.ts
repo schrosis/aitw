@@ -1,8 +1,8 @@
 import { access, readdir } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
 
-/** Directory that holds aitw files at the project root. */
-export const aitwDirectory = ".aitw";
+/** Directory that holds ugoke files at the project root. */
+export const ugokeDirectory = ".ugoke";
 
 const segmentPattern = /^[A-Za-z][A-Za-z0-9_-]*$/u;
 const extensions = [".yaml", ".yml"];
@@ -13,10 +13,10 @@ const exists = async (path: string): Promise<boolean> =>
     () => false,
   );
 
-/** Finds the project root, the nearest directory that contains `.aitw`. */
+/** Finds the project root, the nearest directory that contains `.ugoke`. */
 export const findProjectRoot = async (cwd: string): Promise<string | undefined> => {
   let directory = cwd;
-  while (!(await exists(join(directory, aitwDirectory)))) {
+  while (!(await exists(join(directory, ugokeDirectory)))) {
     const parent = dirname(directory);
     if (parent === directory) {
       return undefined;
@@ -40,9 +40,9 @@ export type ListResult =
 export const listWorkflows = async (cwd: string): Promise<ListResult> => {
   const root = await findProjectRoot(cwd);
   if (root === undefined) {
-    return { message: `No ${aitwDirectory} directory found in ${cwd} or its parents`, ok: false };
+    return { message: `No ${ugokeDirectory} directory found in ${cwd} or its parents`, ok: false };
   }
-  const directory = join(root, aitwDirectory, "workflows");
+  const directory = join(root, ugokeDirectory, "workflows");
   if (!(await exists(directory))) {
     return { names: [], ok: true, skipped: [] };
   }
@@ -57,7 +57,7 @@ export const listWorkflows = async (cwd: string): Promise<ListResult> => {
         // A name with both .yaml and .yml is listed once, and resolving it reports the problem.
         names.add(name);
       } else {
-        skipped.push(join(aitwDirectory, "workflows", file));
+        skipped.push(join(ugokeDirectory, "workflows", file));
       }
     }
   }
@@ -72,7 +72,7 @@ export type ResolveResult =
 /**
  * Resolves a workflow name such as `deploy` or `release/notes` to its definition file.
  *
- * Definitions are read from `.aitw/workflows` under the project root.
+ * Definitions are read from `.ugoke/workflows` under the project root.
  */
 export const resolveWorkflow = async (cwd: string, name: string): Promise<ResolveResult> => {
   if (!name.split("/").every((segment) => segmentPattern.test(segment))) {
@@ -84,10 +84,10 @@ export const resolveWorkflow = async (cwd: string, name: string): Promise<Resolv
 
   const root = await findProjectRoot(cwd);
   if (root === undefined) {
-    return { message: `No ${aitwDirectory} directory found in ${cwd} or its parents`, ok: false };
+    return { message: `No ${ugokeDirectory} directory found in ${cwd} or its parents`, ok: false };
   }
 
-  const base = join(root, aitwDirectory, "workflows", name);
+  const base = join(root, ugokeDirectory, "workflows", name);
   const files: string[] = [];
   for (const extension of extensions) {
     if (await exists(base + extension)) {

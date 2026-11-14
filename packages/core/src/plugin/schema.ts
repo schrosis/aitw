@@ -82,7 +82,7 @@ export const validatePluginConfig = (
   return validateWithSchema(plugin.config, settings ?? {});
 };
 
-/** Version of JSON Schema that aitw generates, which editors for YAML support widely. */
+/** Version of JSON Schema that ugoke generates, which editors for YAML support widely. */
 export const jsonSchemaTarget = "draft-07";
 
 /** An object of JSON, such as a JSON Schema. */

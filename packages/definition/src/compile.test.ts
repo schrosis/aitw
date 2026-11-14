@@ -1,4 +1,9 @@
-import { createPluginRegistry, defineAiProvider, definePlugin, defineWaitMethod } from "@aitw/core";
+import {
+  createPluginRegistry,
+  defineAiProvider,
+  definePlugin,
+  defineWaitMethod,
+} from "@ugoke/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 

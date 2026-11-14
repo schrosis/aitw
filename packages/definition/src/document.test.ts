@@ -1,5 +1,5 @@
-import { intermediateVersion } from "@aitw/core";
-import type { Intermediate, IntermediateStep, Transition } from "@aitw/core";
+import { intermediateVersion } from "@ugoke/core";
+import type { Intermediate, IntermediateStep, Transition } from "@ugoke/core";
 import { describe, expect, it } from "vitest";
 
 import { documentMarker, renderMermaid, renderWorkflowDocument } from "./document.ts";

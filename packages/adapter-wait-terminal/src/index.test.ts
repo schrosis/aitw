@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 
-import { validateWithSchema } from "@aitw/core";
-import type { InputDeclaration } from "@aitw/core";
+import { validateWithSchema } from "@ugoke/core";
+import type { InputDeclaration } from "@ugoke/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -412,7 +412,7 @@ describe("createTerminalPlugin with interactive prompts", () => {
     let directory: string;
 
     beforeEach(async () => {
-      directory = await mkdtemp(join(tmpdir(), "aitw-editor-"));
+      directory = await mkdtemp(join(tmpdir(), "ugoke-editor-"));
     });
 
     afterEach(async () => {

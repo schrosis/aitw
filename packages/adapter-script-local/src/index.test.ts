@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { ScriptTimeoutError } from "@aitw/core";
+import { ScriptTimeoutError } from "@ugoke/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createLocalScriptRunner } from "./index.ts";
@@ -47,7 +47,7 @@ describe("createLocalScriptRunner", () => {
   let cwd: string;
 
   beforeEach(() => {
-    cwd = realpathSync(mkdtempSync(join(tmpdir(), "aitw-script-")));
+    cwd = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-script-")));
   });
 
   afterEach(() => {
@@ -153,7 +153,7 @@ describe("createLocalScriptRunner", () => {
     });
 
     it("does not read a dotenv file outside of the working directory through a link", async () => {
-      const outside = mkdtempSync(join(tmpdir(), "aitw-outside-"));
+      const outside = mkdtempSync(join(tmpdir(), "ugoke-outside-"));
       try {
         writeFileSync(join(outside, "secrets.env"), "SECRET=x\n");
         symlinkSync(join(outside, "secrets.env"), join(cwd, ".env"));
@@ -201,13 +201,13 @@ describe("createLocalScriptRunner", () => {
   });
 
   it("runs in the working directory with the current environment", async () => {
-    process.env.AITW_TEST_VALUE = "inherited";
+    process.env.UGOKE_TEST_VALUE = "inherited";
     try {
-      await expect(run('pwd; printf %s "$AITW_TEST_VALUE"')).resolves.toMatchObject({
+      await expect(run('pwd; printf %s "$UGOKE_TEST_VALUE"')).resolves.toMatchObject({
         stdout: `${cwd}\ninherited`,
       });
     } finally {
-      delete process.env.AITW_TEST_VALUE;
+      delete process.env.UGOKE_TEST_VALUE;
     }
   });
 

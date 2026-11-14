@@ -1,6 +1,6 @@
 import { styleText } from "node:util";
 
-import type { EventSink, WorkflowEvent } from "@aitw/core";
+import type { EventSink, WorkflowEvent } from "@ugoke/core";
 
 /** A progress event that marks the start or the end of a step. */
 type StepEvent = Exclude<WorkflowEvent, { type: "stepOutput" }>;

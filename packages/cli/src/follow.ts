@@ -1,12 +1,12 @@
 import { Writable } from "node:stream";
 
-import { createFileEventLog } from "@aitw/adapter-event-log-file";
-import type { TerminalIO, TerminalStreams } from "@aitw/adapter-wait-terminal";
-import { createLocalScriptRunner } from "@aitw/adapter-script-local";
-import { createAiRunner } from "@aitw/core";
-import type { EventSink } from "@aitw/core";
-import { IncompatibleRunError } from "@aitw/engine";
-import type { FollowOptions, RunOutcome } from "@aitw/engine";
+import { createFileEventLog } from "@ugoke/adapter-event-log-file";
+import type { TerminalIO, TerminalStreams } from "@ugoke/adapter-wait-terminal";
+import { createLocalScriptRunner } from "@ugoke/adapter-script-local";
+import { createAiRunner } from "@ugoke/core";
+import type { EventSink } from "@ugoke/core";
+import { IncompatibleRunError } from "@ugoke/engine";
+import type { FollowOptions, RunOutcome } from "@ugoke/engine";
 
 import { createAiTerminalPlugin, writeAiLine } from "./ai.js";
 import type { AiLine } from "./ai.js";
@@ -28,7 +28,7 @@ export const cancelledExitCode = 130;
 /**
  * Exit code of a run that was left running, which a process can attach to later.
  *
- * It is not zero, so that a script that runs aitw does not take the run as completed.
+ * It is not zero, so that a script that runs ugoke does not take the run as completed.
  */
 export const detachedExitCode = 3;
 
@@ -149,7 +149,7 @@ export interface FollowRunOptions {
   ownsWorker?: boolean;
   /**
    * Writes JSON lines for a program such as an AI agent, instead of the progress for a person,
-   * and detaches the run at the first question of a `terminal` step, which `aitw inbox answer`
+   * and detaches the run at the first question of a `terminal` step, which `ugoke inbox answer`
    * answers. Steps that a Worker answers, such as a wait for CI, are followed through.
    */
   fromAi?: boolean;
@@ -189,7 +189,7 @@ export const followRun = async (
         runningStep = undefined;
       }
       if (fromAi) {
-        // The output of steps can be long, and a program reads it with aitw log if needed.
+        // The output of steps can be long, and a program reads it with ugoke log if needed.
         if (event.type !== "stepOutput") {
           write(event);
         }
@@ -228,7 +228,7 @@ export const followRun = async (
     if (fromAi && !server.durable) {
       write({
         message:
-          "--from-ai needs a server that keeps its runs, such as of aitw daemon, or --dev with --dev-db",
+          "--from-ai needs a server that keeps its runs, such as of ugoke daemon, or --dev with --dev-db",
         type: "failed",
       });
       return 1;
@@ -286,7 +286,7 @@ export const followRun = async (
         }
         return detachedExitCode;
       }
-      context.stderr(`${name}: detached. Run "aitw attach${server.options}" to continue\n`);
+      context.stderr(`${name}: detached. Run "ugoke attach${server.options}" to continue\n`);
       return detachedExitCode;
     }
     if (fromAi) {
@@ -317,7 +317,7 @@ export const followRun = async (
     }
     if (error instanceof IncompatibleRunError) {
       context.stderr(
-        `${name}: ${error.message}. Attach to it with the version of aitw that started it, or pass --force to try anyway\n`,
+        `${name}: ${error.message}. Attach to it with the version of ugoke that started it, or pass --force to try anyway\n`,
       );
       return 1;
     }

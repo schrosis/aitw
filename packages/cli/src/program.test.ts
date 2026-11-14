@@ -99,7 +99,7 @@ describe("colorsOf", () => {
   });
 
   it.each([["--address", "localhost:7233"], ["--dev"]])(
-    "does not detach a run on a server that aitw daemon may not run (%s)",
+    "does not detach a run on a server that ugoke daemon may not run (%s)",
     async (...server) => {
       let error = "";
       const program = createProgram({

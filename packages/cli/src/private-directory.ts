@@ -1,7 +1,7 @@
 import { lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-/** A directory of aitw that other users could use or replace. */
+/** A directory of ugoke that other users could use or replace. */
 export class UnsafeDirectoryError extends Error {
   override name = "UnsafeDirectoryError";
 }
@@ -50,7 +50,7 @@ export const ensurePrivateDirectory = (path: string, label: string): string => {
   const parent = realpathSync(dirname(path));
   const directory = join(parent, basename(path));
   const uid = process.getuid?.();
-  // Permissions and owners are POSIX ideas, which aitw relies on only where they exist.
+  // Permissions and owners are POSIX ideas, which ugoke relies on only where they exist.
   if (uid === undefined) {
     return directory;
   }

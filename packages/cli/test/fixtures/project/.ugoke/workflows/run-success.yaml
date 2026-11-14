@@ -3,7 +3,7 @@ start: check
 steps:
   check:
     type: script
-    run: test -d .aitw
+    run: test -d .ugoke
     next: finish
   finish:
     type: script

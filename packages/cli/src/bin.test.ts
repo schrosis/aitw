@@ -41,7 +41,7 @@ const execute = async (
     });
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new Error(`aitw ${args.join(" ")} did not exit: ${output}`));
+      reject(new Error(`ugoke ${args.join(" ")} did not exit: ${output}`));
     }, timeoutMs);
     child.on("exit", (exitCode) => {
       clearTimeout(timer);
@@ -49,11 +49,11 @@ const execute = async (
     });
   });
 
-describe("aitw executable", () => {
+describe("ugoke executable", () => {
   let outside: string;
 
   beforeAll(() => {
-    outside = realpathSync(mkdtempSync(join(tmpdir(), "aitw-no-project-")));
+    outside = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-no-project-")));
   });
 
   afterAll(() => {
@@ -104,7 +104,7 @@ describe("aitw executable", () => {
     }, 40_000);
 
     it("finds a Temporal CLI name in PATH", async () => {
-      const directory = mkdtempSync(join(tmpdir(), "aitw-path-"));
+      const directory = mkdtempSync(join(tmpdir(), "ugoke-path-"));
       try {
         symlinkSync(executable, join(directory, "temporal"));
         const { exitCode, output } = await execute(
@@ -212,12 +212,12 @@ describe("aitw executable", () => {
   );
 });
 
-describe("aitw with an unsafe state directory", () => {
+describe("ugoke with an unsafe state directory", () => {
   it("explains the problem without a stack trace", async () => {
-    const base = realpathSync(mkdtempSync(join(tmpdir(), "aitw-state-")));
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-state-")));
     try {
-      mkdirSync(join(base, "aitw"), { mode: 0o755 });
-      chmodSync(join(base, "aitw"), 0o755);
+      mkdirSync(join(base, "ugoke"), { mode: 0o755 });
+      chmodSync(join(base, "ugoke"), 0o755);
 
       const result = await execute(["daemon", "status"], base, {
         env: { ...process.env, XDG_STATE_HOME: base },
@@ -225,7 +225,7 @@ describe("aitw with an unsafe state directory", () => {
 
       expect(result).toEqual({
         exitCode: 1,
-        output: `aitw: Other users can use the state directory ${join(base, "aitw")}. Run "chmod 700 ${join(base, "aitw")}" to fix it\n`,
+        output: `ugoke: Other users can use the state directory ${join(base, "ugoke")}. Run "chmod 700 ${join(base, "ugoke")}" to fix it\n`,
       });
     } finally {
       rmSync(base, { force: true, recursive: true });

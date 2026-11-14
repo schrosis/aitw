@@ -1,8 +1,8 @@
-import { createFileEventLog } from "@aitw/adapter-event-log-file";
-import type { WorkflowEvent } from "@aitw/core";
-import { isCompatibleMemo, listRunningWorkflows, workflowCodeVersionMemoKey } from "@aitw/engine";
+import { createFileEventLog } from "@ugoke/adapter-event-log-file";
+import type { WorkflowEvent } from "@ugoke/core";
+import { isCompatibleMemo, listRunningWorkflows, workflowCodeVersionMemoKey } from "@ugoke/engine";
 
-import type { TerminalIO } from "@aitw/adapter-wait-terminal";
+import type { TerminalIO } from "@ugoke/adapter-wait-terminal";
 import { loadEncryptionKey } from "./encryption.js";
 import { projectHash, projectLogDirectory, projectMemoKey, workflowMemoKey } from "./state.js";
 
@@ -14,7 +14,7 @@ export interface ProjectRun {
   startTime: Date;
   /** Where the run is, such as `waiting at approve: Approve the change?`. */
   status: string;
-  /** Whether this aitw can continue the run, which workflow code of its version started. */
+  /** Whether this ugoke can continue the run, which workflow code of its version started. */
   compatible: boolean;
   /** Workflow code version that started the run, or `undefined` when the run records none. */
   version: string | undefined;
@@ -94,7 +94,7 @@ export const chooseRun = async (
   signal: AbortSignal,
 ): Promise<ProjectRun | undefined> => {
   runs.forEach((run, index) => {
-    const note = run.compatible ? "" : "  (started by another version of aitw)";
+    const note = run.compatible ? "" : "  (started by another version of ugoke)";
     write(`${index + 1}. ${run.name}  ${run.status}  started ${formatAge(run.startTime)}${note}\n`);
   });
   for (;;) {

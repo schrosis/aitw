@@ -1,11 +1,11 @@
-import { intermediateVersion } from "@aitw/core";
+import { intermediateVersion } from "@ugoke/core";
 import type {
   InputDeclaration,
   Intermediate,
   IntermediateStep,
   Transition,
   WaitRespondIn,
-} from "@aitw/core";
+} from "@ugoke/core";
 
 import type { Definition } from "./schema.js";
 

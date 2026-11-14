@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { relative } from "node:path";
 
-import type { Intermediate } from "@aitw/core";
-import { compileDefinition } from "@aitw/definition";
-import type { DefinitionError } from "@aitw/definition";
+import type { Intermediate } from "@ugoke/core";
+import { compileDefinition } from "@ugoke/definition";
+import type { DefinitionError } from "@ugoke/definition";
 
 import { createRegistry, loadProjectPlugins, missingHint } from "../plugins.js";
 import { resolveWorkflow } from "../workflows.js";
@@ -35,7 +35,7 @@ export interface CommandContext {
 
 /** A workflow that passed validation. */
 export interface LoadedWorkflow {
-  /** Project root, the directory that contains `.aitw`. */
+  /** Project root, the directory that contains `.ugoke`. */
   root: string;
   /** Path of the definition file. */
   file: string;
@@ -48,7 +48,7 @@ const formatPath = (path: readonly (number | string)[]): string =>
     .join("")
     .slice(1);
 
-/** Formats a problem in a YAML file, such as `.aitw/workflows/a.yaml:3:5 steps.a.run: message`. */
+/** Formats a problem in a YAML file, such as `.ugoke/workflows/a.yaml:3:5 steps.a.run: message`. */
 export const formatError = (
   file: string,
   { column, line, message, path }: DefinitionError,

@@ -6,10 +6,10 @@
  * runs, and record the replay histories again. Prefer changes that can replay, such as with
  * `patched()` of `@temporalio/workflow`.
  */
-export const workflowCodeVersion = 2;
+export const workflowCodeVersion = 3;
 
 /** Key of the memo of a run that holds {@link workflowCodeVersion} of the code that started it. */
-export const workflowCodeVersionMemoKey = "aitwWorkflowCodeVersion";
+export const workflowCodeVersionMemoKey = "ugokeWorkflowCodeVersion";
 
 /** Thrown when a run was started by workflow code of another version. */
 export class IncompatibleRunError extends Error {
@@ -19,7 +19,7 @@ export class IncompatibleRunError extends Error {
 
   constructor(workflowId: string, runVersion: string | undefined) {
     super(
-      `${workflowId} was started by workflow code version ${runVersion ?? "unknown"}, and this aitw has version ${workflowCodeVersion}. Continuing it can fail`,
+      `${workflowId} was started by workflow code version ${runVersion ?? "unknown"}, and this ugoke has version ${workflowCodeVersion}. Continuing it can fail`,
     );
     this.name = "IncompatibleRunError";
     this.workflowId = workflowId;

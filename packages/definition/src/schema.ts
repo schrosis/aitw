@@ -8,8 +8,8 @@ import {
   isJsonObject,
   jsonSchemaTarget,
   toJsonSchema,
-} from "@aitw/core";
-import type { JsonObject, PluginRegistry, WaitMethod } from "@aitw/core";
+} from "@ugoke/core";
+import type { JsonObject, PluginRegistry, WaitMethod } from "@ugoke/core";
 import { z } from "zod";
 
 const stepIdPattern = new RegExp(`^(?!(?:end|start)$)${identifierSource}$`, "u");

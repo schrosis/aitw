@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { PassThrough, Readable } from "node:stream";
 
-import { intermediateVersion } from "@aitw/core";
-import { workflowCodeVersionMemoKey } from "@aitw/engine";
+import { intermediateVersion } from "@ugoke/core";
+import { workflowCodeVersionMemoKey } from "@ugoke/engine";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
@@ -128,7 +128,7 @@ describe("attach and cancel", () => {
   }, 60_000);
 
   it("does not attach to a run of another version, and terminates it to cancel it", async () => {
-    const handle = await environment.client.workflow.start("aitw", {
+    const handle = await environment.client.workflow.start("ugoke", {
       args: [
         {
           inputs: {},
@@ -153,13 +153,13 @@ describe("attach and cancel", () => {
         [workflowCodeVersionMemoKey]: "0",
         [workflowMemoKey]: "old",
       },
-      taskQueue: `aitw-${randomUUID()}`,
+      taskQueue: `ugoke-${randomUUID()}`,
       workflowId: `old-${randomUUID()}`,
     });
 
     const listed = await execute(attach, undefined, "");
     expect(listed.stdout).toMatch(
-      /\d+\. old {2}starting {2}started just now {2}\(started by another version of aitw\)\n/u,
+      /\d+\. old {2}starting {2}started just now {2}\(started by another version of ugoke\)\n/u,
     );
 
     const attached = await execute(attach, handle.workflowId);
@@ -188,7 +188,7 @@ describe("attach and cancel", () => {
     await expect(execute(attach, undefined, "", { type: "dev" })).resolves.toEqual({
       exitCode: 1,
       stderr:
-        "aitw attach needs --dev-db with --dev, because a development server without it keeps no runs\n",
+        "ugoke attach needs --dev-db with --dev, because a development server without it keeps no runs\n",
       stdout: "",
     });
   });

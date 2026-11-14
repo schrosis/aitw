@@ -1,20 +1,20 @@
-import { createTerminalPlugin, terminalPlugin } from "@aitw/adapter-wait-terminal";
-import type { TerminalIO } from "@aitw/adapter-wait-terminal";
-import { createPluginRegistry, validatePluginConfig } from "@aitw/core";
-import type { Plugin, PluginRegistry } from "@aitw/core";
-import type { MissingHint } from "@aitw/definition";
+import { createTerminalPlugin, terminalPlugin } from "@ugoke/adapter-wait-terminal";
+import type { TerminalIO } from "@ugoke/adapter-wait-terminal";
+import { createPluginRegistry, validatePluginConfig } from "@ugoke/core";
+import type { Plugin, PluginRegistry } from "@ugoke/core";
+import type { MissingHint } from "@ugoke/definition";
 
 import { readProjectConfig } from "./config.js";
 import type { ReadProjectConfig } from "./config.js";
 import { loadPlugin } from "./plugin-loader.js";
 import type { LoadedPlugin } from "./plugin-loader.js";
 
-/** Scope of the plugins that aitw publishes, whose extensions are used without the plugin name. */
-const officialScope = "@aitw/";
+/** Scope of the plugins that ugoke publishes, whose extensions are used without the plugin name. */
+const officialScope = "@ugoke/";
 
 /** Packages of the official plugins, keyed by the names of the AI providers that they provide. */
 const officialAiProviders: Readonly<Record<string, string>> = {
-  "claude-code": "@aitw/adapter-ai-claude-code",
+  "claude-code": "@ugoke/adapter-ai-claude-code",
 };
 
 /**
@@ -26,13 +26,13 @@ export const missingHint: MissingHint = (kind, name) => {
   const packageName = kind === "aiProvider" ? officialAiProviders[name] : undefined;
   return packageName === undefined
     ? undefined
-    : `Install ${packageName} and add it to plugins in .aitw/config.yaml`;
+    : `Install ${packageName} and add it to plugins in .ugoke/config.yaml`;
 };
 
 /**
  * Creates the registry of the plugins that the CLI loads.
  *
- * Extensions of the plugins that aitw publishes are used by their own names, such as
+ * Extensions of the plugins that ugoke publishes are used by their own names, such as
  * `claude-code`, and those of other plugins as `<plugin>/<name>`.
  *
  * @param terminal The terminal that wait steps ask in. Without it, the registry only validates

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 
-import { decimalNumberMessage, decimalNumberPattern } from "@aitw/core";
+import { decimalNumberMessage, decimalNumberPattern } from "@ugoke/core";
 
 /** Result of {@link readWorkflowInput}. */
 export type ReadInputResult =

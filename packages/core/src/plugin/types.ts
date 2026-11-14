@@ -29,7 +29,7 @@ export interface WaitMethod<Options = unknown, Config = unknown> {
   /**
    * Where {@link WaitMethod.respond} runs. Defaults to `follower`.
    *
-   * - `follower`: the process that follows the run, such as `aitw run`, which has a terminal.
+   * - `follower`: the process that follows the run, such as `ugoke run`, which has a terminal.
    *   A run that no process follows is not answered until one attaches to it.
    * - `worker`: the Worker of the run, such as of the resident process, also while no process
    *   follows the run. Use it for a method that answers outside the terminal, such as from a
@@ -110,7 +110,7 @@ export interface AiProviderRequest<Options, Config = unknown> extends Omit<
   cwd: string;
 }
 
-/** A package that extends aitw. */
+/** A package that extends ugoke. */
 export interface Plugin<Config = unknown> {
   /**
    * Name that prefixes the names of the extensions of a plugin that is not built in, such as
@@ -121,7 +121,7 @@ export interface Plugin<Config = unknown> {
   name: string;
   /**
    * Schema of the settings of the plugin, which a project writes under the package name in
-   * `plugins` of `.aitw/config.yaml`. It must validate synchronously. A plugin without it takes
+   * `plugins` of `.ugoke/config.yaml`. It must validate synchronously. A plugin without it takes
    * no settings.
    */
   config?: StandardSchemaV1<unknown, Config>;

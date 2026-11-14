@@ -1,4 +1,4 @@
-import type { EventLog, WorkflowEvent } from "@aitw/core";
+import type { EventLog, WorkflowEvent } from "@ugoke/core";
 import { describe, expect, it } from "vitest";
 
 import { createMemoryEventLog, followEvents } from "./events.ts";

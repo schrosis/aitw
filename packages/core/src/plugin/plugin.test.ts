@@ -30,7 +30,7 @@ const slack = defineWaitMethod({ name: "slack", with: z.strictObject({ channel: 
 describe("createPluginRegistry", () => {
   it("uses short names for built-in plugins and prefixed names for others", () => {
     const registry = createPluginRegistry({
-      builtins: [definePlugin({ name: "aitw", waitMethods: [terminal] })],
+      builtins: [definePlugin({ name: "ugoke", waitMethods: [terminal] })],
       plugins: [definePlugin({ name: "acme", waitMethods: [slack, { ...terminal }] })],
     });
 
@@ -87,7 +87,7 @@ describe("createPluginRegistry", () => {
     expect(() =>
       createPluginRegistry({
         builtins: [
-          definePlugin({ name: "aitw", waitMethods: [terminal] }),
+          definePlugin({ name: "ugoke", waitMethods: [terminal] }),
           definePlugin({ name: "extra", waitMethods: [terminal] }),
         ],
       }),

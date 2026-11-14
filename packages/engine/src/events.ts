@@ -1,4 +1,4 @@
-import type { EventLog, EventSink, WorkflowEvent } from "@aitw/core";
+import type { EventLog, EventSink, WorkflowEvent } from "@ugoke/core";
 
 /**
  * Creates an event log in memory, for runs whose Worker and viewer share one process.

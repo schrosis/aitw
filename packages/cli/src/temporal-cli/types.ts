@@ -1,4 +1,4 @@
-/** Platforms that aitw downloads the Temporal CLI for, as `<platform>-<arch>` of Node.js. */
+/** Platforms that ugoke downloads the Temporal CLI for, as `<platform>-<arch>` of Node.js. */
 export const temporalCliPlatforms = [
   "darwin-arm64",
   "darwin-x64",
@@ -6,7 +6,7 @@ export const temporalCliPlatforms = [
   "linux-x64",
 ] as const;
 
-/** A platform that aitw downloads the Temporal CLI for. */
+/** A platform that ugoke downloads the Temporal CLI for. */
 export type TemporalCliPlatform = (typeof temporalCliPlatforms)[number];
 
 /** A release archive of the Temporal CLI and its checksum. */

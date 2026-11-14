@@ -1,5 +1,5 @@
 {
-  "name": "@aitw/adapter-script-local",
+  "name": "@ugoke/adapter-script-local",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
@@ -20,8 +20,8 @@
     "typecheck": "tsc -b && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@aitw/core": "workspace:*",
-    "@aitw/dotenv": "workspace:*"
+    "@ugoke/core": "workspace:*",
+    "@ugoke/dotenv": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:"

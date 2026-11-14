@@ -244,10 +244,10 @@ importers:
 
   packages/adapter-ai-claude-code:
     dependencies:
-      '@aitw/core':
+      '@ugoke/core':
         specifier: workspace:*
         version: link:../core
-      '@aitw/dotenv':
+      '@ugoke/dotenv':
         specifier: workspace:*
         version: link:../dotenv
       '@anthropic-ai/claude-agent-sdk':
@@ -263,7 +263,7 @@ importers:
 
   packages/adapter-event-log-file:
     dependencies:
-      '@aitw/core':
+      '@ugoke/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -273,10 +273,10 @@ importers:
 
   packages/adapter-script-local:
     dependencies:
-      '@aitw/core':
+      '@ugoke/core':
         specifier: workspace:*
         version: link:../core
-      '@aitw/dotenv':
+      '@ugoke/dotenv':
         specifier: workspace:*
         version: link:../dotenv
     devDependencies:
@@ -286,7 +286,7 @@ importers:
 
   packages/adapter-wait-terminal:
     dependencies:
-      '@aitw/core':
+      '@ugoke/core':
         specifier: workspace:*
         version: link:../core
       '@inquirer/confirm':
@@ -311,25 +311,25 @@ importers:
 
   packages/cli:
     dependencies:
-      '@aitw/adapter-event-log-file':
+      '@ugoke/adapter-event-log-file':
         specifier: workspace:*
         version: link:../adapter-event-log-file
-      '@aitw/adapter-script-local':
+      '@ugoke/adapter-script-local':
         specifier: workspace:*
         version: link:../adapter-script-local
-      '@aitw/adapter-wait-terminal':
+      '@ugoke/adapter-wait-terminal':
         specifier: workspace:*
         version: link:../adapter-wait-terminal
-      '@aitw/core':
+      '@ugoke/core':
         specifier: workspace:*
         version: link:../core
-      '@aitw/definition':
+      '@ugoke/definition':
         specifier: workspace:*
         version: link:../definition
-      '@aitw/dotenv':
+      '@ugoke/dotenv':
         specifier: workspace:*
         version: link:../dotenv
-      '@aitw/engine':
+      '@ugoke/engine':
         specifier: workspace:*
         version: link:../engine
       '@commander-js/extra-typings':
@@ -342,7 +342,7 @@ importers:
         specifier: 'catalog:'
         version: 4.6.7
     devDependencies:
-      '@aitw/adapter-ai-claude-code':
+      '@ugoke/adapter-ai-claude-code':
         specifier: workspace:*
         version: link:../adapter-ai-claude-code
       '@temporalio/testing':
@@ -363,7 +363,7 @@ importers:
 
   packages/definition:
     dependencies:
-      '@aitw/core':
+      '@ugoke/core':
         specifier: workspace:*
         version: link:../core
       yaml:
@@ -381,7 +381,7 @@ importers:
 
   packages/engine:
     dependencies:
-      '@aitw/core':
+      '@ugoke/core':
         specifier: workspace:*
         version: link:../core
       '@temporalio/activity':

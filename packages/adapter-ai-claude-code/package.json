@@ -1,5 +1,5 @@
 {
-  "name": "@aitw/adapter-ai-claude-code",
+  "name": "@ugoke/adapter-ai-claude-code",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
@@ -20,9 +20,9 @@
     "typecheck": "tsc -b && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@aitw/core": "workspace:*",
-    "@aitw/dotenv": "workspace:*",
     "@anthropic-ai/claude-agent-sdk": "catalog:",
+    "@ugoke/core": "workspace:*",
+    "@ugoke/dotenv": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {

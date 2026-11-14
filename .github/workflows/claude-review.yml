@@ -220,6 +220,20 @@ jobs:
             *) state=failure description="Review did not return a verdict" event="" ;;
           esac
 
+          # A comment does not replace an earlier approval or request for changes of the same
+          # user, so dismiss them. Otherwise the pull request would look approved while the
+          # status is pending.
+          if [ "$event" != APPROVE ] && [ "$event" != REQUEST_CHANGES ]; then
+            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
+              --jq '.[] | select(.user.login == "github-actions[bot]" and (.state == "APPROVED" or .state == "CHANGES_REQUESTED")) | .id' \
+              | while IFS= read -r review_id; do
+                  gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews/$review_id/dismissals" \
+                    -f message="A later review of Claude Review neither approves nor requests changes" \
+                    -f event=DISMISS > /dev/null \
+                    || echo "::warning::Could not dismiss the earlier review $review_id"
+                done
+          fi
+
           # Submit the review on the reviewed commit, which a later push does not change.
           # Approving requires "Allow GitHub Actions to create and approve pull requests".
           # A failure leaves a warning, so that the status below is still reported.

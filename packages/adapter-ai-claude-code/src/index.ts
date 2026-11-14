@@ -104,6 +104,36 @@ const describeFailure = (message: Extract<ClaudeMessage, { type: "result" }>): s
   return `Claude Code failed: ${reasons}`;
 };
 
+/** Tools whose rules take a path, such as `Edit(docs/**)`. */
+const pathRulePattern = /^(?<tool>Read|Edit)\((?<path>.+)\)$/u;
+
+/**
+ * Anchors the paths of the rules for files to the working directory of the step.
+ *
+ * Claude Code reads a path that does not start with `/` or `~/` against its current directory,
+ * which a `cd` of the AI changes. A rule such as `Edit(docs/**)` would then stop matching
+ * `docs/` of the project. An absolute path, written with `//`, keeps matching it.
+ *
+ * A name without a `/`, such as `*.md`, matches at any depth under the directory. It is put
+ * under `**` in the working directory of the step, which keeps that meaning from a fixed start.
+ *
+ * @param cwd Absolute path of the working directory of the step.
+ */
+export const anchorPathRules = (rules: readonly string[], cwd: string): string[] =>
+  rules.map((rule) => {
+    const { path, tool } = pathRulePattern.exec(rule)?.groups ?? {};
+    if (path === undefined || tool === undefined) {
+      return rule;
+    }
+    if (path.startsWith("/") || path.startsWith("~/")) {
+      return rule;
+    }
+    if (!path.includes("/")) {
+      return `${tool}(/${join(cwd, "**", path)})`;
+    }
+    return `${tool}(/${join(cwd, path)})`;
+  });
+
 /** Options of {@link createClaudeCodePlugin}. */
 export interface ClaudeCodePluginOptions {
   /** Runs the prompt. Defaults to the Claude Agent SDK. */
@@ -160,7 +190,9 @@ const createProvider = (query: ClaudeQuery): AiProvider<z.output<typeof optionsS
             ...(agent === undefined
               ? {}
               : { agent, systemPrompt: { preset: "claude_code", type: "preset" } }),
-            ...(allowedTools === undefined ? {} : { allowedTools }),
+            ...(allowedTools === undefined
+              ? {}
+              : { allowedTools: anchorPathRules(allowedTools, cwd) }),
             ...(maxBudgetUsd === undefined ? {} : { maxBudgetUsd }),
             ...(model === undefined ? {} : { model }),
             ...(schema === undefined

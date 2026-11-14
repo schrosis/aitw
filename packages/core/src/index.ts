@@ -58,6 +58,7 @@ export type {
   TemplatePart,
   ValueExpression,
 } from "./expression/index.js";
+export { durationMessage, durationPattern, parseDuration } from "./duration.js";
 export {
   checkDotenvPath,
   envNameMessage,

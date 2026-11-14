@@ -1,5 +1,7 @@
 import {
   checkDotenvPath,
+  durationMessage,
+  durationPattern,
   envNameMessage,
   envNamePattern,
   identifierPattern,
@@ -13,7 +15,6 @@ import type { JsonObject, PluginRegistry, WaitMethod } from "@ugoke/core";
 import { z } from "zod";
 
 const stepIdPattern = new RegExp(`^(?!(?:end|start)$)${identifierSource}$`, "u");
-const durationPattern = /^[1-9][0-9]*(?:s|m|h)$/u;
 
 /** Definition format version supported by this package. */
 export const definitionVersion = "v0.1";
@@ -82,7 +83,7 @@ const scriptStepSchema = z.strictObject({
   continueOnError: continueOnErrorSchema,
   timeout: z
     .string()
-    .regex(durationPattern, "Must be a positive duration such as 30s, 5m, or 1h")
+    .regex(durationPattern, durationMessage)
     .default(defaultStepTimeout)
     .describe("Maximum duration of the step"),
   inputs: expressionMapSchema.optional(),
@@ -125,7 +126,7 @@ const aiStepSchema = z.strictObject({
   continueOnError: continueOnErrorSchema,
   timeout: z
     .string()
-    .regex(durationPattern, "Must be a positive duration such as 30s, 5m, or 1h")
+    .regex(durationPattern, durationMessage)
     .default(defaultStepTimeout)
     .describe("Maximum duration of the step"),
   inputs: expressionMapSchema.optional(),

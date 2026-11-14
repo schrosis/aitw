@@ -4,8 +4,8 @@ import type { InputDeclaration } from "@aitw/core";
 import {
   AnswerRejectedError,
   answerInbox,
+  attachWorkflow,
   listInbox,
-  resumeWorkflow,
   sendAnswer,
 } from "@aitw/engine";
 import type { InboxQuestion } from "@aitw/engine";
@@ -334,7 +334,7 @@ const answerAndFollow = async (
     return await followRun(
       {
         follow: async (followOptions) =>
-          resumeWorkflow({
+          attachWorkflow({
             ...followOptions,
             // The answer needs a Worker, which serves the run from now on.
             beforeFollow: async (handle) => {

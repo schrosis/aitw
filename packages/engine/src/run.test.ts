@@ -17,7 +17,7 @@ import { z } from "zod";
 import { answeredElsewhereMessage } from "./answer.ts";
 import { createMemoryEventLog } from "./events.ts";
 import { answerInbox } from "./inbox.ts";
-import { listRunningWorkflows, resumeWorkflow, runWorkflow, startWorkflow } from "./run.ts";
+import { attachWorkflow, listRunningWorkflows, runWorkflow, startWorkflow } from "./run.ts";
 import { startWorker } from "./worker.ts";
 import {
   IncompatibleRunError,
@@ -390,7 +390,7 @@ describe("runWorkflow", () => {
     }, 60_000);
   });
 
-  describe("detaching and resuming", () => {
+  describe("detaching and attaching", () => {
     const waiting: Intermediate = {
       ...intermediate,
       start: "ask",
@@ -418,7 +418,7 @@ describe("runWorkflow", () => {
       type: "script",
     };
 
-    it("leaves a waiting run, then resumes it with the earlier events", async () => {
+    it("leaves a waiting run, then attaches to it with the earlier events", async () => {
       const eventLog = createMemoryEventLog();
       const detach = new AbortController();
       const first = await runWorkflow({
@@ -453,7 +453,7 @@ describe("runWorkflow", () => {
       ]);
 
       const events: WorkflowEvent[] = [];
-      const resumed = await resumeWorkflow({
+      const attached = await attachWorkflow({
         address: environment.address,
         eventLog,
         eventSink: { emit: (event) => events.push(event) },
@@ -463,12 +463,12 @@ describe("runWorkflow", () => {
         workflowsPath: workflows,
       });
 
-      expect(resumed).toEqual({
+      expect(attached).toEqual({
         executedSteps: ["ask", "fetch"],
         status: "completed",
         workflowId: first.workflowId,
       });
-      // The resumed run shows the events from the start, including those before it detached.
+      // The run that it attaches to shows the events from the start, including those before it detached.
       expect(events.map(({ step, type }) => `${type} ${step}`)).toEqual([
         "stepStarted ask",
         "stepFinished ask",
@@ -506,16 +506,16 @@ describe("runWorkflow", () => {
       const result = await outcome;
       // The script finished, and the run waits for a Worker to run the next step.
       expect(result.status).toBe("detached");
-      const resumed = await resumeWorkflow({
+      const attached = await attachWorkflow({
         address: environment.address,
         scriptRunner: succeed,
         workflowId: result.workflowId,
         workflowsPath: workflows,
       });
-      expect(resumed).toMatchObject({ executedSteps: ["fetch", "report"], status: "completed" });
+      expect(attached).toMatchObject({ executedSteps: ["fetch", "report"], status: "completed" });
     }, 60_000);
 
-    it("reports a script that failed while the run detached when it is resumed", async () => {
+    it("reports a script that failed while the run detached when it attaches to it", async () => {
       const detach = new AbortController();
       let detached: RunOutcome;
       try {
@@ -539,11 +539,11 @@ describe("runWorkflow", () => {
         return;
       }
 
-      // The Worker stopped before the workflow learned of the failure, so the run waits to be
-      // resumed, and it fails then.
+      // The Worker stopped before the workflow learned of the failure, so the run waits for a
+      // process to attach to it, and it fails then.
       expect(detached).toMatchObject({ status: "detached" });
       await expect(
-        resumeWorkflow({
+        attachWorkflow({
           address: environment.address,
           scriptRunner: succeed,
           workflowId: detached.workflowId,
@@ -552,7 +552,7 @@ describe("runWorkflow", () => {
       ).rejects.toMatchObject({ cause: { cause: { type: "ScriptFailed" } } });
     }, 60_000);
 
-    it("does not resume a run of another workflow code version without force", async () => {
+    it("does not attach to a run of another workflow code version without force", async () => {
       const handle = await environment.client.workflow.start("aitw", {
         args: [waiting, {}],
         memo: { [workflowCodeVersionMemoKey]: "0" },
@@ -566,18 +566,18 @@ describe("runWorkflow", () => {
         workflowsPath: workflows,
       };
 
-      await expect(resumeWorkflow(options)).rejects.toThrow(IncompatibleRunError);
-      await expect(resumeWorkflow(options)).rejects.toThrow(
+      await expect(attachWorkflow(options)).rejects.toThrow(IncompatibleRunError);
+      await expect(attachWorkflow(options)).rejects.toThrow(
         `was started by workflow code version 0, and this aitw has version ${workflowCodeVersion}`,
       );
-      await expect(resumeWorkflow({ ...options, cancel: true, force: true })).rejects.toMatchObject(
+      await expect(attachWorkflow({ ...options, cancel: true, force: true })).rejects.toMatchObject(
         {
           cause: { name: "CancelledFailure" },
         },
       );
     }, 60_000);
 
-    it("cancels a run that it resumes", async () => {
+    it("cancels a run that it attaches to", async () => {
       const detach = new AbortController();
       const first = await runWorkflow({
         address: environment.address,
@@ -593,7 +593,7 @@ describe("runWorkflow", () => {
       });
 
       await expect(
-        resumeWorkflow({
+        attachWorkflow({
           address: environment.address,
           cancel: true,
           scriptRunner: succeed,
@@ -602,7 +602,7 @@ describe("runWorkflow", () => {
         }),
       ).rejects.toMatchObject({ cause: { name: "CancelledFailure" } });
       await expect(
-        resumeWorkflow({
+        attachWorkflow({
           address: environment.address,
           scriptRunner: succeed,
           workflowId: first.workflowId,

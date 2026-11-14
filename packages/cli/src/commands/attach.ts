@@ -3,7 +3,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { createFileEventLog } from "@aitw/adapter-event-log-file";
 import { createLocalScriptRunner } from "@aitw/adapter-script-local";
 import { parseDefinition } from "@aitw/definition";
-import { resumeWorkflow, terminateWorkflow } from "@aitw/engine";
+import { attachWorkflow, terminateWorkflow } from "@aitw/engine";
 
 import {
   cancelledExitCode,
@@ -163,7 +163,7 @@ export const attach = async (options: AttachOptions, context: CommandContext): P
       return await followRun(
         {
           follow: async (followOptions) =>
-            resumeWorkflow({
+            attachWorkflow({
               ...followOptions,
               force: options.force === true,
               servedTaskQueue,
@@ -242,7 +242,7 @@ export const cancel = async (options: AttachOptions, context: CommandContext): P
       return 0;
     }
     // A Worker runs the cancellation, in case no other process follows the run.
-    const outcome = await resumeWorkflow({
+    const outcome = await attachWorkflow({
       address: server.address,
       cancel: true,
       encryptionKey: loadEncryptionKey(),

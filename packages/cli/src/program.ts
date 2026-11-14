@@ -158,7 +158,7 @@ process runs, it runs the steps on that server, so the run keeps going after thi
 const interruptHelp = `
 Press Ctrl+C to detach: the run waits in Temporal, and "aitw attach" continues it.
 A running script finishes first. Press Ctrl+C again to exit now, which fails the running
-step so that the run cannot be resumed. A development server without --dev-db keeps no
+step so that the run cannot be continued. A development server without --dev-db keeps no
 runs, so Ctrl+C cancels the run there. Use "aitw cancel" to stop a run.`;
 
 const addressOption = () =>

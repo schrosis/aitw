@@ -24,8 +24,8 @@ export type ServerOptions =
 export interface OpenedServer {
   address: string;
   /**
-   * Whether runs outlive the command, so that they can be resumed. A development server without
-   * a SQLite file loses its runs when it stops.
+   * Whether runs outlive the command, so that a process can attach to them later. A development
+   * server without a SQLite file loses its runs when it stops.
    */
   durable: boolean;
   /** Options that reach the same server again, such as ` --dev --dev-db state.db`. */

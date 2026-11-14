@@ -91,7 +91,7 @@ export interface FollowOptions {
    * Stops following the run when aborted, and leaves the workflow running in Temporal.
    *
    * The Worker of this process stops taking new tasks, and waits for a running script to
-   * finish, so that the run can be resumed.
+   * finish, so that the run can go on when a process attaches to it.
    */
   detach?: AbortSignal;
   /**
@@ -161,7 +161,7 @@ export interface AttachWorkflowOptions extends FollowOptions {
 /**
  * Time that a detaching Worker waits for a running script to finish.
  *
- * A script that is stopped fails its step, and the run could not be resumed.
+ * A script that is stopped fails its step, and the run could not be continued.
  */
 const detachGraceTime = "1 day";
 
@@ -360,8 +360,8 @@ const follow = async (
     await follower?.stop();
   }
 
-  // The run may have ended while the Worker waited for the last script. A run that cannot be
-  // resumed is reported like any other end, and the result throws when it failed.
+  // The run may have ended while the Worker waited for the last script. A run that has ended
+  // is reported like any other end, and the result throws when it failed.
   if (outcome.status === "detached" && handle !== undefined) {
     const { status } = await handle.describe();
     if (status.name !== "RUNNING") {

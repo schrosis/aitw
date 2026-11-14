@@ -219,8 +219,8 @@ describe("run", () => {
     );
     expect(result.stderr).toBe(
       [
-        "Waiting for the running step to finish, so that the run can be resumed.",
-        "Press Ctrl+C again to exit now. The running step will fail, and the run cannot be resumed.",
+        "Waiting for the running step to finish, so that you can attach to the run later.",
+        "Press Ctrl+C again to exit now. The running step will fail, and the run cannot be continued.",
         `run-detach: detached. Run "aitw attach --address ${environment.address}" to continue`,
         "",
       ].join("\n"),

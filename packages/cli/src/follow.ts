@@ -26,7 +26,7 @@ import { projectLogDirectory } from "./state.js";
 export const cancelledExitCode = 130;
 
 /**
- * Exit code of a run that was left running to be resumed later.
+ * Exit code of a run that was left running, which a process can attach to later.
  *
  * It is not zero, so that a script that runs aitw does not take the run as completed.
  */
@@ -135,10 +135,10 @@ export interface FollowRunOptions {
   server: OpenedServer;
   /**
    * Aborted when the user interrupts. On a server that keeps its runs, it detaches the run, so
-   * that it can be resumed. Otherwise, it cancels the run.
+   * that a process can attach to it later. Otherwise, it cancels the run.
    */
   interrupt: AbortSignal;
-  /** Starts or resumes the run with the options that this module prepares. */
+  /** Starts the run, or attaches to it, with the options that this module prepares. */
   follow: (options: FollowOptions) => Promise<RunOutcome>;
   /** Terminal that wait steps ask in, when the command already reads standard input. */
   terminal?: ReturnType<typeof createTerminal>;
@@ -215,8 +215,8 @@ export const followRun = async (
     }
     if (ownsWorker && runningStep !== undefined) {
       context.stderr(
-        "Waiting for the running step to finish, so that the run can be resumed.\n" +
-          "Press Ctrl+C again to exit now. The running step will fail, and the run cannot be resumed.\n",
+        "Waiting for the running step to finish, so that you can attach to the run later.\n" +
+          "Press Ctrl+C again to exit now. The running step will fail, and the run cannot be continued.\n",
       );
     }
     detach.abort();
@@ -311,7 +311,7 @@ export const followRun = async (
     if (isCancelled(error) || interrupt.aborted) {
       const note = server.durable
         ? ""
-        : ". Runs on a development server without --dev-db cannot be resumed";
+        : ". A development server without --dev-db keeps no runs to attach to later";
       context.stderr(`${name}: cancelled${note}\n`);
       return cancelledExitCode;
     }

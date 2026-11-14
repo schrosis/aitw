@@ -1,4 +1,4 @@
-import { AiTimeoutError, ScriptTimeoutError } from "@aitw/core";
+import { AiTimeoutError, ScriptTimeoutError } from "@ugoke/core";
 import type {
   AiRequest,
   AiResult,
@@ -9,7 +9,7 @@ import type {
   ScriptResult,
   ScriptRunner,
   WorkflowEvent,
-} from "@aitw/core";
+} from "@ugoke/core";
 import { MockActivityEnvironment } from "@temporalio/testing";
 import { describe, expect, it } from "vitest";
 

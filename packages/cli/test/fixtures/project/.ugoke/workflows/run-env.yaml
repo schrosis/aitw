@@ -1,5 +1,5 @@
 version: v0.1
-dotenv: .aitw/env.fixture
+dotenv: .ugoke/env.fixture
 inputs:
   level:
     type: string

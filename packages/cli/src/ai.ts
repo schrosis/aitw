@@ -1,6 +1,6 @@
-import { terminalWaitMethod } from "@aitw/adapter-wait-terminal";
-import { definePlugin, defineWaitMethod } from "@aitw/core";
-import type { InputDeclaration, Plugin, WorkflowEvent } from "@aitw/core";
+import { terminalWaitMethod } from "@ugoke/adapter-wait-terminal";
+import { definePlugin, defineWaitMethod } from "@ugoke/core";
+import type { InputDeclaration, Plugin, WorkflowEvent } from "@ugoke/core";
 
 /**
  * Output of `--from-ai`, which a program such as an AI agent reads instead of a person.
@@ -13,7 +13,7 @@ export type AiLine =
   | Exclude<WorkflowEvent, { type: "stepOutput" }>
   | AiQuestion
   | { type: "warning"; message: string }
-  /** A run of `aitw inbox list` whose wait could not be read, such as when no Worker serves it. */
+  /** A run of `ugoke inbox list` whose wait could not be read, such as when no Worker serves it. */
   | { type: "unreadable"; workflowId: string; reason: string }
   /** The run detached without a question, such as on Ctrl+C. */
   | { type: "detached"; workflowId: string }
@@ -28,17 +28,17 @@ export interface AiQuestion {
   /** Name of the workflow, when the run records it. */
   name?: string | undefined;
   step: string;
-  /** Visit of the step, which `aitw inbox answer --visit` takes. */
+  /** Visit of the step, which `ugoke inbox answer --visit` takes. */
   visit: number;
   /** Message of the step, from the `message` option of its method. */
   message?: string | undefined;
-  /** Declarations of the answers, which `aitw inbox answer --values` gives. */
+  /** Declarations of the answers, which `ugoke inbox answer --values` gives. */
   answers: Readonly<Record<string, InputDeclaration>>;
   /** Values of the workflow input, which tell runs of the same workflow apart. */
   inputs?: Readonly<Record<string, unknown>> | undefined;
   /**
-   * Whether aitw daemon runs the run, which `aitw inbox answer --detach` needs. Only
-   * `aitw inbox list` tells it.
+   * Whether ugoke daemon runs the run, which `ugoke inbox answer --detach` needs. Only
+   * `ugoke inbox list` tells it.
    */
   inDaemon?: boolean | undefined;
 }

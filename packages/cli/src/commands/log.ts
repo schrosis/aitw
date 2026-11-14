@@ -1,10 +1,10 @@
 import { realpath } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { createFileEventLog } from "@aitw/adapter-event-log-file";
-import type { WorkflowEvent } from "@aitw/core";
-import { followEvents, watchWorkflowStatus } from "@aitw/engine";
-import type { WorkflowStatusWatcher } from "@aitw/engine";
+import { createFileEventLog } from "@ugoke/adapter-event-log-file";
+import type { WorkflowEvent } from "@ugoke/core";
+import { followEvents, watchWorkflowStatus } from "@ugoke/engine";
+import type { WorkflowStatusWatcher } from "@ugoke/engine";
 
 import { readProjectConfig } from "../config.js";
 import { openCommandServer } from "../daemon/connect.js";
@@ -13,7 +13,7 @@ import { rootMessage } from "../follow.js";
 import { createProgressPrinter } from "../progress.js";
 import type { ServerOptions } from "../server.js";
 import { projectLogDirectory } from "../state.js";
-import { aitwDirectory, findProjectRoot } from "../workflows.js";
+import { ugokeDirectory, findProjectRoot } from "../workflows.js";
 import type { CommandContext } from "./load.js";
 import { stepOrder } from "./attach.js";
 
@@ -117,7 +117,7 @@ export const log = async (options: LogOptions, context: CommandContext): Promise
   const { follow = false, signal, tail, workflowId } = options;
   const found = await findProjectRoot(context.cwd);
   if (found === undefined) {
-    context.stderr(`No ${aitwDirectory} directory found in ${context.cwd} or its parents\n`);
+    context.stderr(`No ${ugokeDirectory} directory found in ${context.cwd} or its parents\n`);
     return 1;
   }
   const root = await realpath(found);

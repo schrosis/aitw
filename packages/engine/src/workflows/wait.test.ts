@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { createPluginRegistry, definePlugin, intermediateVersion } from "@aitw/core";
-import type { Intermediate, ScriptRequest, WaitResponseContext } from "@aitw/core";
+import { createPluginRegistry, definePlugin, intermediateVersion } from "@ugoke/core";
+import type { Intermediate, ScriptRequest, WaitResponseContext } from "@ugoke/core";
 import { WorkflowUpdateFailedError } from "@temporalio/client";
 import type { WorkflowHandle } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
@@ -14,7 +14,7 @@ import { z } from "zod";
 import { createActivities } from "../activities/index.ts";
 import { answerUpdateName, waitingQueryName } from "../messages.ts";
 import type { Answer, WaitingStep } from "../messages.ts";
-import { aitw } from "./index.ts";
+import { ugoke } from "./index.ts";
 
 const intermediate: Intermediate = {
   inputs: { greeting: { default: "Hello", required: false, type: "string" } },
@@ -65,7 +65,7 @@ const waitForStep = async (handle: WorkflowHandle): Promise<WaitingStep> => {
 const answer = async (handle: WorkflowHandle, value: Answer) =>
   handle.executeUpdate(answerUpdateName, { args: [value] });
 
-describe("aitw wait steps", () => {
+describe("ugoke wait steps", () => {
   let environment: TestWorkflowEnvironment;
 
   beforeAll(async () => {
@@ -97,7 +97,7 @@ describe("aitw wait steps", () => {
       workflowsPath: fileURLToPath(new URL("./index.ts", import.meta.url)),
     });
     await worker.runUntil(async () => {
-      const handle = await environment.client.workflow.start(aitw, {
+      const handle = await environment.client.workflow.start(ugoke, {
         args: [intermediate],
         taskQueue,
         workflowId: randomUUID(),
@@ -117,11 +117,11 @@ describe("aitw wait steps", () => {
         workflowInputs: { greeting: "Hello" },
       });
 
-      await answer(handle, { step: "ask", values: { name: "aitw" } });
+      await answer(handle, { step: "ask", values: { name: "ugoke" } });
 
       await expect(handle.result()).resolves.toEqual({ executedSteps: ["ask", "greet"] });
       // The optional answer that was not given is null, and embeds as an empty string.
-      expect(requests.map(({ run }) => run)).toEqual(['echo "Hello aitw "']);
+      expect(requests.map(({ run }) => run)).toEqual(['echo "Hello ugoke "']);
       await expect(handle.query(waitingQueryName)).resolves.toBeNull();
     });
   }, 60_000);
@@ -129,7 +129,7 @@ describe("aitw wait steps", () => {
   it.each([
     [{ step: "ask", values: {} }, "ask.name: Required"],
     [{ step: "ask", values: { name: 1 } }, "ask.name: Must be a string"],
-    [{ step: "greet", values: { name: "aitw" } }, "Step greet is not waiting for an answer"],
+    [{ step: "greet", values: { name: "ugoke" } }, "Step greet is not waiting for an answer"],
   ])(
     "rejects the answer %j and keeps waiting",
     async (value, message) => {
@@ -158,7 +158,7 @@ describe("aitw wait steps", () => {
   }, 60_000);
 });
 
-describe("aitw wait steps that the Worker answers", () => {
+describe("ugoke wait steps that the Worker answers", () => {
   let environment: TestWorkflowEnvironment;
 
   beforeAll(async () => {
@@ -232,7 +232,7 @@ describe("aitw wait steps that the Worker answers", () => {
       workflowsPath: fileURLToPath(new URL("./index.ts", import.meta.url)),
     });
     await worker.runUntil(async () => {
-      const handle = await environment.client.workflow.start(aitw, {
+      const handle = await environment.client.workflow.start(ugoke, {
         args: [answeredInWorker],
         taskQueue,
         workflowId: randomUUID(),
@@ -247,7 +247,7 @@ describe("aitw wait steps that the Worker answers", () => {
     await withWorkflow(
       async ({ signal: _signal, ...context }) => {
         contexts.push(context);
-        return { name: "aitw" };
+        return { name: "ugoke" };
       },
       async (handle, requests) => {
         await expect(handle.result()).resolves.toEqual({ executedSteps: ["ask", "greet"] });
@@ -261,7 +261,7 @@ describe("aitw wait steps that the Worker answers", () => {
             visit: 0,
           },
         ]);
-        expect(requests.map(({ run }) => run)).toEqual(['echo "aitw"']);
+        expect(requests.map(({ run }) => run)).toEqual(['echo "ugoke"']);
       },
     );
   }, 60_000);
@@ -272,7 +272,7 @@ describe("aitw wait steps that the Worker answers", () => {
     await withWorkflow(
       async () => {
         await released;
-        return { name: "aitw" };
+        return { name: "ugoke" };
       },
       async (handle) => {
         await expect(waitForStep(handle)).resolves.toMatchObject({
@@ -364,7 +364,7 @@ describe("aitw wait steps that the Worker answers", () => {
     }, stopping.signal);
 
     const handle = await first.runUntil(async () => {
-      const started = await environment.client.workflow.start(aitw, {
+      const started = await environment.client.workflow.start(ugoke, {
         args: [answeredInWorker],
         taskQueue,
         workflowId: randomUUID(),

@@ -1,5 +1,5 @@
-import { resolveWorkflowInput } from "@aitw/core";
-import { jsonBytes, maxValueBytes, runWorkflow, startWorkflow } from "@aitw/engine";
+import { resolveWorkflowInput } from "@ugoke/core";
+import { jsonBytes, maxValueBytes, runWorkflow, startWorkflow } from "@ugoke/engine";
 
 import { realpath } from "node:fs/promises";
 
@@ -33,16 +33,16 @@ export interface RunOptions {
   prepareEngine?: () => void;
   /**
    * Starts the run and exits without following it. The resident process runs the steps, and
-   * the questions of the run wait in `aitw inbox list`.
+   * the questions of the run wait in `ugoke inbox list`.
    */
   detach?: boolean | undefined;
   /**
    * Writes JSON lines for a program such as an AI agent, and exits at the first question, which
-   * `aitw inbox answer --from-ai` answers. See {@link followRun}.
+   * `ugoke inbox answer --from-ai` answers. See {@link followRun}.
    */
   fromAi?: boolean | undefined;
   /**
-   * Version of this aitw. When the server is not given, a resident process of the same version
+   * Version of this ugoke. When the server is not given, a resident process of the same version
    * runs the steps.
    */
   version: string;
@@ -128,7 +128,7 @@ const runWorkflowCommand = async (
       // The run goes on after this command only in the resident process. The reason why it does
       // not run the steps is already shown.
       if (servedTaskQueue === undefined) {
-        context.stderr(`${name}: cannot detach, because aitw daemon does not run the steps\n`);
+        context.stderr(`${name}: cannot detach, because ugoke daemon does not run the steps\n`);
         return 1;
       }
       const workflowId = await startWorkflow({
@@ -141,7 +141,7 @@ const runWorkflowCommand = async (
         taskQueue: servedTaskQueue,
       });
       context.stdout(
-        `${name}: started ${workflowId} in aitw daemon. Its questions wait in "aitw inbox list", and "aitw attach ${workflowId}" follows it\n`,
+        `${name}: started ${workflowId} in ugoke daemon. Its questions wait in "ugoke inbox list", and "ugoke attach ${workflowId}" follows it\n`,
       );
       return 0;
     }
@@ -157,10 +157,10 @@ const runWorkflowCommand = async (
               ...options,
               inputs: read.values,
               intermediate: workflow.intermediate,
-              // The memo marks the run, so that aitw attach can find the runs of a project.
+              // The memo marks the run, so that ugoke attach can find the runs of a project.
               memo,
               name,
-              // aitw attach does not follow a run that this process follows.
+              // ugoke attach does not follow a run that this process follows.
               onStart: (workflowId) => {
                 lock = acquireRunLock(projectLockDirectory(root), workflowId);
                 if (fromAi) {

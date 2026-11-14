@@ -2,8 +2,8 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { intermediateVersion } from "@aitw/core";
-import type { Intermediate, ScriptRequest } from "@aitw/core";
+import { intermediateVersion } from "@ugoke/core";
+import type { Intermediate, ScriptRequest } from "@ugoke/core";
 import { Client } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createActivities } from "../activities/index.ts";
 import { clientDataConverter, workerDataConverter } from "../encryption.ts";
 import { listRunningWorkflows } from "../run.ts";
-import { aitw } from "./index.ts";
+import { ugoke } from "./index.ts";
 
 const key = randomBytes(32);
 const workflowsPath = fileURLToPath(new URL("./index.ts", import.meta.url));
@@ -36,7 +36,7 @@ const intermediate: Intermediate = {
   version: intermediateVersion,
 };
 
-describe("aitw with encryption", () => {
+describe("ugoke with encryption", () => {
   let environment: TestWorkflowEnvironment;
 
   beforeAll(async () => {
@@ -75,7 +75,7 @@ describe("aitw with encryption", () => {
     });
 
     await worker.runUntil(async () => {
-      const handle = await client.workflow.start(aitw, {
+      const handle = await client.workflow.start(ugoke, {
         args: [intermediate],
         taskQueue,
         workflowId: randomUUID(),
@@ -95,7 +95,7 @@ describe("aitw with encryption", () => {
       await new Client({
         connection: environment.connection,
         ...clientDataConverter(encryptionKey),
-      }).workflow.start(aitw, {
+      }).workflow.start(ugoke, {
         args: [intermediate],
         memo: { project },
         taskQueue: randomUUID(),
@@ -122,7 +122,7 @@ describe("aitw with encryption", () => {
     const worker = await createVictim(taskQueue, requests);
 
     await worker.runUntil(async () => {
-      const handle = await environment.client.workflow.start(aitw, {
+      const handle = await environment.client.workflow.start(ugoke, {
         args: [intermediate],
         taskQueue,
         workflowExecutionTimeout: "3 seconds",

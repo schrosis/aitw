@@ -1,5 +1,5 @@
 import { isAlias, isMap, isNode, isScalar, isSeq, LineCounter, parseDocument, visit } from "yaml";
-import { decimalNumberMessage, decimalNumberPattern } from "@aitw/core";
+import { decimalNumberMessage, decimalNumberPattern } from "@ugoke/core";
 import type { z } from "zod";
 
 import { definitionSchema } from "./schema.js";

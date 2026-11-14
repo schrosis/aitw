@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { relative } from "node:path";
 
-import { documentMarker, renderWorkflowDocument } from "@aitw/definition";
+import { documentMarker, renderWorkflowDocument } from "@ugoke/definition";
 
 import { listWorkflows } from "../workflows.js";
 import { loadWorkflow } from "./load.js";
@@ -32,7 +32,7 @@ const generate = async (name: string, context: CommandContext): Promise<boolean>
     // A file without the marker is one that someone wrote, so it is not replaced.
     const existing = await readExisting(file);
     if (existing !== undefined && !existing.startsWith(documentMarker)) {
-      context.stderr(`${shown}: aitw docs did not generate this file, so it was not replaced\n`);
+      context.stderr(`${shown}: ugoke docs did not generate this file, so it was not replaced\n`);
       return false;
     }
     await writeFile(file, renderWorkflowDocument(workflow.intermediate));

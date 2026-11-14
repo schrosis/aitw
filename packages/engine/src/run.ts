@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
-import { createPluginRegistry } from "@aitw/core";
+import { createPluginRegistry } from "@ugoke/core";
 import type {
   AiRunner,
   EnvironmentReader,
@@ -11,7 +11,7 @@ import type {
   PluginRegistry,
   ScriptRunner,
   WorkflowEvent,
-} from "@aitw/core";
+} from "@ugoke/core";
 import { Client, Connection, WorkflowNotFoundError } from "@temporalio/client";
 import type { WorkflowHandle } from "@temporalio/client";
 import { DefaultLogger, NativeConnection, Runtime, Worker } from "@temporalio/worker";
@@ -28,7 +28,7 @@ import {
   workflowCodeVersionMemoKey,
 } from "./version.js";
 import type { EventFollower } from "./events.js";
-import type { aitw } from "./workflows/index.js";
+import type { ugoke } from "./workflows/index.js";
 
 const discardEvents: EventSink = { emit: () => {} };
 
@@ -147,7 +147,7 @@ export interface RunWorkflowOptions extends FollowOptions {
 export interface AttachWorkflowOptions extends FollowOptions {
   /** ID of a running workflow. */
   workflowId: string;
-  /** Cancels the workflow as soon as it attaches to it, such as for `aitw cancel`. */
+  /** Cancels the workflow as soon as it attaches to it, such as for `ugoke cancel`. */
   cancel?: boolean;
   /** Attaches to a run that workflow code of another version started, which can fail. */
   force?: boolean;
@@ -190,7 +190,7 @@ const withConnections = async <T>(
 const follow = async (
   options: FollowOptions & { taskQueue: string; cancelNow?: boolean },
   connections: { client: Client; connection: Connection; worker: NativeConnection },
-  open: () => Promise<WorkflowHandle<typeof aitw>>,
+  open: () => Promise<WorkflowHandle<typeof ugoke>>,
 ): Promise<RunOutcome> => {
   const {
     aiRunner,
@@ -232,7 +232,7 @@ const follow = async (
       })
     : undefined;
 
-  let handle: WorkflowHandle<typeof aitw> | undefined;
+  let handle: WorkflowHandle<typeof ugoke> | undefined;
   let follower: EventFollower | undefined;
   let outcome: RunOutcome;
   try {
@@ -381,8 +381,8 @@ type StartRunOptions = Pick<RunWorkflowOptions, "inputs" | "intermediate" | "mem
 const startRun = async (
   client: Client,
   { id, inputs = {}, intermediate, memo, name, taskQueue }: StartRunOptions,
-): Promise<WorkflowHandle<typeof aitw>> =>
-  client.workflow.start<typeof aitw>("aitw", {
+): Promise<WorkflowHandle<typeof ugoke>> =>
+  client.workflow.start<typeof ugoke>("ugoke", {
     args: [intermediate, inputs],
     // The version lets a later process tell whether it can continue the run.
     memo: { ...memo, [workflowCodeVersionMemoKey]: String(workflowCodeVersion) },
@@ -399,7 +399,7 @@ export const runWorkflow = async (options: RunWorkflowOptions): Promise<RunOutco
   const { address, namespace = "default", onStart = () => {} } = options;
   const id = randomUUID();
   // A task queue for this run keeps other Workers from picking up its tasks.
-  const taskQueue = options.taskQueue ?? `aitw-${id}`;
+  const taskQueue = options.taskQueue ?? `ugoke-${id}`;
   return withConnections(address, async (clientConnection, workerConnection) => {
     const client = new Client({
       connection: clientConnection,
@@ -458,7 +458,7 @@ export const attachWorkflow = async (options: AttachWorkflowOptions): Promise<Ru
       namespace,
       ...clientDataConverter(options.encryptionKey),
     });
-    const handle = client.workflow.getHandle<typeof aitw>(workflowId);
+    const handle = client.workflow.getHandle<typeof ugoke>(workflowId);
     const { memo, status, taskQueue } = await handle.describe();
     if (status.name !== "RUNNING") {
       throw new Error(`Workflow ${workflowId} is not running: ${status.name.toLowerCase()}`);
@@ -574,7 +574,7 @@ export interface ListRunningWorkflowsOptions {
   encryptionKey?: Uint8Array | undefined;
 }
 
-/** Lists the running workflows of aitw, most recent first. */
+/** Lists the running workflows of ugoke, most recent first. */
 export const listRunningWorkflows = async ({
   address,
   encryptionKey,
@@ -586,7 +586,7 @@ export const listRunningWorkflows = async ({
     const client = new Client({ connection, namespace, ...listingDataConverter(encryptionKey) });
     const runs: RunningWorkflow[] = [];
     for await (const info of client.workflow.list({
-      query: "WorkflowType = 'aitw' AND ExecutionStatus = 'Running'",
+      query: "WorkflowType = 'ugoke' AND ExecutionStatus = 'Running'",
     })) {
       const values = info.memo ?? {};
       if (Object.entries(memo).every(([key, value]) => values[key] === value)) {

@@ -2,14 +2,14 @@ import { closeSync, constants, lstatSync, mkdirSync, openSync, writeSync } from 
 import { open } from "node:fs/promises";
 import { join } from "node:path";
 
-import { workflowEventSchema } from "@aitw/core";
-import type { EventLog, WorkflowEvent } from "@aitw/core";
+import { workflowEventSchema } from "@ugoke/core";
+import type { EventLog, WorkflowEvent } from "@ugoke/core";
 
 /** Options of {@link createFileEventLog}. */
 export interface FileEventLogOptions {
   /**
    * Directory that keeps the runs of a project, such as
-   * `~/.local/state/aitw/logs/<project hash>`.
+   * `~/.local/state/ugoke/logs/<project hash>`.
    */
   directory: string;
 }

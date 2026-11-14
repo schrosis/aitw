@@ -1,5 +1,5 @@
 {
-  "name": "@aitw/adapter-wait-terminal",
+  "name": "@ugoke/adapter-wait-terminal",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
@@ -20,11 +20,11 @@
     "typecheck": "tsc -b && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@aitw/core": "workspace:*",
     "@inquirer/confirm": "catalog:",
     "@inquirer/editor": "catalog:",
     "@inquirer/input": "catalog:",
     "@inquirer/select": "catalog:",
+    "@ugoke/core": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {

@@ -1,11 +1,11 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { createFileEventLog } from "@aitw/adapter-event-log-file";
-import { createLocalScriptRunner } from "@aitw/adapter-script-local";
-import { createAiRunner } from "@aitw/core";
-import { startWorker } from "@aitw/engine";
-import type { RunningWorker } from "@aitw/engine";
+import { createFileEventLog } from "@ugoke/adapter-event-log-file";
+import { createLocalScriptRunner } from "@ugoke/adapter-script-local";
+import { createAiRunner } from "@ugoke/core";
+import { startWorker } from "@ugoke/engine";
+import type { RunningWorker } from "@ugoke/engine";
 
 import { readProjectConfig } from "../config.js";
 import type { ReadProjectConfig } from "../config.js";
@@ -13,14 +13,14 @@ import { loadEncryptionKey } from "../encryption.js";
 import { createEnvironmentReader } from "../environment.js";
 import { createRegistry, loadConfiguredPlugins } from "../plugins.js";
 import { projectLogDirectory, projectTaskQueue } from "../state.js";
-import { aitwDirectory } from "../workflows.js";
+import { ugokeDirectory } from "../workflows.js";
 import type { DaemonProject } from "./client.js";
 
 /** Options of {@link createProjectWorkers}. */
 export interface ProjectWorkersOptions {
   /**
    * Address of the Temporal Server of the resident process, for the projects that do not name
-   * theirs with `temporal.address` in `.aitw/config.yaml`.
+   * theirs with `temporal.address` in `.ugoke/config.yaml`.
    */
   address: string;
   /** File that keeps the projects across restarts. */
@@ -34,7 +34,7 @@ export interface ProjectWorkersOptions {
    * when a project needs a Worker.
    */
   prepareEngine: () => void;
-  /** Starts a Worker. Defaults to `startWorker` of `@aitw/engine`. */
+  /** Starts a Worker. Defaults to `startWorker` of `@ugoke/engine`. */
   startWorker?: typeof startWorker;
 }
 
@@ -63,7 +63,7 @@ const readRoots = (file: string): string[] => {
   }
 };
 
-const isProject = (root: string): boolean => existsSync(join(root, aitwDirectory));
+const isProject = (root: string): boolean => existsSync(join(root, ugokeDirectory));
 
 /** A Worker of a project on a server, and the plugin packages that it loaded. */
 interface ServedWorker {
@@ -181,7 +181,7 @@ export const createProjectWorkers = ({
       workers.get(root)?.has(previousAddress) === true
     ) {
       log(
-        `${root} now uses ${serverAddress}. Its Worker at ${previousAddress} keeps serving the runs there until aitw daemon stops`,
+        `${root} now uses ${serverAddress}. Its Worker at ${previousAddress} keeps serving the runs there until ugoke daemon stops`,
       );
     }
     const served = workers.get(root)?.get(serverAddress);
@@ -237,7 +237,7 @@ export const createProjectWorkers = ({
   return {
     add: async (root) => {
       if (!isProject(root)) {
-        throw new Error(`Not a project, because it has no ${aitwDirectory} directory: ${root}`);
+        throw new Error(`Not a project, because it has no ${ugokeDirectory} directory: ${root}`);
       }
       roots.add(root);
       save();
@@ -264,7 +264,7 @@ export const createProjectWorkers = ({
         // Only a project that was moved or deleted is dropped. A Worker that fails to start,
         // such as when the server cannot be reached, is tried again on the next request.
         if (!isProject(root)) {
-          log(`dropped ${root}, because it has no ${aitwDirectory} directory`);
+          log(`dropped ${root}, because it has no ${ugokeDirectory} directory`);
           continue;
         }
         roots.add(root);

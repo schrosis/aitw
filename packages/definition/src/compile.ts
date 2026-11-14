@@ -1,5 +1,5 @@
-import { createPluginRegistry, validateIntermediate, validateWithSchema } from "@aitw/core";
-import type { Intermediate, PluginRegistry, ValidationError } from "@aitw/core";
+import { createPluginRegistry, validateIntermediate, validateWithSchema } from "@ugoke/core";
+import type { Intermediate, PluginRegistry, ValidationError } from "@ugoke/core";
 
 import { buildIntermediate, toDefinitionPath } from "./build.js";
 import type { WaitResolution, WaitResolutions } from "./build.js";

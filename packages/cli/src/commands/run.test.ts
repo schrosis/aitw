@@ -56,7 +56,7 @@ describe("run", () => {
 
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
     expect(result.stdout).toMatch(
-      /^check\n│ > test -d \.aitw\n✓ check {2}\d+\.\ds\n\nfinish\n│ > true\n✓ finish {2}\d+\.\ds\n\nrun-success: completed \(check, finish\)\n$/u,
+      /^check\n│ > test -d \.ugoke\n✓ check {2}\d+\.\ds\n\nfinish\n│ > true\n✓ finish {2}\d+\.\ds\n\nrun-success: completed \(check, finish\)\n$/u,
     );
   }, 60_000);
 
@@ -97,11 +97,11 @@ describe("run", () => {
   }, 60_000);
 
   it("expands the workflow input and earlier outputs in run and output directly", async () => {
-    const result = await execute("run-direct", undefined, undefined, '{"name": "aitw"}');
+    const result = await execute("run-direct", undefined, undefined, '{"name": "ugoke"}');
 
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
-    expect(result.stdout).toContain("Hello aitw!!\n");
-    expect(result.stdout).toContain("│ > echo 'report-Hello aitw!!'\n│ report-Hello aitw!!\n");
+    expect(result.stdout).toContain("Hello ugoke!!\n");
+    expect(result.stdout).toContain("│ > echo 'report-Hello ugoke!!'\n│ report-Hello ugoke!!\n");
   }, 60_000);
 
   it("rejects workflow input over the size limit without starting the workflow", async () => {
@@ -221,7 +221,7 @@ describe("run", () => {
       [
         "Waiting for the running step to finish, so that you can attach to the run later.",
         "Press Ctrl+C again to exit now. The running step will fail, and the run cannot be continued.",
-        `run-detach: detached. Run "aitw attach --address ${environment.address}" to continue`,
+        `run-detach: detached. Run "ugoke attach --address ${environment.address}" to continue`,
         "",
       ].join("\n"),
     );
@@ -232,15 +232,15 @@ describe("run", () => {
   }, 60_000);
 
   it("runs on the Temporal Server that the configuration file of the project names", async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "aitw-configured-")));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-configured-")));
     try {
-      mkdirSync(join(root, ".aitw", "workflows"), { recursive: true });
+      mkdirSync(join(root, ".ugoke", "workflows"), { recursive: true });
       writeFileSync(
-        join(root, ".aitw", "config.yaml"),
+        join(root, ".ugoke", "config.yaml"),
         `temporal:\n  address: ${environment.address}\n`,
       );
       writeFileSync(
-        join(root, ".aitw", "workflows", "hello.yaml"),
+        join(root, ".ugoke", "workflows", "hello.yaml"),
         "version: v0.1\nstart: hello\nsteps:\n  hello:\n    type: script\n    run: echo hello\n    next: end\n",
       );
       const output = createOutput();

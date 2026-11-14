@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { StartWorkerOptions } from "@aitw/engine";
-import { workflowCodeVersion } from "@aitw/engine";
+import type { StartWorkerOptions } from "@ugoke/engine";
+import { workflowCodeVersion } from "@ugoke/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { projectTaskQueue } from "../state.ts";
@@ -18,10 +18,10 @@ describe("createProjectWorkers", () => {
   let started: StartWorkerOptions[];
 
   beforeEach(() => {
-    directory = mkdtempSync(join(tmpdir(), "aitw-workers-"));
+    directory = mkdtempSync(join(tmpdir(), "ugoke-workers-"));
     file = join(directory, "projects.json");
     project = join(directory, "project");
-    mkdirSync(join(project, ".aitw"), { recursive: true });
+    mkdirSync(join(project, ".ugoke"), { recursive: true });
     started = [];
   });
 
@@ -66,8 +66,8 @@ describe("createProjectWorkers", () => {
     expect(started[0]?.plugins?.waitMethod("terminal")).not.toHaveProperty("respond");
   });
 
-  it("rejects a directory without .aitw", async () => {
-    await expect(create(succeed).add(directory)).rejects.toThrow("has no .aitw directory");
+  it("rejects a directory without .ugoke", async () => {
+    await expect(create(succeed).add(directory)).rejects.toThrow("has no .ugoke directory");
   });
 
   it("keeps a project whose Worker cannot start yet, and drops one that was removed", async () => {
@@ -107,7 +107,7 @@ describe("createProjectWorkers", () => {
 
   it("runs the Worker on the server that the project names", async () => {
     writeFileSync(
-      join(project, ".aitw", "config.yaml"),
+      join(project, ".ugoke", "config.yaml"),
       "temporal:\n  address: temporal.example.com:7233\n",
     );
     const workers = create(succeed);
@@ -129,7 +129,7 @@ describe("createProjectWorkers", () => {
     await workers.add(project);
 
     writeFileSync(
-      join(project, ".aitw", "config.yaml"),
+      join(project, ".ugoke", "config.yaml"),
       "temporal:\n  address: temporal.example.com:7233\n",
     );
     await workers.add(project);
@@ -153,7 +153,7 @@ describe("createProjectWorkers", () => {
 
   it("uses the Worker on a server again when the project names it again", async () => {
     const workers = create(succeed);
-    const config = join(project, ".aitw", "config.yaml");
+    const config = join(project, ".ugoke", "config.yaml");
     await workers.add(project);
     writeFileSync(config, "temporal:\n  address: temporal.example.com:7233\n");
     await workers.add(project);
@@ -178,7 +178,7 @@ describe("createProjectWorkers", () => {
   });
 
   it("rejects a project whose configuration file is invalid", async () => {
-    writeFileSync(join(project, ".aitw", "config.yaml"), "temporal:\n  port: 7233\n");
+    writeFileSync(join(project, ".ugoke", "config.yaml"), "temporal:\n  port: 7233\n");
 
     await expect(create(succeed).add(project)).rejects.toThrow("Unknown field: port");
     expect(started).toEqual([]);
@@ -194,13 +194,13 @@ describe("createProjectWorkers", () => {
         },
       };
     });
-    const config = join(project, ".aitw", "config.yaml");
+    const config = join(project, ".ugoke", "config.yaml");
     await workers.add(project);
     await workers.add(project);
     expect(started).toHaveLength(1);
 
-    // aitw has this plugin built in, so adding it changes the list without loading a package.
-    writeFileSync(config, 'plugins:\n  "@aitw/adapter-ai-claude-code":\n');
+    // ugoke has this plugin built in, so adding it changes the list without loading a package.
+    writeFileSync(config, 'plugins:\n  "@ugoke/adapter-ai-claude-code":\n');
     await workers.add(project);
     await new Promise((resolve) => setImmediate(resolve));
 
@@ -223,9 +223,9 @@ describe("createProjectWorkers", () => {
     });
     await workers.add(project);
 
-    writeFileSync(join(project, ".aitw", "config.yaml"), 'plugins:\n  "@acme/aitw-missing":\n');
+    writeFileSync(join(project, ".ugoke", "config.yaml"), 'plugins:\n  "@acme/ugoke-missing":\n');
     await expect(workers.add(project)).rejects.toThrow(
-      "Plugin @acme/aitw-missing is not installed",
+      "Plugin @acme/ugoke-missing is not installed",
     );
 
     expect(stopped).toEqual([]);
@@ -235,12 +235,12 @@ describe("createProjectWorkers", () => {
   });
 
   it("starts the Worker again when the settings of a plugin change", async () => {
-    const config = join(project, ".aitw", "config.yaml");
-    const plugin = join(project, "node_modules", "aitw-settings");
+    const config = join(project, ".ugoke", "config.yaml");
+    const plugin = join(project, "node_modules", "ugoke-settings");
     mkdirSync(plugin, { recursive: true });
     writeFileSync(
       join(plugin, "package.json"),
-      '{"name":"aitw-settings","type":"module","main":"index.js"}',
+      '{"name":"ugoke-settings","type":"module","main":"index.js"}',
     );
     writeFileSync(
       join(plugin, "index.js"),
@@ -248,10 +248,10 @@ describe("createProjectWorkers", () => {
     );
     const workers = create(succeed);
 
-    writeFileSync(config, "plugins:\n  aitw-settings:\n    level: 1\n");
+    writeFileSync(config, "plugins:\n  ugoke-settings:\n    level: 1\n");
     await workers.add(project);
     await workers.add(project);
-    writeFileSync(config, "plugins:\n  aitw-settings:\n    level: 2\n");
+    writeFileSync(config, "plugins:\n  ugoke-settings:\n    level: 2\n");
     await workers.add(project);
 
     expect(started).toHaveLength(2);

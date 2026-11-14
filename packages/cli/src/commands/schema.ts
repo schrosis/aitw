@@ -1,18 +1,18 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
-import { isJsonObject, jsonSchemaTarget, toJsonSchema } from "@aitw/core";
-import type { JsonObject } from "@aitw/core";
-import { createDefinitionJsonSchema } from "@aitw/definition";
+import { isJsonObject, jsonSchemaTarget, toJsonSchema } from "@ugoke/core";
+import type { JsonObject } from "@ugoke/core";
+import { createDefinitionJsonSchema } from "@ugoke/definition";
 import { z } from "zod";
 
 import { projectConfigSchema } from "../config.js";
 import type { LoadedPlugin } from "../plugin-loader.js";
 import { createRegistry, loadProjectPlugins } from "../plugins.js";
-import { aitwDirectory, findProjectRoot } from "../workflows.js";
+import { ugokeDirectory, findProjectRoot } from "../workflows.js";
 import type { CommandContext } from "./load.js";
 
-/** Directory of the generated JSON Schemas, in `.aitw`. */
+/** Directory of the generated JSON Schemas, in `.ugoke`. */
 export const schemaDirectory = "schemas";
 
 /**
@@ -56,14 +56,14 @@ const write = async (file: string, schema: JsonObject, cwd: string): Promise<str
 };
 
 /**
- * Writes the JSON Schemas of a project in `.aitw/schemas`, with the plugins that it loads.
+ * Writes the JSON Schemas of a project in `.ugoke/schemas`, with the plugins that it loads.
  *
  * @returns The paths of the files, relative to `cwd`.
  * @throws When the plugins cannot be loaded, or a file cannot be written.
  */
 export const writeSchemas = async (root: string, cwd: string): Promise<string[]> => {
   const loaded = await loadProjectPlugins(root, cwd);
-  const directory = join(root, aitwDirectory, schemaDirectory);
+  const directory = join(root, ugokeDirectory, schemaDirectory);
   await mkdir(directory, { recursive: true });
   return [
     await write(
@@ -77,14 +77,14 @@ export const writeSchemas = async (root: string, cwd: string): Promise<string[]>
 
 /**
  * Generates the JSON Schemas of the workflow definitions and the configuration file of the
- * project in `.aitw/schemas`, with the extensions of the plugins that the project loads.
+ * project in `.ugoke/schemas`, with the extensions of the plugins that the project loads.
  *
  * @returns The exit code of the command.
  */
 export const schema = async (context: CommandContext): Promise<number> => {
   const root = await findProjectRoot(context.cwd);
   if (root === undefined) {
-    context.stderr(`No ${aitwDirectory} directory found in ${context.cwd} or its parents\n`);
+    context.stderr(`No ${ugokeDirectory} directory found in ${context.cwd} or its parents\n`);
     return 1;
   }
   try {

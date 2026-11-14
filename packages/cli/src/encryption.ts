@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { linkSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { encryptionKeyBytes } from "@aitw/engine";
+import { encryptionKeyBytes } from "@ugoke/engine";
 
 import { stateDirectory } from "./state.js";
 

@@ -3,8 +3,9 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { createPluginRegistry, definePlugin, intermediateVersion } from "@aitw/core";
-import type { Intermediate } from "@aitw/core";
+import { createPluginRegistry, definePlugin, intermediateVersion } from "@ugoke/core";
+import type { Intermediate } from "@ugoke/core";
+import { Client } from "@temporalio/client";
 import type { WorkflowHandle } from "@temporalio/client";
 import { historyToJSON } from "@temporalio/common/lib/proto-utils";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
@@ -16,18 +17,18 @@ import { createActivities } from "../activities/index.ts";
 import { createMemoryEventLog } from "../events.ts";
 import { answerUpdateName, waitingQueryName } from "../messages.ts";
 import { workflowCodeVersion } from "../version.ts";
-import { aitw } from "./index.ts";
+import { ugoke } from "./index.ts";
 
 /**
  * Replay tests: the histories of earlier runs must replay with the current workflow code.
  *
  * A change that fails these tests would break runs that wait in Temporal. Make the change
  * replay, such as with `patched()`. Otherwise, raise `workflowCodeVersion`, delete the histories
- * of the earlier version, record new ones with `AITW_RECORD_HISTORIES=1 pnpm --filter
- * @aitw/engine test`, and run the tests again. Only the histories of the current version are
+ * of the earlier version, record new ones with `UGOKE_RECORD_HISTORIES=1 pnpm --filter
+ * @ugoke/engine test`, and run the tests again. Only the histories of the current version are
  * replayed, because the earlier ones need the earlier code.
  */
-const recording = process.env.AITW_RECORD_HISTORIES === "1";
+const recording = process.env.UGOKE_RECORD_HISTORIES === "1";
 const historiesDirectory = fileURLToPath(new URL("../../test/histories/", import.meta.url));
 const workflowsPath = fileURLToPath(new URL("./index.ts", import.meta.url));
 
@@ -184,7 +185,7 @@ const scenarios: Record<
     drive: async (handle) => {
       await waitForStep(handle);
       await handle.executeUpdate(answerUpdateName, {
-        args: [{ step: "ask", values: { name: "aitw" } }],
+        args: [{ step: "ask", values: { name: "ugoke" } }],
       });
     },
     inputs: {},
@@ -262,6 +263,12 @@ const waitForStep = async (handle: WorkflowHandle): Promise<void> => {
   throw new Error("The workflow did not wait");
 };
 
+/**
+ * Identity of the client and the Workers that record the histories. Temporal defaults to the
+ * process ID and the host name, which would put the name of the machine into the histories.
+ */
+const recorderIdentity = "ugoke-replay-recorder";
+
 const historyFile = (name: string): string =>
   `${historiesDirectory}v${workflowCodeVersion}-${name}.json`;
 
@@ -270,6 +277,7 @@ const record = async (): Promise<void> => {
   const environment = await TestWorkflowEnvironment.createLocal({
     server: { executable: { path: inject("temporalCli"), type: "existing-path" } },
   });
+  const client = new Client({ connection: environment.connection, identity: recorderIdentity });
   try {
     mkdirSync(historiesDirectory, { recursive: true });
     for (const [name, { drive, inputs, intermediate }] of Object.entries(scenarios)) {
@@ -285,7 +293,7 @@ const record = async (): Promise<void> => {
                 waitMethods: [
                   {
                     name: "chat",
-                    respond: async () => ({ name: "aitw" }),
+                    respond: async () => ({ name: "ugoke" }),
                     respondIn: "worker",
                     with: z.strictObject({ message: z.string() }),
                   },
@@ -298,11 +306,12 @@ const record = async (): Promise<void> => {
           },
         }),
         connection: environment.nativeConnection,
+        identity: recorderIdentity,
         taskQueue,
         workflowsPath,
       });
       await worker.runUntil(async () => {
-        const handle = await environment.client.workflow.start(aitw, {
+        const handle = await client.workflow.start(ugoke, {
           args: [intermediate, inputs],
           taskQueue,
           workflowId: `replay-${name}`,
@@ -318,11 +327,11 @@ const record = async (): Promise<void> => {
 };
 
 // Recording writes the histories only. The next run of the tests replays them.
-describe.runIf(recording)("aitw replay recording", () => {
+describe.runIf(recording)("ugoke replay recording", () => {
   it("records the histories of the scenarios", record, 120_000);
 });
 
-describe.skipIf(recording)("aitw replay", () => {
+describe.skipIf(recording)("ugoke replay", () => {
   const files = readdirSync(historiesDirectory).filter(
     (file) => file.startsWith(`v${workflowCodeVersion}-`) && file.endsWith(".json"),
   );

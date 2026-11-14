@@ -1,10 +1,10 @@
 {
-  "name": "aitw",
+  "name": "ugoke",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
   "bin": {
-    "aitw": "./dist/bin.js"
+    "ugoke": "./dist/bin.js"
   },
   "files": [
     "dist"
@@ -23,21 +23,21 @@
     "typecheck": "tsc -b && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@aitw/adapter-event-log-file": "workspace:*",
-    "@aitw/adapter-script-local": "workspace:*",
-    "@aitw/adapter-wait-terminal": "workspace:*",
-    "@aitw/core": "workspace:*",
-    "@aitw/definition": "workspace:*",
-    "@aitw/dotenv": "workspace:*",
-    "@aitw/engine": "workspace:*",
     "@commander-js/extra-typings": "^15.0.0",
+    "@ugoke/adapter-event-log-file": "workspace:*",
+    "@ugoke/adapter-script-local": "workspace:*",
+    "@ugoke/adapter-wait-terminal": "workspace:*",
+    "@ugoke/core": "workspace:*",
+    "@ugoke/definition": "workspace:*",
+    "@ugoke/dotenv": "workspace:*",
+    "@ugoke/engine": "workspace:*",
     "commander": "^15.0.0",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@aitw/adapter-ai-claude-code": "workspace:*",
     "@temporalio/testing": "catalog:",
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "@ugoke/adapter-ai-claude-code": "workspace:*"
   },
   "engines": {
     "node": ">=26.13.0"

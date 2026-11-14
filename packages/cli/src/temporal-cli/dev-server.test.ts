@@ -36,7 +36,7 @@ describe("startDevServer", () => {
   let root: string;
 
   beforeAll(() => {
-    root = mkdtempSync(join(tmpdir(), "aitw-dev-server-"));
+    root = mkdtempSync(join(tmpdir(), "ugoke-dev-server-"));
   });
 
   afterAll(() => {
@@ -77,7 +77,7 @@ describe("startDevServer", () => {
       for (let attempt = 0; attempt < 150 && response === undefined; attempt += 1) {
         // A form or a plain text request needs no preflight, so any web page can send it.
         response = await fetch(url, {
-          body: JSON.stringify({ taskQueue: { name: "probe" }, workflowType: { name: "aitw" } }),
+          body: JSON.stringify({ taskQueue: { name: "probe" }, workflowType: { name: "ugoke" } }),
           headers: { "content-type": "text/plain" },
           method: "POST",
         }).catch(async () => {

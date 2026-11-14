@@ -4,7 +4,7 @@ import type {
   EventLog,
   PluginRegistry,
   ScriptRunner,
-} from "@aitw/core";
+} from "@ugoke/core";
 import { NativeConnection, Worker } from "@temporalio/worker";
 
 import { createActivities } from "./activities/index.js";

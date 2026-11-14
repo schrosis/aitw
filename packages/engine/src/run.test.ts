@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { createPluginRegistry, definePlugin, intermediateVersion } from "@aitw/core";
+import { createPluginRegistry, definePlugin, intermediateVersion } from "@ugoke/core";
 import type {
   Intermediate,
   ScriptRequest,
   ScriptStep,
   WaitMethod,
   WorkflowEvent,
-} from "@aitw/core";
+} from "@ugoke/core";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
@@ -257,7 +257,7 @@ describe("runWorkflow", () => {
 
     it("answers with the method and asks again when the answer is rejected", async () => {
       const contexts: unknown[] = [];
-      const answers = [{}, { name: "aitw" }];
+      const answers = [{}, { name: "ugoke" }];
       const events: WorkflowEvent[] = [];
 
       await expect(
@@ -320,7 +320,7 @@ describe("runWorkflow", () => {
           name: "ask",
           plugins: pluginsWith(async ({ step }) => {
             steps.push(step);
-            return { name: "aitw" };
+            return { name: "ugoke" };
           }, "worker"),
           scriptRunner: {
             run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }),
@@ -447,7 +447,7 @@ describe("runWorkflow", () => {
             project: "detach-test",
           },
           startTime: expect.any(Date) as unknown,
-          taskQueue: expect.stringMatching(/^aitw-/u) as unknown,
+          taskQueue: expect.stringMatching(/^ugoke-/u) as unknown,
           workflowId: first.workflowId,
         },
       ]);
@@ -457,7 +457,7 @@ describe("runWorkflow", () => {
         address: environment.address,
         eventLog,
         eventSink: { emit: (event) => events.push(event) },
-        plugins: pluginsWith(async () => ({ name: "aitw" })),
+        plugins: pluginsWith(async () => ({ name: "ugoke" })),
         scriptRunner: succeed,
         workflowId: first.workflowId,
         workflowsPath: workflows,
@@ -553,10 +553,10 @@ describe("runWorkflow", () => {
     }, 60_000);
 
     it("does not attach to a run of another workflow code version without force", async () => {
-      const handle = await environment.client.workflow.start("aitw", {
+      const handle = await environment.client.workflow.start("ugoke", {
         args: [waiting, {}],
         memo: { [workflowCodeVersionMemoKey]: "0" },
-        taskQueue: `aitw-${randomUUID()}`,
+        taskQueue: `ugoke-${randomUUID()}`,
         workflowId: `old-${randomUUID()}`,
       });
       const options = {
@@ -568,7 +568,7 @@ describe("runWorkflow", () => {
 
       await expect(attachWorkflow(options)).rejects.toThrow(IncompatibleRunError);
       await expect(attachWorkflow(options)).rejects.toThrow(
-        `was started by workflow code version 0, and this aitw has version ${workflowCodeVersion}`,
+        `was started by workflow code version 0, and this ugoke has version ${workflowCodeVersion}`,
       );
       await expect(attachWorkflow({ ...options, cancel: true, force: true })).rejects.toMatchObject(
         {

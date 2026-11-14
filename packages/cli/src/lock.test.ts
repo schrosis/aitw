@@ -10,7 +10,7 @@ describe("acquireRunLock", () => {
   let directory: string;
 
   beforeEach(() => {
-    directory = mkdtempSync(join(tmpdir(), "aitw-lock-"));
+    directory = mkdtempSync(join(tmpdir(), "ugoke-lock-"));
   });
 
   afterEach(() => {
@@ -32,7 +32,7 @@ describe("acquireRunLock", () => {
   });
 
   it("takes over a lock that a stopped process left", () => {
-    // Process IDs are positive and far below this value on the platforms that aitw supports.
+    // Process IDs are positive and far below this value on the platforms that ugoke supports.
     writeFileSync(join(directory, "run.lock"), "2147483646\n");
 
     expect(() => acquireRunLock(directory, "run").release()).not.toThrow();

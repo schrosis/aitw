@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { documentMarker } from "@aitw/definition";
+import { documentMarker } from "@ugoke/definition";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createOutput } from "../testing.ts";
@@ -22,8 +22,8 @@ describe("docs", () => {
   let workflows: string;
 
   beforeEach(() => {
-    cwd = realpathSync(mkdtempSync(join(tmpdir(), "aitw-docs-")));
-    workflows = join(cwd, ".aitw", "workflows");
+    cwd = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-docs-")));
+    workflows = join(cwd, ".ugoke", "workflows");
     mkdirSync(join(workflows, "release"), { recursive: true });
   });
 
@@ -43,7 +43,7 @@ describe("docs", () => {
     await expect(run("sample")).resolves.toEqual({
       exitCode: 0,
       stderr: "",
-      stdout: "sample: wrote .aitw/workflows/sample.md\n",
+      stdout: "sample: wrote .ugoke/workflows/sample.md\n",
     });
     const document = readFileSync(join(workflows, "sample.md"), "utf8");
     expect(document.startsWith(`${documentMarker}\n`)).toBe(true);
@@ -55,7 +55,7 @@ describe("docs", () => {
 
     await expect(run("release/notes")).resolves.toMatchObject({
       exitCode: 0,
-      stdout: "release/notes: wrote .aitw/workflows/release/notes.md\n",
+      stdout: "release/notes: wrote .ugoke/workflows/release/notes.md\n",
     });
     expect(readFileSync(join(workflows, "release", "notes.md"), "utf8")).toContain("mermaid");
   });
@@ -75,7 +75,7 @@ describe("docs", () => {
     await expect(run("sample")).resolves.toEqual({
       exitCode: 1,
       stderr:
-        ".aitw/workflows/sample.md: aitw docs did not generate this file, so it was not replaced\n",
+        ".ugoke/workflows/sample.md: ugoke docs did not generate this file, so it was not replaced\n",
       stdout: "",
     });
     expect(readFileSync(join(workflows, "sample.md"), "utf8")).toBe("# My notes\n");
@@ -87,7 +87,7 @@ describe("docs", () => {
     const result = await run("broken");
 
     expect(result).toMatchObject({ exitCode: 1, stdout: "" });
-    expect(result.stderr).toContain(".aitw/workflows/broken.yaml");
+    expect(result.stderr).toContain(".ugoke/workflows/broken.yaml");
     expect(() => readFileSync(join(workflows, "broken.md"))).toThrow();
   });
 
@@ -102,12 +102,12 @@ describe("docs", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe(
       [
-        "a: wrote .aitw/workflows/a.md",
-        "release/notes: wrote .aitw/workflows/release/notes.md",
+        "a: wrote .ugoke/workflows/a.md",
+        "release/notes: wrote .ugoke/workflows/release/notes.md",
         "",
       ].join("\n"),
     );
-    expect(result.stderr).toContain(".aitw/workflows/broken.yaml");
+    expect(result.stderr).toContain(".ugoke/workflows/broken.yaml");
   });
 
   it("warns about a file whose name cannot be a workflow name", async () => {
@@ -116,8 +116,8 @@ describe("docs", () => {
 
     await expect(run()).resolves.toEqual({
       exitCode: 0,
-      stderr: ".aitw/workflows/1st.yaml: skipped, because it is not a valid workflow name\n",
-      stdout: "a: wrote .aitw/workflows/a.md\n",
+      stderr: ".ugoke/workflows/1st.yaml: skipped, because it is not a valid workflow name\n",
+      stdout: "a: wrote .ugoke/workflows/a.md\n",
     });
   });
 
@@ -126,11 +126,11 @@ describe("docs", () => {
   });
 
   it("reports a directory outside of a project", async () => {
-    rmSync(join(cwd, ".aitw"), { force: true, recursive: true });
+    rmSync(join(cwd, ".ugoke"), { force: true, recursive: true });
 
     await expect(run()).resolves.toMatchObject({
       exitCode: 1,
-      stderr: expect.stringContaining("No .aitw directory found") as unknown,
+      stderr: expect.stringContaining("No .ugoke directory found") as unknown,
     });
   });
 });

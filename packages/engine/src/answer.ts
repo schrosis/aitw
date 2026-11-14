@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { validateWithSchema } from "@aitw/core";
-import type { PluginRegistry, WorkflowEvent } from "@aitw/core";
+import { validateWithSchema } from "@ugoke/core";
+import type { PluginRegistry, WorkflowEvent } from "@ugoke/core";
 import { WorkflowUpdateFailedError } from "@temporalio/client";
 import type { WorkflowHandle } from "@temporalio/client";
 
@@ -21,7 +21,7 @@ const maxPollIntervalMs = 2000;
 const answeredPollIntervalMs = 1000;
 
 /** Message that the progress shows when another process answered the step. */
-export const answeredElsewhereMessage = "Answered elsewhere, such as with aitw inbox answer";
+export const answeredElsewhereMessage = "Answered elsewhere, such as with ugoke inbox answer";
 
 /** Options of {@link answerWaits}. */
 export interface AnswerWaitsOptions {
@@ -84,7 +84,7 @@ const stillWaits = async (
 };
 
 /**
- * Aborts the returned signal when another process answers the step, such as `aitw inbox answer`,
+ * Aborts the returned signal when another process answers the step, such as `ugoke inbox answer`,
  * or when the given signal is aborted.
  *
  * The end of the step usually tells first, and the notice is shown before the end. A query

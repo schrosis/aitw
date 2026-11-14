@@ -19,7 +19,7 @@ export interface PluginRegistry {
 
 /** Options of {@link createPluginRegistry}. */
 export interface PluginRegistryOptions {
-  /** Plugins that aitw provides. Their extensions are used without the plugin name. */
+  /** Plugins that ugoke provides. Their extensions are used without the plugin name. */
   builtins?: readonly Plugin[];
   /** Other plugins. Their extensions are used as `<plugin>/<name>`. */
   plugins?: readonly Plugin[];
@@ -54,7 +54,7 @@ const checkProviderName = (name: string): void => {
  *
  * @throws When a name is invalid, or two plugins or two extensions have the same name, because
  *   that is a mistake
- *   in how aitw or a plugin is put together.
+ *   in how ugoke or a plugin is put together.
  */
 export const createPluginRegistry = ({
   builtins = [],

@@ -1,11 +1,11 @@
 {
-  "name": "aitw-monorepo",
+  "name": "ugoke-monorepo",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "aitw": "node packages/cli/dist/bin.js",
+    "ugoke": "node packages/cli/dist/bin.js",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck && tsc -p tsconfig.check.json",
     "lint": "oxlint --type-aware",

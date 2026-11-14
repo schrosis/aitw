@@ -48,8 +48,8 @@ describe("loadProjectPlugins", () => {
   let root: string;
 
   beforeEach(() => {
-    root = realpathSync(mkdtempSync(join(tmpdir(), "aitw-plugins-")));
-    mkdirSync(join(root, ".aitw"));
+    root = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-plugins-")));
+    mkdirSync(join(root, ".ugoke"));
   });
 
   afterEach(() => {
@@ -75,7 +75,7 @@ describe("loadProjectPlugins", () => {
 
   const configure = (packages: string[]): void => {
     writeFileSync(
-      join(root, ".aitw", "config.yaml"),
+      join(root, ".ugoke", "config.yaml"),
       `plugins:\n${packages.map((name) => `  "${name}":\n`).join("")}`,
     );
   };
@@ -86,30 +86,30 @@ describe("loadProjectPlugins", () => {
 
   it("loads the default export of the packages that the project names, in order", async () => {
     install(
-      "@acme/aitw-review",
+      "@acme/ugoke-review",
       { exports: { ".": { import: "./main.js", types: "./main.d.ts" } } },
       {
         "main.js": pluginSource("review"),
       },
     );
-    install("aitw-plain", { main: "lib.js" }, { "lib.js": pluginSource("plain") });
-    configure(["@acme/aitw-review", "aitw-plain"]);
+    install("ugoke-plain", { main: "lib.js" }, { "lib.js": pluginSource("plain") });
+    configure(["@acme/ugoke-review", "ugoke-plain"]);
 
     const loaded = await loadProjectPlugins(root, root);
 
     expect(loaded.map(({ packageName, plugin }) => [packageName, plugin.name])).toEqual([
-      ["@acme/aitw-review", "review"],
-      ["aitw-plain", "plain"],
+      ["@acme/ugoke-review", "review"],
+      ["ugoke-plain", "plain"],
     ]);
   });
 
   it("takes the first condition of exports in the order of its keys, as Node does", async () => {
     install(
-      "aitw-conditions",
+      "ugoke-conditions",
       { exports: { import: "./imported.js", node: "./node.js", require: "./required.cjs" } },
       { "imported.js": pluginSource("imported"), "node.js": pluginSource("node") },
     );
-    configure(["aitw-conditions"]);
+    configure(["ugoke-conditions"]);
 
     const [loaded] = await loadProjectPlugins(root, root);
 
@@ -117,8 +117,8 @@ describe("loadProjectPlugins", () => {
   });
 
   it("loads the official Claude Code plugin, whose provider keeps its short name", async () => {
-    // The plugin is installed next to aitw, as a development dependency here.
-    configure(["@aitw/adapter-ai-claude-code"]);
+    // The plugin is installed next to ugoke, as a development dependency here.
+    configure(["@ugoke/adapter-ai-claude-code"]);
 
     const registry = createRegistry(undefined, await loadProjectPlugins(root, root));
 
@@ -126,41 +126,41 @@ describe("loadProjectPlugins", () => {
   });
 
   it("tells how to install a plugin that is missing", async () => {
-    configure(["@acme/aitw-missing"]);
+    configure(["@acme/ugoke-missing"]);
 
     await expect(loadProjectPlugins(root, root)).rejects.toThrow(
       new PluginLoadError(
-        'Plugin @acme/aitw-missing is not installed in the project or next to aitw. Install it, such as with "npm install --save-dev @acme/aitw-missing"',
+        'Plugin @acme/ugoke-missing is not installed in the project or next to ugoke. Install it, such as with "npm install --save-dev @acme/ugoke-missing"',
       ),
     );
   });
 
   it("rejects a package whose default export is not a plugin", async () => {
-    install("aitw-broken", { main: "index.js" }, { "index.js": "export const plugin = {};\n" });
-    configure(["aitw-broken"]);
+    install("ugoke-broken", { main: "index.js" }, { "index.js": "export const plugin = {};\n" });
+    configure(["ugoke-broken"]);
 
     await expect(loadProjectPlugins(root, root)).rejects.toThrow(
-      "Plugin aitw-broken does not export a plugin as its default export",
+      "Plugin ugoke-broken does not export a plugin as its default export",
     );
   });
 
   it("reports a package that fails to load", async () => {
-    install("aitw-throws", { main: "index.js" }, { "index.js": 'throw new Error("boom");\n' });
-    configure(["aitw-throws"]);
+    install("ugoke-throws", { main: "index.js" }, { "index.js": 'throw new Error("boom");\n' });
+    configure(["ugoke-throws"]);
 
     await expect(loadProjectPlugins(root, root)).rejects.toThrow(
-      "Plugin aitw-throws failed to load: boom",
+      "Plugin ugoke-throws failed to load: boom",
     );
   });
 
   it("names the extensions of official plugins without the plugin name", async () => {
     install(
-      "@aitw/adapter-wait-manual",
+      "@ugoke/adapter-wait-manual",
       { main: "index.js" },
       { "index.js": pluginSource("manual") },
     );
-    install("@acme/aitw-wait", { main: "index.js" }, { "index.js": pluginSource("acme") });
-    configure(["@aitw/adapter-wait-manual", "@acme/aitw-wait"]);
+    install("@acme/ugoke-wait", { main: "index.js" }, { "index.js": pluginSource("acme") });
+    configure(["@ugoke/adapter-wait-manual", "@acme/ugoke-wait"]);
 
     const registry = createRegistry(undefined, await loadProjectPlugins(root, root));
 
@@ -168,11 +168,11 @@ describe("loadProjectPlugins", () => {
   });
 
   it("validates a definition with the extensions of the plugins of the project", async () => {
-    install("@acme/aitw-wait", { main: "index.js" }, { "index.js": pluginSource("acme") });
-    configure(["@acme/aitw-wait"]);
-    mkdirSync(join(root, ".aitw", "workflows"));
+    install("@acme/ugoke-wait", { main: "index.js" }, { "index.js": pluginSource("acme") });
+    configure(["@acme/ugoke-wait"]);
+    mkdirSync(join(root, ".ugoke", "workflows"));
     writeFileSync(
-      join(root, ".aitw", "workflows", "approve.yaml"),
+      join(root, ".ugoke", "workflows", "approve.yaml"),
       "version: v0.1\nstart: approve\nsteps:\n  approve:\n    type: wait\n    method: acme/manual\n    next: end\n",
     );
     const output = createOutput();
@@ -182,37 +182,37 @@ describe("loadProjectPlugins", () => {
   });
 
   it("reports a plugin that cannot be loaded when it validates", async () => {
-    configure(["@acme/aitw-missing"]);
-    mkdirSync(join(root, ".aitw", "workflows"));
+    configure(["@acme/ugoke-missing"]);
+    mkdirSync(join(root, ".ugoke", "workflows"));
     writeFileSync(
-      join(root, ".aitw", "workflows", "approve.yaml"),
+      join(root, ".ugoke", "workflows", "approve.yaml"),
       "version: v0.1\nstart: done\nsteps:\n  done:\n    type: script\n    run: true\n    next: end\n",
     );
     const output = createOutput();
 
     await expect(validate("approve", { cwd: root, ...output })).resolves.toBe(1);
-    expect(output.written.stderr).toContain("Plugin @acme/aitw-missing is not installed");
+    expect(output.written.stderr).toContain("Plugin @acme/ugoke-missing is not installed");
   });
 
   it("tells which package provides an official AI provider that is not loaded", async () => {
-    mkdirSync(join(root, ".aitw", "workflows"));
+    mkdirSync(join(root, ".ugoke", "workflows"));
     writeFileSync(
-      join(root, ".aitw", "workflows", "review.yaml"),
+      join(root, ".ugoke", "workflows", "review.yaml"),
       "version: v0.1\nstart: review\nsteps:\n  review:\n    type: ai\n    provider: claude-code\n    prompt: Review\n    next: end\n",
     );
     const output = createOutput();
 
     await expect(validate("review", { cwd: root, ...output })).resolves.toBe(1);
     expect(output.written.stderr).toBe(
-      ".aitw/workflows/review.yaml:6:15 steps.review.provider: Unknown AI provider: claude-code. Install @aitw/adapter-ai-claude-code and add it to plugins in .aitw/config.yaml\n",
+      ".ugoke/workflows/review.yaml:6:15 steps.review.provider: Unknown AI provider: claude-code. Install @ugoke/adapter-ai-claude-code and add it to plugins in .ugoke/config.yaml\n",
     );
   });
 
   it("validates the settings of a plugin, and gives them to its extensions", async () => {
-    install("aitw-notify", { main: "index.js" }, { "index.js": configuredPluginSource });
+    install("ugoke-notify", { main: "index.js" }, { "index.js": configuredPluginSource });
     writeFileSync(
-      join(root, ".aitw", "config.yaml"),
-      'plugins:\n  "aitw-notify":\n    channel: deploy\n',
+      join(root, ".ugoke", "config.yaml"),
+      'plugins:\n  "ugoke-notify":\n    channel: deploy\n',
     );
 
     const registry = createRegistry(undefined, await loadProjectPlugins(root, root));
@@ -233,29 +233,29 @@ describe("loadProjectPlugins", () => {
   });
 
   it("reports invalid settings of a plugin with their locations", async () => {
-    install("aitw-notify", { main: "index.js" }, { "index.js": configuredPluginSource });
-    install("aitw-plain", { main: "index.js" }, { "index.js": pluginSource("plain") });
-    const config = join(root, ".aitw", "config.yaml");
+    install("ugoke-notify", { main: "index.js" }, { "index.js": configuredPluginSource });
+    install("ugoke-plain", { main: "index.js" }, { "index.js": pluginSource("plain") });
+    const config = join(root, ".ugoke", "config.yaml");
 
-    writeFileSync(config, 'plugins:\n  "aitw-notify":\n    channel: 3\n');
+    writeFileSync(config, 'plugins:\n  "ugoke-notify":\n    channel: 3\n');
     await expect(loadProjectPlugins(root, root)).rejects.toThrow(
-      ".aitw/config.yaml:3:14 plugins.aitw-notify.channel: Must be a string",
+      ".ugoke/config.yaml:3:14 plugins.ugoke-notify.channel: Must be a string",
     );
 
-    writeFileSync(config, 'plugins:\n  "aitw-plain":\n    channel: deploy\n');
+    writeFileSync(config, 'plugins:\n  "ugoke-plain":\n    channel: deploy\n');
     await expect(loadProjectPlugins(root, root)).rejects.toThrow(
-      ".aitw/config.yaml:3:5 plugins.aitw-plain: The plugin takes no settings",
+      ".ugoke/config.yaml:3:5 plugins.ugoke-plain: The plugin takes no settings",
     );
 
     // Every plugin is checked, and their problems are reported together.
     writeFileSync(
       config,
-      'plugins:\n  "aitw-notify":\n    channel: 3\n  "aitw-plain":\n    channel: deploy\n',
+      'plugins:\n  "ugoke-notify":\n    channel: 3\n  "ugoke-plain":\n    channel: deploy\n',
     );
     await expect(loadProjectPlugins(root, root)).rejects.toThrow(
       [
-        ".aitw/config.yaml:3:14 plugins.aitw-notify.channel: Must be a string",
-        ".aitw/config.yaml:5:5 plugins.aitw-plain: The plugin takes no settings",
+        ".ugoke/config.yaml:3:14 plugins.ugoke-notify.channel: Must be a string",
+        ".ugoke/config.yaml:5:5 plugins.ugoke-plain: The plugin takes no settings",
       ].join("\n"),
     );
   });

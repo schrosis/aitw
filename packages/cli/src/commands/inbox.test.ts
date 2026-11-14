@@ -2,7 +2,7 @@ import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
 
-import { startWorker } from "@aitw/engine";
+import { startWorker } from "@ugoke/engine";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
@@ -122,8 +122,8 @@ describe("inbox", () => {
           "  answers:",
           "    name: string (required)",
           "    approve: boolean",
-          // The resident process does not run it, so aitw inbox answer would refuse it.
-          `  aitw attach ${workflowId} --address ${environment.address}  (aitw daemon does not run it)`,
+          // The resident process does not run it, so ugoke inbox answer would refuse it.
+          `  ugoke attach ${workflowId} --address ${environment.address}  (ugoke daemon does not run it)`,
         ].join("\n"),
       );
     } finally {
@@ -140,7 +140,7 @@ describe("inbox", () => {
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain(`${workflowId}: cannot read what it waits for: `);
       expect(result.stderr).toContain(
-        `Run "aitw attach ${workflowId} --address ${environment.address}" to follow it\n`,
+        `Run "ugoke attach ${workflowId} --address ${environment.address}" to follow it\n`,
       );
     } finally {
       await cancelRun(workflowId);
@@ -150,9 +150,9 @@ describe("inbox", () => {
   it("does not answer a run that the resident process does not run", async () => {
     const { workflowId } = await detachWaiting();
     try {
-      await expect(answer(workflowId, '{"name":"aitw"}')).resolves.toEqual({
+      await expect(answer(workflowId, '{"name":"ugoke"}')).resolves.toEqual({
         exitCode: 1,
-        stderr: `wait-valid: aitw daemon does not run ${workflowId}, so it would stop after the answer. Run "aitw attach ${workflowId} --address ${environment.address}" to answer and follow it\n`,
+        stderr: `wait-valid: ugoke daemon does not run ${workflowId}, so it would stop after the answer. Run "ugoke attach ${workflowId} --address ${environment.address}" to answer and follow it\n`,
         stdout: "",
       });
     } finally {
@@ -161,9 +161,9 @@ describe("inbox", () => {
   }, 60_000);
 
   it("rejects values that are not a JSON object", async () => {
-    await expect(answer("wait-valid-1", "name=aitw")).resolves.toEqual({
+    await expect(answer("wait-valid-1", "name=ugoke")).resolves.toEqual({
       exitCode: 1,
-      stderr: "--values must be a JSON object or the path of a .json file: name=aitw\n",
+      stderr: "--values must be a JSON object or the path of a .json file: name=ugoke\n",
       stdout: "",
     });
   });
@@ -192,7 +192,7 @@ describe("inbox", () => {
         "  │ Deploy?",
         "  answers:",
         "    ok: boolean (required)",
-        "  aitw inbox answer deploy-1 --step approve --visit 2 --values '{...}' --detach",
+        "  ugoke inbox answer deploy-1 --step approve --visit 2 --values '{...}' --detach",
         "",
       ].join("\n"),
     );
@@ -249,7 +249,7 @@ describe("inbox", () => {
         server: server(),
         signal,
         step: "ask",
-        values: '{"name":"aitw"}',
+        values: '{"name":"ugoke"}',
         version: "0.0.0",
         visit: 0,
         workflowId,

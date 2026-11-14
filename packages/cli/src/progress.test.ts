@@ -1,6 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 
-import type { WorkflowEvent } from "@aitw/core";
+import type { WorkflowEvent } from "@ugoke/core";
 import { describe, expect, it } from "vitest";
 
 import {

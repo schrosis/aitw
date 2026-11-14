@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { createPluginRegistry, definePlugin, intermediateVersion } from "@aitw/core";
-import type { Intermediate } from "@aitw/core";
+import { createPluginRegistry, definePlugin, intermediateVersion } from "@ugoke/core";
+import type { Intermediate } from "@ugoke/core";
 import type { WorkflowHandle } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
@@ -13,7 +13,7 @@ import { z } from "zod";
 import { createActivities } from "./activities/index.ts";
 import { AnswerRejectedError, answerInbox, listInbox } from "./inbox.ts";
 import { waitingQueryName } from "./messages.ts";
-import { aitw } from "./workflows/index.ts";
+import { ugoke } from "./workflows/index.ts";
 
 /** A workflow that waits at `ask`, whose method answers where `respondIn` says. */
 const waiting = (respondIn?: "worker"): Intermediate => ({
@@ -96,7 +96,7 @@ describe("inbox", () => {
     intermediate: Intermediate,
     queue = taskQueue,
   ): Promise<WorkflowHandle> =>
-    environment.client.workflow.start(aitw, {
+    environment.client.workflow.start(ugoke, {
       args: [intermediate, { target: testCase }],
       memo: { [memoKey]: testCase },
       taskQueue: queue,

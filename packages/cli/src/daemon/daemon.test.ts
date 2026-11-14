@@ -11,16 +11,16 @@ import { fixtureProject } from "../testing.ts";
 // These tests run the built executable, so they depend on `pnpm build`.
 const bin = fileURLToPath(new URL("../../dist/bin.js", import.meta.url));
 
-describe("aitw daemon", () => {
+describe("ugoke daemon", () => {
   let state: string;
 
   beforeEach(() => {
     // A short directory keeps the socket path within the limit of the platform.
-    state = mkdtempSync("/tmp/aitw-daemon-");
+    state = mkdtempSync("/tmp/ugoke-daemon-");
   });
 
   /** SQLite file that the resident process keeps its runs in by default. */
-  const defaultDb = (): string => join(state, "aitw", "temporal.db");
+  const defaultDb = (): string => join(state, "ugoke", "temporal.db");
 
   /**
    * Pattern of the command line of the development server of the test.
@@ -28,7 +28,7 @@ describe("aitw daemon", () => {
    * The resident process names the file by its real path, and /tmp is a link on macOS, so the
    * pattern starts at the directory of the test.
    */
-  const devServerPattern = (): string => `--db-filename .*${basename(state)}/aitw/temporal\\.db`;
+  const devServerPattern = (): string => `--db-filename .*${basename(state)}/ugoke/temporal\\.db`;
 
   /** Returns the process IDs of the development servers that use the SQLite file of the test. */
   const devServers = (): string[] => {
@@ -46,7 +46,7 @@ describe("aitw daemon", () => {
 
   /** Returns every progress event that the runs of the test stored, as JSON Lines. */
   const runEvents = (): string => {
-    const logs = join(state, "aitw", "logs");
+    const logs = join(state, "ugoke", "logs");
     try {
       return readdirSync(logs, { recursive: true })
         .map(String)
@@ -94,27 +94,27 @@ describe("aitw daemon", () => {
   it("starts, reports, and stops the resident process", async () => {
     await expect(execute(["daemon", "status"])).resolves.toMatchObject({
       exitCode: 1,
-      stdout: "aitw daemon: not running\n",
+      stdout: "ugoke daemon: not running\n",
     });
 
     const started = await start();
     expect(started).toMatchObject({ exitCode: 0 });
     expect(started.stdout).toMatch(
-      /^aitw daemon: started \(pid \d+, server 127\.0\.0\.1:\d+, aitw \d+\.\d+\.\d+\)\n$/u,
+      /^ugoke daemon: started \(pid \d+, server 127\.0\.0\.1:\d+, ugoke \d+\.\d+\.\d+\)\n$/u,
     );
     // The development server keeps its runs in the state directory, which only the owner reads.
     expect(devServers()).toHaveLength(1);
     expect(statSync(defaultDb()).mode & 0o777).toBe(0o600);
     await expect(start()).resolves.toMatchObject({
       exitCode: 0,
-      stdout: expect.stringMatching(/^aitw daemon: already running \(pid \d+/u) as unknown,
+      stdout: expect.stringMatching(/^ugoke daemon: already running \(pid \d+/u) as unknown,
     });
 
     const status = await execute(["daemon", "status"]);
     expect(status).toMatchObject({ exitCode: 0 });
-    expect(status.stdout).toContain("aitw daemon: running (pid ");
+    expect(status.stdout).toContain("ugoke daemon: running (pid ");
     expect(status.stdout).toContain(
-      `log: ${join(realpathSync(state), "aitw", "daemon", "daemon.log")}\n`,
+      `log: ${join(realpathSync(state), "ugoke", "daemon", "daemon.log")}\n`,
     );
     // The Web UI starts only with --dev-ui.
     expect(status.stdout).not.toContain("web ui:");
@@ -122,18 +122,18 @@ describe("aitw daemon", () => {
     await expect(execute(["daemon", "stop"])).resolves.toEqual({
       exitCode: 0,
       stderr: "",
-      stdout: "aitw daemon: stopped\n",
+      stdout: "ugoke daemon: stopped\n",
     });
     await expect(execute(["daemon", "status"])).resolves.toMatchObject({ exitCode: 1 });
     await expect(execute(["daemon", "stop"])).resolves.toMatchObject({
       exitCode: 0,
-      stdout: "aitw daemon: not running\n",
+      stdout: "ugoke daemon: not running\n",
     });
   }, 60_000);
 
   it("starts again after the resident process was killed", async () => {
     await start();
-    const pid = Number(readFileSync(join(state, "aitw", "daemon", "daemon.lock"), "utf8"));
+    const pid = Number(readFileSync(join(state, "ugoke", "daemon", "daemon.lock"), "utf8"));
     // Without a graceful stop, the lock and the socket stay behind.
     process.kill(pid, "SIGKILL");
 
@@ -141,12 +141,12 @@ describe("aitw daemon", () => {
     // The new process stopped the development server of the killed one, which used the same
     // SQLite file.
     expect(devServers()).toHaveLength(1);
-    expect(readFileSync(join(state, "aitw", "daemon", "daemon.log"), "utf8")).toContain(
+    expect(readFileSync(join(state, "ugoke", "daemon", "daemon.log"), "utf8")).toContain(
       "stopping the development server that was left running",
     );
   }, 60_000);
 
-  it("runs the steps of a run that aitw run detached", async () => {
+  it("runs the steps of a run that ugoke run detached", async () => {
     await start();
     const run = await new Promise<{ exitCode: number | null; output: string }>((resolve) => {
       const child = spawn(process.execPath, [bin, "run", "run-detach"], {
@@ -169,10 +169,10 @@ describe("aitw daemon", () => {
       child.on("exit", (exitCode) => resolve({ exitCode, output }));
     });
 
-    // aitw run detached at once, because the resident process runs the script.
+    // ugoke run detached at once, because the resident process runs the script.
     expect(run.exitCode).toBe(3);
     expect(run.output).not.toContain("Waiting for the running step");
-    expect(run.output).toContain('run-detach: detached. Run "aitw attach" to continue\n');
+    expect(run.output).toContain('run-detach: detached. Run "ugoke attach" to continue\n');
 
     // The resident process finishes the run in the background.
     const finished = '"outcome":"succeeded","step":"report","type":"stepFinished"';
@@ -192,7 +192,7 @@ describe("aitw daemon", () => {
 
     expect(again).toMatchObject({ exitCode: 0 });
     expect(again.stderr).toMatch(
-      /^aitw daemon: it uses the server options "--dev --dev-db \S+ --temporal-bin \S+"\. Run "aitw daemon stop" and start it again to change it\n$/u,
+      /^ugoke daemon: it uses the server options "--dev --dev-db \S+ --temporal-bin \S+"\. Run "ugoke daemon stop" and start it again to change it\n$/u,
     );
   }, 60_000);
 
@@ -220,7 +220,7 @@ describe("aitw daemon", () => {
     const status = await execute(["daemon", "status"]);
     expect(status.stdout).toMatch(/^web ui: http:\/\/127\.0\.0\.1:\d+$/mu);
     await expect(execute(options)).resolves.toMatchObject({
-      stderr: expect.stringContaining('--dev-ui". Run "aitw daemon stop"') as unknown,
+      stderr: expect.stringContaining('--dev-ui". Run "ugoke daemon stop"') as unknown,
     });
     await execute(["daemon", "stop"]);
     try {
@@ -258,7 +258,7 @@ describe("aitw daemon", () => {
     expect(run).toEqual({
       exitCode: 1,
       output:
-        'run-success: failed: aitw daemon is not running. Run "aitw daemon start", choose a server with --dev or --address, or set temporal.address in .aitw/config.yaml\n',
+        'run-success: failed: ugoke daemon is not running. Run "ugoke daemon start", choose a server with --dev or --address, or set temporal.address in .ugoke/config.yaml\n',
     });
   });
 });

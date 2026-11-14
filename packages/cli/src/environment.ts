@@ -1,5 +1,5 @@
-import type { EnvironmentReader } from "@aitw/core";
-import { readEnvironment } from "@aitw/dotenv";
+import type { EnvironmentReader } from "@ugoke/core";
+import { readEnvironment } from "@ugoke/dotenv";
 
 /** Creates the reader of the environment that the steps of a project see. */
 export const createEnvironmentReader =

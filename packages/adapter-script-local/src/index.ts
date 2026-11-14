@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 
-import { ScriptTimeoutError } from "@aitw/core";
-import type { ScriptResult, ScriptRunner } from "@aitw/core";
-import { readEnvironment } from "@aitw/dotenv";
+import { ScriptTimeoutError } from "@ugoke/core";
+import type { ScriptResult, ScriptRunner } from "@ugoke/core";
+import { readEnvironment } from "@ugoke/dotenv";
 
 /** Process groups of the scripts that run now, in every runner of this process. */
 const runningGroups = new Set<number>();
@@ -40,7 +40,7 @@ export interface LocalScriptRunnerOptions {
   /**
    * Time to wait after SIGTERM before sending SIGKILL, in milliseconds.
    *
-   * Keep it shorter than the activity timeout grace in `@aitw/engine` so that a timeout is
+   * Keep it shorter than the activity timeout grace in `@ugoke/engine` so that a timeout is
    * reported by the runner.
    */
   killGraceMs?: number;

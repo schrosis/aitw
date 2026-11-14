@@ -2,8 +2,8 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { AiTimeoutError, createAiRunner, createPluginRegistry } from "@aitw/core";
-import type { AiRequest } from "@aitw/core";
+import { AiTimeoutError, createAiRunner, createPluginRegistry } from "@ugoke/core";
+import type { AiRequest } from "@ugoke/core";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -68,7 +68,7 @@ describe("claude-code provider", () => {
   let seen: { options: Options; prompt: string }[];
 
   beforeEach(() => {
-    cwd = realpathSync(mkdtempSync(join(tmpdir(), "aitw-claude-")));
+    cwd = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-claude-")));
     seen = [];
   });
 
@@ -209,7 +209,7 @@ describe("claude-code provider", () => {
   it("denies edits of the definition of the workflow", async () => {
     await runner([success()]).run(request(), { signal });
 
-    expect(seen[0]?.options.disallowedTools).toEqual([`Edit(/${join(cwd, ".aitw")}/**)`]);
+    expect(seen[0]?.options.disallowedTools).toEqual([`Edit(/${join(cwd, ".ugoke")}/**)`]);
   });
 
   it("sets the variables of the definition over the inherited ones, and dotenv under them", async () => {

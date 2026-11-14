@@ -1,9 +1,9 @@
 import { readFile, realpath } from "node:fs/promises";
 
-import { createFileEventLog } from "@aitw/adapter-event-log-file";
-import { createLocalScriptRunner } from "@aitw/adapter-script-local";
-import { parseDefinition } from "@aitw/definition";
-import { attachWorkflow, terminateWorkflow } from "@aitw/engine";
+import { createFileEventLog } from "@ugoke/adapter-event-log-file";
+import { createLocalScriptRunner } from "@ugoke/adapter-script-local";
+import { parseDefinition } from "@ugoke/definition";
+import { attachWorkflow, terminateWorkflow } from "@ugoke/engine";
 
 import {
   cancelledExitCode,
@@ -19,7 +19,7 @@ import type { ProjectRun } from "../runs.js";
 import { openCommandServer } from "../daemon/connect.js";
 import type { OpenedServer, ServerOptions } from "../server.js";
 import { projectLockDirectory, projectLogDirectory } from "../state.js";
-import { aitwDirectory, findProjectRoot, resolveWorkflow } from "../workflows.js";
+import { ugokeDirectory, findProjectRoot, resolveWorkflow } from "../workflows.js";
 import type { CommandContext } from "./load.js";
 
 /** Options of {@link attach} and {@link cancel}. */
@@ -35,10 +35,10 @@ export interface AttachOptions {
   signal: AbortSignal;
   /** Called before the command runs a Worker. */
   prepareEngine?: () => void;
-  /** Attaches to a run that another version of aitw started, which can fail. */
+  /** Attaches to a run that another version of ugoke started, which can fail. */
   force?: boolean | undefined;
   /**
-   * Version of this aitw. When the server is not given, a resident process of the same version
+   * Version of this ugoke. When the server is not given, a resident process of the same version
    * continues the runs that it serves.
    */
   version: string;
@@ -74,12 +74,12 @@ const findRoot = async (
 ): Promise<string | undefined> => {
   const found = await findProjectRoot(context.cwd);
   if (found === undefined) {
-    context.stderr(`No ${aitwDirectory} directory found in ${context.cwd} or its parents\n`);
+    context.stderr(`No ${ugokeDirectory} directory found in ${context.cwd} or its parents\n`);
     return undefined;
   }
   if (server?.type === "dev" && server.dbFilename === undefined) {
     context.stderr(
-      `aitw ${action} needs --dev-db with --dev, because a development server without it keeps no runs\n`,
+      `ugoke ${action} needs --dev-db with --dev, because a development server without it keeps no runs\n`,
     );
     return undefined;
   }
@@ -233,7 +233,7 @@ export const cancel = async (options: AttachOptions, context: CommandContext): P
           : `workflow code version ${run.version} started it`;
       await terminateWorkflow({
         address: server.address,
-        reason: `Cancelled by aitw cancel. It was terminated, because ${why}`,
+        reason: `Cancelled by ugoke cancel. It was terminated, because ${why}`,
         workflowId: run.workflowId,
       });
       context.stdout(

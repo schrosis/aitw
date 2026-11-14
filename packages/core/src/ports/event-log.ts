@@ -11,7 +11,7 @@ export interface EventPage {
  * Port that stores the progress events of runs, so that any process can show them.
  *
  * The process that runs a step may differ from the process that shows the run, such as a
- * resident Worker and `aitw run`. Both use the same log, keyed by the workflow ID.
+ * resident Worker and `ugoke run`. Both use the same log, keyed by the workflow ID.
  */
 export interface EventLog {
   /**

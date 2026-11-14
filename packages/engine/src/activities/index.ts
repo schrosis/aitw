@@ -8,7 +8,7 @@ import {
   parseCondition,
   ScriptTimeoutError,
   validateWithSchema,
-} from "@aitw/core";
+} from "@ugoke/core";
 import type {
   AiRequest,
   AiResult,
@@ -27,7 +27,7 @@ import type {
   Transition,
   WaitRun,
   WorkflowEvent,
-} from "@aitw/core";
+} from "@ugoke/core";
 import { ApplicationFailure, Context } from "@temporalio/activity";
 
 import { jsonBytes, maxValueBytes } from "../limits.js";

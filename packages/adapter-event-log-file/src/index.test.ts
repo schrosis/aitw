@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { WorkflowEvent } from "@aitw/core";
+import type { WorkflowEvent } from "@ugoke/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createFileEventLog, eventsFileName } from "./index.ts";
@@ -28,7 +28,7 @@ describe("createFileEventLog", () => {
   let root: string;
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), "aitw-event-log-"));
+    root = mkdtempSync(join(tmpdir(), "ugoke-event-log-"));
   });
 
   afterEach(() => {

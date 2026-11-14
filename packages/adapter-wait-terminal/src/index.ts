@@ -6,8 +6,8 @@ import {
   defineWaitMethod,
   definePlugin,
   inputDeclarationsSchema,
-} from "@aitw/core";
-import type { InputDeclaration, WaitMethod, WaitResponseContext } from "@aitw/core";
+} from "@ugoke/core";
+import type { InputDeclaration, WaitMethod, WaitResponseContext } from "@ugoke/core";
 import confirm from "@inquirer/confirm";
 import editor from "@inquirer/editor";
 import input from "@inquirer/input";
@@ -370,7 +370,7 @@ const createMethod = (
   });
 
 /**
- * Waits for an answer that someone enters in the terminal of `aitw run`.
+ * Waits for an answer that someone enters in the terminal of `ugoke run`.
  *
  * The answers are the values that `schema` declares. This instance only validates definitions;
  * use {@link createTerminalPlugin} to answer.

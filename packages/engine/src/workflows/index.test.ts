@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { intermediateVersion } from "@aitw/core";
-import type { AiRequest, Intermediate, ScriptRequest, ScriptResult, ScriptStep } from "@aitw/core";
+import { intermediateVersion } from "@ugoke/core";
+import type { AiRequest, Intermediate, ScriptRequest, ScriptResult, ScriptStep } from "@ugoke/core";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
@@ -12,7 +12,7 @@ import { createActivities } from "../activities/index.ts";
 import type { ScriptStepRequest } from "../activities/index.ts";
 import { answerUpdateName, waitingQueryName } from "../messages.ts";
 import type { WaitingStep } from "../messages.ts";
-import { aitw } from "./index.ts";
+import { ugoke } from "./index.ts";
 
 const step = (run: string, next: string | null): Intermediate["steps"][string] => ({
   inputs: {},
@@ -62,7 +62,7 @@ const reviewLoop = (implement: Partial<ScriptStep> = {}): Intermediate => ({
   },
 });
 
-describe("aitw", () => {
+describe("ugoke", () => {
   let environment: TestWorkflowEnvironment;
 
   beforeAll(async () => {
@@ -114,7 +114,7 @@ describe("aitw", () => {
 
     const result = await worker.runUntil(
       environment.client.workflow
-        .execute(aitw, {
+        .execute(ugoke, {
           args: workflowInput === undefined ? [input] : [input, workflowInput],
           taskQueue,
           workflowId: randomUUID(),
@@ -200,7 +200,7 @@ describe("aitw", () => {
     };
 
     await worker.runUntil(
-      environment.client.workflow.execute(aitw, {
+      environment.client.workflow.execute(ugoke, {
         args: [input],
         taskQueue,
         workflowId: randomUUID(),
@@ -392,7 +392,7 @@ describe("aitw", () => {
       };
 
       await worker.runUntil(
-        environment.client.workflow.execute(aitw, {
+        environment.client.workflow.execute(ugoke, {
           args: [input],
           taskQueue,
           workflowId: randomUUID(),
@@ -467,7 +467,7 @@ describe("aitw", () => {
     };
 
     await worker.runUntil(async () => {
-      const handle = await environment.client.workflow.start(aitw, {
+      const handle = await environment.client.workflow.start(ugoke, {
         args: [input],
         taskQueue,
         workflowId: randomUUID(),
@@ -618,7 +618,7 @@ describe("aitw", () => {
     });
 
     await worker.runUntil(async () => {
-      const handle = await environment.client.workflow.start(aitw, {
+      const handle = await environment.client.workflow.start(ugoke, {
         args: [intermediate],
         taskQueue,
         workflowId: randomUUID(),
@@ -680,13 +680,13 @@ describe("aitw", () => {
       },
       {},
       { "./fetch.sh": "  hello \n\n" },
-      { title: "\taitw " },
+      { title: "\tugoke " },
     );
 
     expect(result).toEqual({ ok: true, value: { executedSteps: ["fetch", "report"] } });
     expect(requests.at(-1)).toEqual({
-      inputs: { name: "aitw", title: "[hello]" },
-      run: './report.sh "[hello]" "aitw"',
+      inputs: { name: "ugoke", title: "[hello]" },
+      run: './report.sh "[hello]" "ugoke"',
       timeoutMs: 5000,
     });
   }, 60_000);

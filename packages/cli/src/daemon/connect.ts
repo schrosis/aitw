@@ -1,4 +1,4 @@
-import { workflowCodeVersion } from "@aitw/engine";
+import { workflowCodeVersion } from "@ugoke/engine";
 
 import type { CommandContext } from "../commands/load.js";
 import { loadProjectConfig } from "../config.js";
@@ -17,8 +17,8 @@ export class DaemonUnavailableError extends Error {
   constructor(reason: string, detach = false) {
     super(
       detach
-        ? `aitw daemon ${reason}, and --detach needs it to run the steps. Run "aitw daemon start"`
-        : `aitw daemon ${reason}. Run "aitw daemon start", choose a server with --dev or --address, or set temporal.address in .aitw/config.yaml`,
+        ? `ugoke daemon ${reason}, and --detach needs it to run the steps. Run "ugoke daemon start"`
+        : `ugoke daemon ${reason}. Run "ugoke daemon start", choose a server with --dev or --address, or set temporal.address in .ugoke/config.yaml`,
     );
     this.name = "DaemonUnavailableError";
   }
@@ -55,7 +55,7 @@ export interface DaemonConnection {
  * definitions or runs of this version. The command then runs its own Worker on the server of the
  * resident process, and says why.
  *
- * @param version Version of this aitw.
+ * @param version Version of this ugoke.
  * @throws {DaemonUnavailableError} When the resident process does not run or cannot be reached.
  */
 export const connectDaemon = async (
@@ -83,7 +83,7 @@ export const connectDaemon = async (
   };
   if (status.version !== version || status.workflowCodeVersion !== workflowCodeVersion) {
     context.stderr(
-      `aitw daemon: runs aitw ${status.version}, and this is aitw ${version}, ${withoutDaemon(use)}. Run "aitw daemon stop" and start it again to use it\n`,
+      `ugoke daemon: runs ugoke ${status.version}, and this is ugoke ${version}, ${withoutDaemon(use)}. Run "ugoke daemon stop" and start it again to use it\n`,
     );
     return { server };
   }
@@ -120,7 +120,7 @@ const daemonOn = async (
     status = await getDaemonStatus(paths);
   } catch (error) {
     context.stderr(
-      `aitw daemon: cannot be reached, ${withoutDaemon(use)}: ${error instanceof Error ? error.message : String(error)}\n`,
+      `ugoke daemon: cannot be reached, ${withoutDaemon(use)}: ${error instanceof Error ? error.message : String(error)}\n`,
     );
     return undefined;
   }
@@ -128,14 +128,14 @@ const daemonOn = async (
     // A run without the resident process is usual for a project that names its server.
     if (use.detach === true) {
       context.stderr(
-        `aitw daemon: is not running, ${withoutDaemon(use)}. Run "aitw daemon start"\n`,
+        `ugoke daemon: is not running, ${withoutDaemon(use)}. Run "ugoke daemon start"\n`,
       );
     }
     return undefined;
   }
   if (status.version !== version || status.workflowCodeVersion !== workflowCodeVersion) {
     context.stderr(
-      `aitw daemon: runs aitw ${status.version}, and this is aitw ${version}, ${withoutDaemon(use)}. Run "aitw daemon stop" and start it again to use it\n`,
+      `ugoke daemon: runs ugoke ${status.version}, and this is ugoke ${version}, ${withoutDaemon(use)}. Run "ugoke daemon stop" and start it again to use it\n`,
     );
     return undefined;
   }
@@ -143,7 +143,7 @@ const daemonOn = async (
   // The resident process reads the configuration file again, which may have changed since.
   if (project.address !== address) {
     context.stderr(
-      `aitw daemon: serves the project at ${project.address ?? status.address}, and temporal.address of the project is ${address}, ${withoutDaemon(use)}\n`,
+      `ugoke daemon: serves the project at ${project.address ?? status.address}, and temporal.address of the project is ${address}, ${withoutDaemon(use)}\n`,
     );
     return undefined;
   }
@@ -160,7 +160,7 @@ const daemonOn = async (
  * The messages about the resident process say what the command does without it, which depends on
  * whether the command leaves the run to it (`detach`).
  *
- * @param version Version of this aitw, which the resident process must have to run the steps.
+ * @param version Version of this ugoke, which the resident process must have to run the steps.
  * @throws {DaemonUnavailableError} When no server is named and the resident process is not
  *   available.
  * @throws {ProjectConfigError} When the configuration file of the project is invalid.

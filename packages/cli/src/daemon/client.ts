@@ -11,7 +11,7 @@ export interface DaemonStatus {
   serverOptions: string;
   /** URL of the Web UI of the development server, when --dev-ui started it. */
   uiUrl?: string | undefined;
-  /** Version of the aitw that runs the resident process. */
+  /** Version of the ugoke that runs the resident process. */
   version: string;
   /** Workflow code version of the resident process. */
   workflowCodeVersion: number;
@@ -57,7 +57,7 @@ const call = async (
       response.on("end", () => {
         if (response.statusCode !== 200) {
           reject(
-            new Error(`aitw daemon answered ${response.statusCode ?? "nothing"}: ${received}`),
+            new Error(`ugoke daemon answered ${response.statusCode ?? "nothing"}: ${received}`),
           );
           return;
         }
@@ -90,7 +90,7 @@ export const getDaemonStatus = async (paths: DaemonPaths): Promise<DaemonStatus 
   try {
     const status = await call(paths, "GET", "/status");
     if (!isStatus(status)) {
-      throw new Error("aitw daemon answered an unexpected status");
+      throw new Error("ugoke daemon answered an unexpected status");
     }
     return status;
   } catch (error) {
@@ -118,7 +118,7 @@ const isProject = (value: unknown): value is DaemonProject =>
 export const registerProject = async (paths: DaemonPaths, root: string): Promise<DaemonProject> => {
   const project = await call(paths, "POST", "/projects", { root });
   if (!isProject(project)) {
-    throw new Error("aitw daemon answered an unexpected project");
+    throw new Error("ugoke daemon answered an unexpected project");
   }
   return project;
 };

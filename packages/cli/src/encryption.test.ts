@@ -19,7 +19,7 @@ describe("loadEncryptionKey", () => {
   let previous: string | undefined;
 
   beforeEach(() => {
-    base = realpathSync(mkdtempSync(join(tmpdir(), "aitw-key-")));
+    base = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-key-")));
     previous = process.env.XDG_STATE_HOME;
     process.env.XDG_STATE_HOME = base;
   });
@@ -37,8 +37,8 @@ describe("loadEncryptionKey", () => {
     const key = loadEncryptionKey();
 
     expect(key).toHaveLength(32);
-    expect(statSync(join(base, "aitw", "encryption.key")).mode & 0o777).toBe(0o600);
-    expect(readdirSync(join(base, "aitw"))).toEqual(["encryption.key"]);
+    expect(statSync(join(base, "ugoke", "encryption.key")).mode & 0o777).toBe(0o600);
+    expect(readdirSync(join(base, "ugoke"))).toEqual(["encryption.key"]);
   });
 
   it("returns the same key afterwards", () => {
@@ -46,8 +46,8 @@ describe("loadEncryptionKey", () => {
   });
 
   it("does not replace a key that is invalid", () => {
-    mkdirSync(join(base, "aitw"), { mode: 0o700 });
-    writeFileSync(join(base, "aitw", "encryption.key"), "broken\n");
+    mkdirSync(join(base, "ugoke"), { mode: 0o700 });
+    writeFileSync(join(base, "ugoke", "encryption.key"), "broken\n");
 
     expect(() => loadEncryptionKey()).toThrow(EncryptionKeyError);
   });

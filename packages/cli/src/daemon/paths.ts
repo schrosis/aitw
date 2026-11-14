@@ -24,7 +24,7 @@ export interface DaemonPaths {
   projects: string;
 }
 
-/** Returns the files of the resident process, in the state directory of aitw. */
+/** Returns the files of the resident process, in the state directory of ugoke. */
 export const daemonPaths = (): DaemonPaths => {
   const directory = join(stateDirectory(), "daemon");
   return {
@@ -46,7 +46,7 @@ export const daemonPaths = (): DaemonPaths => {
 export const checkSocketPath = (socket: string): void => {
   if (Buffer.byteLength(socket) > maxSocketPathBytes) {
     throw new Error(
-      `The socket path of aitw daemon is too long (${Buffer.byteLength(socket)} bytes, at most ${maxSocketPathBytes}): ${socket}. Set XDG_STATE_HOME to a shorter directory`,
+      `The socket path of ugoke daemon is too long (${Buffer.byteLength(socket)} bytes, at most ${maxSocketPathBytes}): ${socket}. Set XDG_STATE_HOME to a shorter directory`,
     );
   }
 };

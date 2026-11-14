@@ -42,7 +42,7 @@ export interface EnsureTemporalCliOptions {
 export const defaultCacheDirectory = (): string =>
   join(
     ensurePrivateDirectory(
-      join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "aitw"),
+      join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "ugoke"),
       "cache directory",
     ),
     "temporal-cli",

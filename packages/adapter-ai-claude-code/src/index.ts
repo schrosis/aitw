@@ -114,7 +114,8 @@ const pathRulePattern = /^(?<tool>Read|Edit)\((?<path>.+)\)$/u;
  * which a `cd` of the AI changes. A rule such as `Edit(docs/**)` would then stop matching
  * `docs/` of the project. An absolute path, written with `//`, keeps matching it.
  *
- * Only paths with a `/` are anchored, because a name such as `*.md` matches at any depth.
+ * A name without a `/`, such as `*.md`, matches at any depth under the directory. It is put
+ * under `**` in the working directory of the step, which keeps that meaning from a fixed start.
  *
  * @param cwd Absolute path of the working directory of the step.
  */
@@ -124,8 +125,11 @@ export const anchorPathRules = (rules: readonly string[], cwd: string): string[]
     if (path === undefined || tool === undefined) {
       return rule;
     }
-    if (path.startsWith("/") || path.startsWith("~/") || !path.includes("/")) {
+    if (path.startsWith("/") || path.startsWith("~/")) {
       return rule;
+    }
+    if (!path.includes("/")) {
+      return `${tool}(/${join(cwd, "**", path)})`;
     }
     return `${tool}(/${join(cwd, path)})`;
   });

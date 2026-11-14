@@ -342,6 +342,8 @@ describe("anchorPathRules", () => {
     ["Edit(docs/**)", "Edit(//project/docs/**)"],
     ["Read(./src/a.ts)", "Read(//project/src/a.ts)"],
     ["Edit(docs/work/x/)", "Edit(//project/docs/work/x/)"],
+    ["Edit(*.md)", "Edit(//project/**/*.md)"],
+    ["Read(.env)", "Read(//project/**/.env)"],
   ])("anchors %s", (rule, anchored) => {
     expect(anchorPathRules([rule], "/project")).toEqual([anchored]);
   });
@@ -350,7 +352,6 @@ describe("anchorPathRules", () => {
     ["Edit(//abs/docs/**)"],
     ["Edit(/docs/**)"],
     ["Read(~/notes/**)"],
-    ["Edit(*.md)"],
     ["Read"],
     ["Bash(git diff:*)"],
     ["Write(docs/**)"],

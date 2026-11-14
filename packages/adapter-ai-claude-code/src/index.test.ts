@@ -7,7 +7,7 @@ import type { AiRequest } from "@ugoke/core";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { claudeCodePlugin, createClaudeCodePlugin } from "./index.ts";
+import { anchorPathRules, claudeCodePlugin, createClaudeCodePlugin } from "./index.ts";
 import type { ClaudeQuery } from "./index.ts";
 
 type Message = ClaudeQuery extends (params: never) => AsyncIterable<infer Item> ? Item : never;
@@ -206,6 +206,19 @@ describe("claude-code provider", () => {
     expect(seen).toEqual([]);
   });
 
+  it("anchors the paths of the allowed tools to the working directory", async () => {
+    await runner([success()]).run(
+      request({ options: { allowedTools: ["Read", "Edit(docs/work/**)", "Bash(git diff:*)"] } }),
+      { signal },
+    );
+
+    expect(seen[0]?.options.allowedTools).toEqual([
+      "Read",
+      `Edit(/${join(cwd, "docs/work/**")})`,
+      "Bash(git diff:*)",
+    ]);
+  });
+
   it("denies edits of the definition of the workflow", async () => {
     await runner([success()]).run(request(), { signal });
 
@@ -321,5 +334,27 @@ describe("claude-code provider", () => {
       "Cancelled",
     );
     expect(seen).toEqual([]);
+  });
+});
+
+describe("anchorPathRules", () => {
+  it.each([
+    ["Edit(docs/**)", "Edit(//project/docs/**)"],
+    ["Read(./src/a.ts)", "Read(//project/src/a.ts)"],
+    ["Edit(docs/work/x/)", "Edit(//project/docs/work/x/)"],
+  ])("anchors %s", (rule, anchored) => {
+    expect(anchorPathRules([rule], "/project")).toEqual([anchored]);
+  });
+
+  it.each([
+    ["Edit(//abs/docs/**)"],
+    ["Edit(/docs/**)"],
+    ["Read(~/notes/**)"],
+    ["Edit(*.md)"],
+    ["Read"],
+    ["Bash(git diff:*)"],
+    ["Write(docs/**)"],
+  ])("keeps %s", (rule) => {
+    expect(anchorPathRules([rule], "/project")).toEqual([rule]);
   });
 });

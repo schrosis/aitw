@@ -1,5 +1,6 @@
-import { conditionReferences, parseCondition } from "../expression/condition.js";
+import { conditionReferences, conditionValues, parseCondition } from "../expression/condition.js";
 import { parseTemplate } from "../expression/template.js";
+import { checkCalls } from "../expression/value.js";
 import { earlierSteps, reachableSteps } from "./order.js";
 import type { Intermediate } from "./schema.js";
 import type { ValidationError } from "./validate.js";
@@ -118,7 +119,19 @@ const checkExpression = (
   });
 };
 
-/** Checks the references of a condition, such as of a branch. */
+/** Writes the path of a reference as in a definition, such as `steps.a.visits[0].outputs.v`. */
+const formatReference = (reference: readonly string[]): string =>
+  reference
+    .map((segment, index) => {
+      // Names cannot be only digits, so such a segment is an index.
+      if (index > 0 && /^\d+$/u.test(segment)) {
+        return `[${segment}]`;
+      }
+      return index === 0 ? segment : `.${segment}`;
+    })
+    .join("");
+
+/** Checks the calls and the references of a condition, such as of a branch. */
 const checkCondition = (
   text: string,
   path: (number | string)[],
@@ -128,10 +141,19 @@ const checkCondition = (
   if (!parsed.ok) {
     return [{ message: parsed.message, path }];
   }
-  return conditionReferences(parsed.condition).flatMap((reference) => {
-    const message = check(reference);
-    return message === undefined ? [] : [{ message: `${message}: ${reference.join(".")}`, path }];
-  });
+  // A condition has no positions of its calls, so that a problem of a call shows all of it.
+  const source = text.trim();
+  return [
+    ...conditionValues(parsed.condition)
+      .flatMap(checkCalls)
+      .map((message) => ({ message: `${message}: ${source}`, path })),
+    ...conditionReferences(parsed.condition).flatMap((reference) => {
+      const message = check(reference);
+      return message === undefined
+        ? []
+        : [{ message: `${message}: ${formatReference(reference)}`, path }];
+    }),
+  ];
 };
 
 /** What a field of a step can reference, in addition to earlier steps and the workflow input. */
@@ -165,7 +187,9 @@ const describeScope = ({ env, inputs, outputs, result }: Scope): string => {
 };
 
 /**
- * Validates the `${{ }}` references of every step.
+ * Validates the `${{ }}` expressions of every step: their references, and the calls of helper
+ * functions in conditions. A call must name a known function with the number of arguments that
+ * it takes, and a call without references, such as `trim(3)`, must return a value.
  *
  * The environment of the workflow can read only the declared input of the workflow.
  *

@@ -179,6 +179,73 @@ describe("validateIntermediate for branches", () => {
     ]);
   });
 
+  it.each([
+    ["${{ trim(result.stdout) == 'ok' }}"],
+    ["${{ trim(env.MODE) == 'ci' && !(trim(outputs.ok) == '') }}"],
+    ["${{ trim('  ok ') == 'ok' }}"],
+  ])("lets a condition call %s", (text) => {
+    expect(
+      errorsOf({ a: script(branch({ if: text, to: "end" }, { to: "end" }), { outputs }) }),
+    ).toEqual([]);
+  });
+
+  it.each([
+    [
+      "${{ trimm(result.stdout) == 'ok' }}",
+      "Unknown function: trimm. Available functions: trim: ${{ trimm(result.stdout) == 'ok' }}",
+    ],
+    [
+      " ${{ trim(result.stdout, result.stderr) == 'ok' }}",
+      "trim takes 1 argument but got 2: ${{ trim(result.stdout, result.stderr) == 'ok' }}",
+    ],
+    ["${{ trim() == 'ok' }}", "trim takes 1 argument but got 0: ${{ trim() == 'ok' }}"],
+    [
+      "${{ trim(trim(3)) == 'ok' }}",
+      "trim expects a string but got number: ${{ trim(trim(3)) == 'ok' }}",
+    ],
+    [
+      "${{ trim(env.A.B) == 'ok' }}",
+      "Cannot reference a field of an environment variable: env.A.B",
+    ],
+    [
+      "${{ trim(outputs.missing) == 'ok' }}",
+      "Step a does not declare the output missing: outputs.missing",
+    ],
+  ])("reports the call %s", (text, message) => {
+    expect(
+      errorsOf({ a: script(branch({ if: text, to: "end" }, { to: "end" }), { outputs }) }),
+    ).toEqual([{ message, path: ["steps", "a", "next", "branches", 0, "if"] }]);
+  });
+
+  it("reports both a wrong call and a wrong reference of a condition", () => {
+    expect(
+      errorsOf({
+        a: script(branch({ if: "${{ trimm(env.A.B) }}", to: "end" }, { to: "end" }), { outputs }),
+      }),
+    ).toMatchObject([
+      { message: "Unknown function: trimm. Available functions: trim: ${{ trimm(env.A.B) }}" },
+      { message: "Cannot reference a field of an environment variable: env.A.B" },
+    ]);
+  });
+
+  it("writes the index of a visit in a message of a condition", () => {
+    expect(
+      errorsOf({
+        a: script(toStep("b"), { outputs: { value: "x" } }),
+        b: script(
+          branch(
+            { if: "${{ steps.a.visits[0].outputs.missing == null }}", to: "end" },
+            { to: "end" },
+          ),
+        ),
+      }),
+    ).toMatchObject([
+      {
+        message: "Step a does not declare the output missing: steps.a.visits[0].outputs.missing",
+      },
+    ]);
+  });
+
   it("lets a step read a step that can run before it on another branch", () => {
     expect(
       errorsOf({

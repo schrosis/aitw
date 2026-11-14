@@ -1,10 +1,11 @@
 import { ExpressionError, tokenize } from "./lexer.js";
-import type { Operator, Token } from "./lexer.js";
+import type { Token } from "./lexer.js";
+import { createTokenReader, evaluateValue, expressionReferences, parseValue } from "./value.js";
+import type { ValueExpression } from "./value.js";
 
 /** A condition of a transition, as a tree. */
 export type Condition =
-  | { type: "literal"; value: boolean | number | string | null }
-  | { type: "reference"; path: string[] }
+  | ValueExpression
   | { type: "not"; operand: Condition }
   | { type: "and" | "or"; left: Condition; right: Condition }
   | { type: "equal" | "notEqual"; left: Condition; right: Condition };
@@ -19,16 +20,8 @@ export type EvaluateConditionResult = { ok: true; value: boolean } | { ok: false
 
 /** Parses tokens, where `||` binds loosest, then `&&`, the comparisons, and `!`. */
 const parseTokens = (tokens: readonly Token[]): Condition => {
-  let index = 0;
-
-  const takeOperator = (...operators: readonly Operator[]): Operator | undefined => {
-    const token = tokens[index];
-    if (token?.kind === "operator" && operators.includes(token.value)) {
-      index += 1;
-      return token.value;
-    }
-    return undefined;
-  };
+  const reader = createTokenReader(tokens);
+  const { takeOperator } = reader;
 
   const parsePrimary = (): Condition => {
     if (takeOperator("(") !== undefined) {
@@ -38,16 +31,7 @@ const parseTokens = (tokens: readonly Token[]): Condition => {
       }
       return inner;
     }
-    const token = tokens[index];
-    if (token === undefined || token.kind === "operator") {
-      throw new ExpressionError(
-        token === undefined ? "Expected a value at the end" : `Unexpected ${token.value}`,
-      );
-    }
-    index += 1;
-    return token.kind === "literal"
-      ? { type: "literal", value: token.value }
-      : { path: token.path, type: "reference" };
+    return parseValue(reader);
   };
 
   const parseNot = (): Condition =>
@@ -79,7 +63,7 @@ const parseTokens = (tokens: readonly Token[]): Condition => {
   };
 
   const condition = parseOr();
-  const rest = tokens[index];
+  const rest = reader.peek();
   if (rest !== undefined) {
     throw new ExpressionError(
       rest.kind === "operator" ? `Unexpected ${rest.value}` : "Expected an operator",
@@ -94,8 +78,11 @@ const close = "}}";
 /**
  * Parses a condition, which is one `${{ }}` expression such as `${{ outputs.verdict == 'ok' }}`.
  *
- * It supports `==`, `!=`, `&&`, `||`, `!`, parentheses, references, and literals: strings in
- * single quotes, numbers, `true`, `false`, and `null`.
+ * It supports `==`, `!=`, `&&`, `||`, `!`, parentheses, references, calls of helper functions
+ * such as `trim(result.stdout)`, and literals: strings in single quotes, numbers, `true`,
+ * `false`, and `null`.
+ *
+ * Whether a function exists and takes the number of the arguments is checked by validation.
  */
 export const parseCondition = (text: string): ParseConditionResult => {
   const source = text.trim();
@@ -113,23 +100,30 @@ export const parseCondition = (text: string): ParseConditionResult => {
   }
 };
 
-/** Returns the paths of the references of a condition. */
-export const conditionReferences = (condition: Condition): string[][] => {
+/**
+ * Returns the values of a condition, which its operators combine, from left to right.
+ *
+ * It is not public. Validation uses it to check the calls of a condition.
+ */
+export const conditionValues = (condition: Condition): ValueExpression[] => {
   switch (condition.type) {
-    case "literal": {
-      return [];
-    }
-    case "reference": {
-      return [condition.path];
+    case "literal":
+    case "reference":
+    case "call": {
+      return [condition];
     }
     case "not": {
-      return conditionReferences(condition.operand);
+      return conditionValues(condition.operand);
     }
     default: {
-      return [...conditionReferences(condition.left), ...conditionReferences(condition.right)];
+      return [...conditionValues(condition.left), ...conditionValues(condition.right)];
     }
   }
 };
+
+/** Returns the paths of the references of a condition, including those in arguments, in order. */
+export const conditionReferences = (condition: Condition): string[][] =>
+  conditionValues(condition).flatMap(expressionReferences);
 
 /** Reads a path of own data properties. A value that is not there is `null`. */
 const readReference = (
@@ -162,11 +156,10 @@ const expectBoolean = (value: unknown): boolean => {
 
 const evaluate = (condition: Condition, context: Readonly<Record<string, unknown>>): unknown => {
   switch (condition.type) {
-    case "literal": {
-      return condition.value;
-    }
-    case "reference": {
-      return readReference(context, condition.path);
+    case "literal":
+    case "reference":
+    case "call": {
+      return evaluateValue(condition, (path) => readReference(context, path));
     }
     case "not": {
       return !expectBoolean(evaluate(condition.operand, context));
@@ -199,8 +192,9 @@ const evaluate = (condition: Condition, context: Readonly<Record<string, unknown
  * Evaluates a condition.
  *
  * Values are compared without converting their types, and a reference to a value that is not
- * there, such as of a step that has not run, is `null`. `!`, `&&`, `||`, and the condition itself
- * need `true` or `false`.
+ * there, such as of a step that has not run, is `null`, also in the arguments of a call. `!`,
+ * `&&`, `||`, and the condition itself need `true` or `false`. A call that fails, such as
+ * `trim(null)`, makes the result fail with its message.
  */
 export const evaluateCondition = (
   condition: Condition,

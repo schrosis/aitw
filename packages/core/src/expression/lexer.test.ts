@@ -19,9 +19,44 @@ describe("expandIndexes", () => {
 
 describe("tokenize", () => {
   it.each(names)("reads operators with %s names", (kind) => {
-    expect(tokenize("== != && || ! ( )", kind)).toEqual(
-      ["==", "!=", "&&", "||", "!", "(", ")"].map((value) => ({ kind: "operator", value })),
+    expect(tokenize("== != && || ! ( ) ,", kind)).toEqual(
+      ["==", "!=", "&&", "||", "!", "(", ")", ","].map((value) => ({ kind: "operator", value })),
     );
+  });
+
+  it.each(names)("reads a name before ( as a function with %s names", (kind) => {
+    expect(tokenize("trim(a, trimAll2())", kind)).toEqual([
+      { kind: "function", name: "trim" },
+      { kind: "operator", value: "(" },
+      { kind: "reference", path: ["a"] },
+      { kind: "operator", value: "," },
+      { kind: "function", name: "trimAll2" },
+      { kind: "operator", value: "(" },
+      { kind: "operator", value: ")" },
+      { kind: "operator", value: ")" },
+    ]);
+  });
+
+  it.each(names)("reads other names before ( as references with %s names", (kind) => {
+    const open = { kind: "operator", value: "(" };
+    expect(tokenize("trim (a trim.x( Trim( a_b(", kind)).toEqual([
+      { kind: "reference", path: ["trim"] },
+      open,
+      { kind: "reference", path: ["a"] },
+      { kind: "reference", path: ["trim", "x"] },
+      open,
+      { kind: "reference", path: ["Trim"] },
+      open,
+      { kind: "reference", path: ["a_b"] },
+      open,
+    ]);
+  });
+
+  it.each(names)("reads a keyword before ( as a literal with %s names", (kind) => {
+    expect(tokenize("true(", kind)).toEqual([
+      { kind: "literal", value: true },
+      { kind: "operator", value: "(" },
+    ]);
   });
 
   it.each(names)("reads literals with %s names", (kind) => {

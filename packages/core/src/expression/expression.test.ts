@@ -303,18 +303,18 @@ describe("evaluateExpression calls", () => {
 
   it("fails on an argument that is not a string", () => {
     expect(evaluateExpression("${{ trim(inputs.count) }}", values)).toEqual({
-      message: "trim expects a string but got number",
+      message: "trim expects a string but got number: ${{ trim(inputs.count) }}",
       ok: false,
     });
   });
 
   it("fails on a step that did not run, which reads as null", () => {
     expect(evaluateExpression("${{ trim(steps.report.outputs.title) }}", values)).toEqual({
-      message: "trim expects a string but got null",
+      message: "trim expects a string but got null: ${{ trim(steps.report.outputs.title) }}",
       ok: false,
     });
     expect(evaluateExpression("[${{ trim(steps.report.outputs.title) }}]", values)).toEqual({
-      message: "trim expects a string but got null",
+      message: "trim expects a string but got null: ${{ trim(steps.report.outputs.title) }}",
       ok: false,
     });
   });
@@ -328,11 +328,11 @@ describe("evaluateExpression calls", () => {
 
   it("guards an unknown function and a wrong number of arguments", () => {
     expect(evaluateExpression("${{ json(inputs.title) }}", values)).toEqual({
-      message: "Unknown function: json",
+      message: "Unknown function: json: ${{ json(inputs.title) }}",
       ok: false,
     });
     expect(evaluateExpression("${{ trim(inputs.title, inputs.title) }}", values)).toEqual({
-      message: "trim takes 1 argument but got 2",
+      message: "trim takes 1 argument but got 2: ${{ trim(inputs.title, inputs.title) }}",
       ok: false,
     });
   });

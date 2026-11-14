@@ -170,13 +170,14 @@ export const evaluateTemplate = (
       if (path[0] === "steps") {
         return null;
       }
-      throw new ExpressionError(`Unknown reference: ${part.source}`);
+      throw new ExpressionError("Unknown reference");
     };
     try {
       values.push(evaluateValue(part.expression, read));
     } catch (error) {
       if (error instanceof ExpressionError) {
-        return { message: error.message, ok: false };
+        // Name the expression, because a field such as run can have many.
+        return { message: `${error.message}: ${part.source}`, ok: false };
       }
       throw error;
     }

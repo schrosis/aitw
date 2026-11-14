@@ -19,6 +19,7 @@ describe("createAiTerminalPlugin", () => {
       options: { message: "Deploy?", schema: {} },
       run: { inputs: { target: "prod" }, workflowId: "deploy-1" },
       signal: controller.signal,
+      startedAt: new Date("2026-01-02T03:04:05.000Z"),
       step: "approve",
       visit: 1,
     });

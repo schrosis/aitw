@@ -226,6 +226,7 @@ describe("loadProjectPlugins", () => {
         options: {},
         run: { inputs: {}, workflowId: "deploy-1" },
         signal: new AbortController().signal,
+        startedAt: new Date("2026-01-02T03:04:05.000Z"),
         step: "ask",
         visit: 0,
       }),

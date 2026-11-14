@@ -31,6 +31,7 @@ import type {
 import { ApplicationFailure, Context } from "@temporalio/activity";
 
 import { jsonBytes, maxValueBytes } from "../limits.js";
+import { readStartedAt } from "../messages.js";
 
 /** Adapters and settings that the activities use. */
 export interface ActivityDependencies {
@@ -146,6 +147,12 @@ export interface WaitRequest {
   answers: Readonly<Record<string, InputDeclaration>>;
   /** The run that waits. */
   run: WaitRun;
+  /**
+   * When the step started to wait, in workflow time, as ISO 8601.
+   *
+   * Missing in the activities of runs that started before it was added.
+   */
+  startedAt?: string | undefined;
 }
 
 /** Values that a step publishes to later steps, keyed by name. */
@@ -723,6 +730,7 @@ export const createActivities = ({
       method: name,
       options,
       run,
+      startedAt: requestedStart,
       step,
       visit,
     }: WaitRequest): Promise<Readonly<Record<string, unknown>>> => {
@@ -743,6 +751,9 @@ export const createActivities = ({
         );
       }
       const context = Context.current();
+      // Runs that started before the field was added, and inputs that were edited by hand, fall
+      // back to when the activity was first scheduled, which stays the same across attempts.
+      const startedAt = readStartedAt(requestedStart, context.info.scheduledTimestampMs);
       const cancelled = context.cancellationSignal;
       const signal = stopping === undefined ? cancelled : AbortSignal.any([cancelled, stopping]);
       const heartbeat = setInterval(() => context.heartbeat(), heartbeatIntervalMs);
@@ -753,6 +764,7 @@ export const createActivities = ({
           options: validated.value,
           run,
           signal,
+          startedAt,
           step,
           visit,
         });

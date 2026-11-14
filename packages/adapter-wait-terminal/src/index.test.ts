@@ -142,6 +142,7 @@ const respondWith = async (
     options: validated.value,
     run: { inputs: {}, workflowId: "ask-1" },
     signal,
+    startedAt: new Date("2026-01-02T03:04:05.000Z"),
     step: "ask",
     visit: 0,
   });
@@ -283,6 +284,7 @@ const respondInteractively = async (
     options: validated.value,
     run: { inputs: {}, workflowId: "ask-1" },
     signal,
+    startedAt: new Date("2026-01-02T03:04:05.000Z"),
     step: "ask",
     visit: 0,
   });

@@ -112,6 +112,9 @@ describe("ugoke wait steps", () => {
         answers: intermediate.steps.ask?.type === "wait" ? intermediate.steps.ask.answers : {},
         method: "terminal",
         options: { message: "Hello, who are you?", tags: ["Hello"] },
+        startedAt: expect.stringMatching(
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u,
+        ) as unknown,
         step: "ask",
         visit: 0,
         workflowInputs: { greeting: "Hello" },
@@ -257,10 +260,16 @@ describe("ugoke wait steps that the Worker answers", () => {
             config: undefined,
             options: { message: "Hello, who are you?" },
             run: { inputs: { greeting: "Hello" }, workflowId: handle.workflowId },
+            startedAt: expect.any(Date) as unknown,
             step: "ask",
             visit: 0,
           },
         ]);
+        // The step starts to wait in workflow time, after the run starts and before it ends.
+        const { closeTime, startTime } = await handle.describe();
+        const startedAt = contexts[0]?.startedAt.getTime();
+        expect(startedAt).toBeGreaterThanOrEqual(startTime.getTime());
+        expect(startedAt).toBeLessThanOrEqual(closeTime?.getTime() ?? Number.NaN);
         expect(requests.map(({ run }) => run)).toEqual(['echo "ugoke"']);
       },
     );
@@ -356,7 +365,9 @@ describe("ugoke wait steps that the Worker answers", () => {
       });
     const stopping = new AbortController();
     const { promise: asked, resolve: ask } = Promise.withResolvers<void>();
-    const first = await createWorker(async ({ signal }) => {
+    const startedAt: Date[] = [];
+    const first = await createWorker(async ({ signal, startedAt: started }) => {
+      startedAt.push(started);
       ask();
       return new Promise((_resolve, reject) => {
         signal.addEventListener("abort", () => reject(new Error("stopped")));
@@ -374,11 +385,20 @@ describe("ugoke wait steps that the Worker answers", () => {
       stopping.abort();
       return started;
     });
-    const second = await createWorker(async () => ({ name: "again" }));
+    // Time passes before the next Worker asks, as it does while the resident process restarts.
+    await environment.sleep(1000);
+    const second = await createWorker(async ({ startedAt: started }) => {
+      startedAt.push(started);
+      return { name: "again" };
+    });
 
     await expect(second.runUntil(handle.result())).resolves.toEqual({
       executedSteps: ["ask", "greet"],
     });
+    // The next attempt receives when the step started to wait, not when it asked again.
+    expect(startedAt).toHaveLength(2);
+    expect(startedAt[0]).toBeInstanceOf(Date);
+    expect(startedAt[1]).toEqual(startedAt[0]);
   }, 60_000);
 
   it.each([

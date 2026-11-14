@@ -257,12 +257,15 @@ describe("runWorkflow", () => {
 
     it("answers with the method and asks again when the answer is rejected", async () => {
       const contexts: unknown[] = [];
+      const startedAt: Date[] = [];
       const answers = [{}, { name: "ugoke" }];
       const events: WorkflowEvent[] = [];
+      const before = Date.now();
 
       await expect(
         runWaiting(async (context) => {
           contexts.push({ answers: context.answers, options: context.options, step: context.step });
+          startedAt.push(context.startedAt);
           return answers.shift() ?? {};
         }, events),
       ).resolves.toMatchObject({ executedSteps: ["ask", "fetch"], status: "completed" });
@@ -279,6 +282,11 @@ describe("runWorkflow", () => {
           step: "ask",
         },
       ]);
+      // The method receives when the step started to wait in the workflow, also when it asks again.
+      expect(startedAt).toHaveLength(2);
+      expect(startedAt[0]?.getTime()).toBeGreaterThanOrEqual(before);
+      expect(startedAt[0]?.getTime()).toBeLessThanOrEqual(Date.now());
+      expect(startedAt[1]).toEqual(startedAt[0]);
       expect(events.filter(({ step }) => step === "ask")).toEqual([
         { message: "Name?", step: "ask", type: "stepStarted" },
         { step: "ask", stream: "stderr", text: "ask.name: Required\n", type: "stepOutput" },

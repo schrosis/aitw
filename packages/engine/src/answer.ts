@@ -5,7 +5,7 @@ import type { PluginRegistry, WorkflowEvent } from "@ugoke/core";
 import { WorkflowUpdateFailedError } from "@temporalio/client";
 import type { WorkflowHandle } from "@temporalio/client";
 
-import { answerUpdateName, waitingQueryName } from "./messages.js";
+import { answerUpdateName, readStartedAt, waitingQueryName } from "./messages.js";
 import type { Answer, WaitingStep } from "./messages.js";
 
 /**
@@ -133,7 +133,15 @@ const watchAnswered = (
 
 /** Asks the method of a waiting step for an answer until the workflow accepts one. */
 const answerStep = async (
-  { answers, method: name, options: stepOptions, step, visit, workflowInputs = {} }: WaitingStep,
+  {
+    answers,
+    method: name,
+    options: stepOptions,
+    startedAt: reportedStart,
+    step,
+    visit,
+    workflowInputs = {},
+  }: WaitingStep,
   options: AnswerWaitsOptions,
 ): Promise<void> => {
   const { flush, handle, plugins, report, signal } = options;
@@ -145,6 +153,10 @@ const answerStep = async (
   if (!validated.ok) {
     throw new Error(formatPrefixedErrors(`steps.${step}.with`, validated.errors));
   }
+
+  // Runs of earlier versions do not report when the step started to wait, so it falls back to
+  // when this process first asks, which stays the same while the method asks again.
+  const startedAt = readStartedAt(reportedStart, Date.now());
 
   // The workflow stores the start of the step before it waits, so it is shown before the
   // questions of the method.
@@ -161,6 +173,7 @@ const answerStep = async (
           options: validated.value,
           run: { inputs: workflowInputs, workflowId: handle.workflowId },
           signal: asking,
+          startedAt,
           step,
           visit,
         }),

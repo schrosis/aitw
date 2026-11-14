@@ -1,6 +1,6 @@
-# aitw
+# ugoke
 
-aitw は、AI、人間、スクリプトのステップを Temporal Workflow で実行するワークフロー基盤です。
+ugoke は、AI、人間、スクリプトのステップを Temporal Workflow で実行するワークフロー基盤です。
 
 ## コマンド
 
@@ -9,23 +9,23 @@ aitw は、AI、人間、スクリプトのステップを Temporal Workflow で
 - `pnpm typecheck`: パッケージ、テスト、設定ファイルを型検査する
 - `pnpm lint`: type-aware Lint を実行する
 - `pnpm format`: ファイルを整形する
-- `pnpm test`: テストを実行する。`aitw` パッケージのテストにはビルド結果が必要
+- `pnpm test`: テストを実行する。`ugoke` パッケージのテストにはビルド結果が必要
 
 ## アーキテクチャ
 
-- `@aitw/core`: 中間表現の型と Port を持つ。Temporal に依存しない
-- `@aitw/definition`: 定義オブジェクトの検証、中間表現への Build、YAML の読み込みを担当する
-- `@aitw/engine`: Workflow、Activity、Worker を持つ。`@aitw/core` のみに依存し、`@aitw/definition` と具体的な Adapter に依存しない
-- `@aitw/dotenv`: dotenv ファイルの読み込みを担当する。Adapter から使う
-- `@aitw/adapter-*`: Port の実装。実装ごとに個別パッケージとし、名前は `adapter-<種類>-<実装>` とする
-- `aitw`: CLI。Adapter の組み立てを担当する
+- `@ugoke/core`: 中間表現の型と Port を持つ。Temporal に依存しない
+- `@ugoke/definition`: 定義オブジェクトの検証、中間表現への Build、YAML の読み込みを担当する
+- `@ugoke/engine`: Workflow、Activity、Worker を持つ。`@ugoke/core` のみに依存し、`@ugoke/definition` と具体的な Adapter に依存しない
+- `@ugoke/dotenv`: dotenv ファイルの読み込みを担当する。Adapter から使う
+- `@ugoke/adapter-*`: Port の実装。実装ごとに個別パッケージとし、名前は `adapter-<種類>-<実装>` とする
+- `ugoke`: CLI。Adapter の組み立てを担当する
 
 ## 規約
 
 - Adapter のインターフェースは Port と呼ぶ
 - 関数はアロー関数で書く。`function` はジェネレーターなど、必要な場合だけ使う
 - Workflow のコードは `packages/engine/src/workflows` に置き、Node API と副作用を持ち込まない
-- Workflow のコードは、記録した履歴をリプレイできるように変更する（`packages/engine/src/workflows/replay.test.ts`）。互換性を保てない場合は `workflowCodeVersion` を上げ、古い版の履歴を消してから `AITW_RECORD_HISTORIES=1 pnpm --filter @aitw/engine test` で記録し直し、もう一度テストを実行する
+- Workflow のコードは、記録した履歴をリプレイできるように変更する（`packages/engine/src/workflows/replay.test.ts`）。互換性を保てない場合は `workflowCodeVersion` を上げ、古い版の履歴を消してから `UGOKE_RECORD_HISTORIES=1 pnpm --filter @ugoke/engine test` で記録し直し、もう一度テストを実行する
 - 副作用は Activity で実行する
 - コミットメッセージは Conventional Commits に従う
 

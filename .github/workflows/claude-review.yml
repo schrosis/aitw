@@ -110,8 +110,9 @@ jobs:
             --jq '.data.repository.pullRequest.reviewThreads.nodes[]' \
             | jq -s . > "$dir/review-threads.json"
 
+          # Claude reviews with inline comments, and the report job submits the verdict.
           last="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
-            --jq '.[] | select(.user.login == "claude[bot]") | .commit_id' | tail -n 1)"
+            --jq '.[] | select(.user.login == "claude[bot]" or .user.login == "github-actions[bot]") | .commit_id' | tail -n 1)"
 
           mode=initial
           : > "$dir/changes-since-review.diff"
@@ -205,23 +206,30 @@ jobs:
           # IMO and NITS comments are optional and do not block the status.
           unresolved="$(open_threads | jq '[.[] | select(.body | test("^[^A-Za-z]*(IMO|NITS)\\b") | not)] | length')"
 
-          if [ -n "$verdict" ]; then
-            printf '%s\n\n%s\n' "$verdict" "$summary" \
-              | gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file -
-          fi
-
+          # The review follows the status: it approves only when no required thread remains.
           case "$verdict" in
             APPROVE)
               if [ "$unresolved" -eq 0 ]; then
-                state=success description="Approved"
+                state=success description="Approved" event=APPROVE
               else
-                state=pending description="Unresolved required review threads remain"
+                state=pending description="Unresolved required review threads remain" event=COMMENT
               fi
               ;;
-            COMMENT) state=pending description="Awaiting fixes or replies; push fixes or mention @claude to review again" ;;
-            REQUEST_CHANGES) state=failure description="Changes requested" ;;
-            *) state=failure description="Review did not return a verdict" ;;
+            COMMENT) state=pending description="Awaiting fixes or replies; push fixes or mention @claude to review again" event=COMMENT ;;
+            REQUEST_CHANGES) state=failure description="Changes requested" event=REQUEST_CHANGES ;;
+            *) state=failure description="Review did not return a verdict" event="" ;;
           esac
+
+          # Submit the review on the reviewed commit, which a later push does not change.
+          # Approving requires "Allow GitHub Actions to create and approve pull requests".
+          # A failure leaves a warning, so that the status below is still reported.
+          if [ -n "$event" ]; then
+            jq -n --arg body "${summary:-$verdict}" --arg event "$event" --arg commit_id "$SHA" \
+              '{body: $body, event: $event, commit_id: $commit_id}' \
+              | gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" --input - > /dev/null \
+              || echo "::warning::Could not submit the $event review"
+          fi
+
           gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" \
             -f context="Claude Review" \
             -f state="$state" \

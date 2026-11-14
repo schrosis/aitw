@@ -275,6 +275,15 @@ describe("executeScriptStep", () => {
     ).resolves.toEqual({ code: 0, lines: "a\nb\n", title: "[a\nb\n]" });
   });
 
+  it("removes the leading and trailing whitespace of an output with trim()", async () => {
+    await expect(
+      runStep(
+        { outputs: { lines: "${{ trim(result.stdout) }}", title: "[${{ trim(result.stdout) }}]" } },
+        { stdout: "  \t3\n\n" },
+      ),
+    ).resolves.toEqual({ lines: "3", title: "[3]" });
+  });
+
   it.each([
     [{ run: "${{ inputs.missing }}" }, "run: Unknown reference: ${{ inputs.missing }}"],
     [
@@ -554,6 +563,15 @@ describe("branches", () => {
     ).resolves.toMatchObject({ next: "yes" });
   });
 
+  it("reads the environment for a reference in the argument of a function", async () => {
+    await expect(
+      runBranching("${{ trim(env.MODE) == 'ci' }}", { readEnvironment: () => ({ MODE: " ci\n" }) }),
+    ).resolves.toMatchObject({ next: "yes" });
+    await expect(
+      runBranching("${{ trim(env.MODE) == 'ci' }}", { readEnvironment: unreadableEnvironment }),
+    ).rejects.toMatchObject({ type: "EnvironmentUnreadable" });
+  });
+
   it("does not read the environment for conditions that do not need it", async () => {
     await expect(
       runBranching("${{ outputs.value == 'ok' }}", { readEnvironment: unreadableEnvironment }),
@@ -649,7 +667,11 @@ const runContinuing = async (
     },
   );
 
-const runAiContinuing = async (aiRunner: AiRunner | undefined, events: WorkflowEvent[] = []) =>
+const runAiContinuing = async (
+  aiRunner: AiRunner | undefined,
+  events: WorkflowEvent[] = [],
+  request: Partial<AiStepRequest> = {},
+) =>
   new MockActivityEnvironment().run(
     createActivities({
       aiRunner,
@@ -672,6 +694,7 @@ const runAiContinuing = async (aiRunner: AiRunner | undefined, events: WorkflowE
       sessionId: "previous",
       step: "review",
       timeoutMs: 1000,
+      ...request,
     },
   );
 
@@ -835,6 +858,24 @@ describe("continueOnError", () => {
         } satisfies AiStepRequest,
       ),
     ).resolves.toEqual({ next: "implement", outputs: { summary: null, verdict: null } });
+  });
+
+  it("still fails on a function that cannot take the data of a failed AI step", async () => {
+    await expect(
+      runAiContinuing(
+        {
+          run: async () => {
+            throw new AiTimeoutError(1000);
+          },
+        },
+        [],
+        { outputs: { data: "${{ trim(result.data) }}" } },
+      ),
+    ).rejects.toMatchObject({
+      message: "outputs.data: trim expects a string but got null: ${{ trim(result.data) }}",
+      nonRetryable: true,
+      type: "InvalidExpression",
+    });
   });
 
   it("sets ok and error of an AI step that succeeds", async () => {

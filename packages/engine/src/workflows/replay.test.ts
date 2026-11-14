@@ -154,6 +154,32 @@ const scenarios: Record<
       version: intermediateVersion,
     },
   },
+  helpers: {
+    inputs: { title: "  hello \n" },
+    intermediate: {
+      // The workflow evaluates the calls in env and inputs.
+      env: { TITLE: "${{ trim(workflow.inputs.title) }}" },
+      inputs: { title: { required: true, type: "string" } },
+      start: "fetch",
+      steps: {
+        check: script("echo check", null, {
+          next: {
+            branches: [
+              // The workflow passes the reference in the argument to the activity.
+              { if: "${{ trim(steps.fetch.outputs.value) == 'x' }}", to: { type: "end" } },
+              { to: { type: "end" } },
+            ],
+            type: "branch",
+          },
+        }),
+        fetch: script("echo ${{ inputs.title }}", "check", {
+          inputs: { title: "${{ trim(workflow.inputs.title) }}" },
+          outputs: { value: "${{ trim(result.stdout) }}" },
+        }),
+      },
+      version: intermediateVersion,
+    },
+  },
   wait: {
     drive: async (handle) => {
       await waitForStep(handle);

@@ -106,6 +106,10 @@ ugoke inbox answer <workflowId> --step <step> --visit <visit> --values '<JSON>' 
 - `--step` と `--visit` は、`question` の値をそのまま使う。古い質問への答えは Workflow が拒否する
 - `run` と同じく `run_in_background` で動かす。答えたあと、次の質問か終わりまで進み、同じ形の JSON Lines を出す。最初の行は `answered`
 - 最後の行が `failed` で、`message` が答えの拒否（`Must be ...`、`is not waiting for an answer` など）なら、実行は待ち続けている。理由を伝えて、答え直してもらう
+- ユーザーが端末の `ugoke run` や `ugoke attach` で同じ実行を追いかけていると、`--from-ai` は `Another process (<pid>) already follows <workflowId>` で失敗する。`--from-ai` は答えた後に自分も追いかけるため、実行ごとのロックを取るからである。答えはまだ届いていない
+  - `inbox list --from-ai` の `inDaemon` が `true` なら、同じ値を `--detach` で送り直す。`--detach` は追いかけないためロックを取らず、端末の側は「ほかで答えられた」と表示して追いかけ続ける。送り直す前に、送る内容をもう一度チャットに書く
+  - `--detach` で送った後の進み具合は、端末の側で見てもらうか、`ugoke log <workflowId> --tail <行数>` で見る
+  - `inDaemon` が `false` なら、端末の側で答えてもらう。Ctrl+C で切り離してもらうと、その実行を動かす Worker がいなくなるため
 - 答えるたびに許可の確認が出る設定（`.claude/settings.json` の `ask` ルール）になっている。確認が出たら、ユーザーが承認するのを待つ。セッションの途中で設定ができた場合などは確認が出ないことがあるため、確認が出ないことを理由にルールを緩めない
 
 ## ほかの操作

@@ -31,6 +31,11 @@ export interface WaitingStep {
   respondIn?: WaitRespondIn | undefined;
   /** Values of the workflow input. Runs of earlier versions do not report them. */
   workflowInputs?: Readonly<Record<string, unknown>> | undefined;
+  /**
+   * When the step started to wait, in workflow time, as ISO 8601. Runs of earlier versions do not
+   * report it.
+   */
+  startedAt?: string | undefined;
 }
 
 /** Argument of the answer update. */
@@ -42,3 +47,14 @@ export interface Answer {
   /** Values of the answers, keyed by name. Defaults are applied by the workflow. */
   values: Readonly<Record<string, unknown>>;
 }
+
+/**
+ * Reads when a wait step started to wait, as the workflow reports it.
+ *
+ * @param startedAt - The time as ISO 8601, which runs of earlier versions do not report.
+ * @param fallbackMs - Time to use when it is missing or is not a date, in milliseconds.
+ */
+export const readStartedAt = (startedAt: string | undefined, fallbackMs: number): Date => {
+  const parsed = startedAt === undefined ? Number.NaN : Date.parse(startedAt);
+  return new Date(Number.isNaN(parsed) ? fallbackMs : parsed);
+};

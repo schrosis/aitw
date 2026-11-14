@@ -76,6 +76,13 @@ export interface WaitResponseContext<Options, Config = unknown> {
   answers: Readonly<Record<string, InputDeclaration>>;
   /** Aborted when the run is cancelled, such as by an interrupt. */
   signal: AbortSignal;
+  /**
+   * When the step started to wait, in workflow time.
+   *
+   * It is the same in every attempt, such as after the resident process restarts, so that a
+   * method can tell what happened while the step waited from what happened before.
+   */
+  startedAt: Date;
 }
 
 /** A provider that runs `ai` steps, such as `claude-code`. */

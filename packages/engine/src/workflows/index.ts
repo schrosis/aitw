@@ -347,10 +347,19 @@ export const ugoke = async (
     method: string,
     answers: NonNullable<WaitStep["answers"]>,
     options: Readonly<Record<string, unknown>>,
+    startedAt: number,
   ): Promise<WorkflowInput> => {
     const run = { inputs: resolved.inputs, workflowId: workflowInfo().workflowId };
     checkValueSize(step, { options, run });
-    const values = await respondToWait({ answers, method, options, run, step, visit });
+    const values = await respondToWait({
+      answers,
+      method,
+      options,
+      run,
+      startedAt: new Date(startedAt).toISOString(),
+      step,
+      visit,
+    });
     const accepted = resolveWorkflowInput(answers, values);
     if (!accepted.ok) {
       throw ApplicationFailure.nonRetryable(
@@ -490,6 +499,7 @@ export const ugoke = async (
         method: step.method,
         options: waitOptions,
         ...(step.respondIn === undefined ? {} : { respondIn: step.respondIn }),
+        startedAt: new Date(startedAt).toISOString(),
         step: id,
         visit: visited,
         workflowInputs: resolved.inputs,
@@ -499,7 +509,7 @@ export const ugoke = async (
         // Cancelling the workflow interrupts the wait.
         const received =
           step.respondIn === "worker"
-            ? await answerInWorker(id, visited, step.method, step.answers, waitOptions)
+            ? await answerInWorker(id, visited, step.method, step.answers, waitOptions, startedAt)
             : await condition(() => answer !== undefined).then(() => answer);
         // The update clears it for an answer that comes from outside the Worker.
         waiting = null;

@@ -119,6 +119,7 @@ describe("inbox", () => {
             method: "terminal",
             options: { message: "Deploy list?" },
             run: expect.objectContaining({ workflowId: asked.workflowId }) as unknown,
+            startedAt: expect.any(String) as unknown,
             step: "ask",
             visit: 0,
             workflowInputs: { target: "list" },

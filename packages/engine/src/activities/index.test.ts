@@ -1,4 +1,9 @@
-import { AiTimeoutError, ScriptTimeoutError } from "@ugoke/core";
+import {
+  AiTimeoutError,
+  createPluginRegistry,
+  definePlugin,
+  ScriptTimeoutError,
+} from "@ugoke/core";
 import type {
   AiRequest,
   AiResult,
@@ -8,14 +13,21 @@ import type {
   ScriptRequest,
   ScriptResult,
   ScriptRunner,
+  WaitResponseContext,
   WorkflowEvent,
 } from "@ugoke/core";
 import { MockActivityEnvironment } from "@temporalio/testing";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { maxValueBytes } from "../limits.ts";
 import { createActivities } from "./index.ts";
-import type { AiStepRequest, BranchingScriptStepRequest, ScriptStepRequest } from "./index.ts";
+import type {
+  AiStepRequest,
+  BranchingScriptStepRequest,
+  ScriptStepRequest,
+  WaitRequest,
+} from "./index.ts";
 
 /** An event log that collects the events of every run. */
 const logTo = (events: WorkflowEvent[]): EventLog => ({
@@ -890,4 +902,69 @@ describe("continueOnError", () => {
       type: "AiRunnerUnavailable",
     });
   });
+});
+
+describe("respondToWait", () => {
+  /** When the activity was first scheduled, as the test environment reports it. */
+  const scheduledTimestampMs = Date.parse("2026-01-02T03:04:05.678Z");
+
+  const waitRequest: WaitRequest = {
+    answers: { name: { required: true, type: "string" } },
+    method: "chat",
+    options: { message: "Who are you?" },
+    run: { inputs: {}, workflowId: "deploy" },
+    step: "ask",
+    visit: 0,
+  };
+
+  /** Answers a wait step with a method that records what it receives. */
+  const respondToWait = async (request: Partial<WaitRequest>) => {
+    const contexts: WaitResponseContext<unknown>[] = [];
+    const values = await new MockActivityEnvironment({ scheduledTimestampMs }).run(
+      createActivities({
+        plugins: createPluginRegistry({
+          builtins: [
+            definePlugin({
+              name: "test",
+              waitMethods: [
+                {
+                  name: "chat",
+                  respond: async (context) => {
+                    contexts.push(context);
+                    return { name: "ugoke" };
+                  },
+                  respondIn: "worker",
+                  with: z.strictObject({ message: z.string() }),
+                },
+              ],
+            }),
+          ],
+        }),
+        scriptRunner: { run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }) },
+      }).respondToWait,
+      { ...waitRequest, ...request },
+    );
+    return { contexts, values };
+  };
+
+  it("tells the method when the step started to wait", async () => {
+    const { contexts, values } = await respondToWait({ startedAt: "2026-03-04T05:06:07.890Z" });
+
+    expect(values).toEqual({ name: "ugoke" });
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]?.startedAt).toEqual(new Date("2026-03-04T05:06:07.890Z"));
+  });
+
+  it.each([
+    ["is missing", {}],
+    ["is undefined", { startedAt: undefined }],
+    ["is not a date", { startedAt: "yesterday" }],
+  ])(
+    "uses when the activity was first scheduled when the start %s",
+    async (_case, request: Partial<WaitRequest>) => {
+      const { contexts } = await respondToWait(request);
+
+      expect(contexts[0]?.startedAt).toEqual(new Date(scheduledTimestampMs));
+    },
+  );
 });

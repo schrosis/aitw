@@ -1,4 +1,4 @@
-import { intermediateVersion } from "@ugoke/core";
+import { intermediateVersion, parseDuration } from "@ugoke/core";
 import type {
   InputDeclaration,
   Intermediate,
@@ -8,17 +8,6 @@ import type {
 } from "@ugoke/core";
 
 import type { Definition } from "./schema.js";
-
-const durationUnits: Record<string, number> = { h: 3_600_000, m: 60_000, s: 1000 };
-
-/** Converts a duration that passed the schema, such as `5m`, to milliseconds. */
-const toMilliseconds = (duration: string): number => {
-  const unit = durationUnits[duration.slice(-1)];
-  if (unit === undefined) {
-    throw new Error(`Unsupported duration: ${duration}`);
-  }
-  return Number(duration.slice(0, -1)) * unit;
-};
 
 /** What the method of a wait step describes. */
 export interface WaitResolution {
@@ -62,7 +51,7 @@ const buildStep = (
       ...(step.continueOnError === undefined ? {} : { continueOnError: step.continueOnError }),
       ...(step.env === undefined ? {} : { env: step.env }),
       run: step.run,
-      timeoutMs: toMilliseconds(step.timeout),
+      timeoutMs: parseDuration(step.timeout),
       type: "script",
     };
   }
@@ -76,7 +65,7 @@ const buildStep = (
       prompt: step.prompt,
       provider: step.provider,
       session: step.session,
-      timeoutMs: toMilliseconds(step.timeout),
+      timeoutMs: parseDuration(step.timeout),
       type: "ai",
       with: step.with ?? {},
     };

@@ -112,7 +112,7 @@ aitw inbox answer <workflowId> --step <step> --visit <visit> --values '<JSON>' -
 | 答えて、あとは常駐プロセスに任せる | `aitw inbox answer ... --detach`（常駐プロセスが動かしている実行だけ。`inbox list --from-ai` の `inDaemon` が `true`） |
 | 止める                             | `aitw cancel <workflowId>`。必ずユーザーに確認してから実行する                                                         |
 
-`aitw resume` は人が端末で追いかけるためのコマンドで、対話式の入力を求める。チャットからは使わない。
+`aitw attach` は人が端末で追いかけるためのコマンドで、対話式の入力を求める。チャットからは使わない。
 
 ## 注意
 

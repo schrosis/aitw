@@ -22,8 +22,8 @@ import { projectLockDirectory, projectLogDirectory } from "../state.js";
 import { aitwDirectory, findProjectRoot, resolveWorkflow } from "../workflows.js";
 import type { CommandContext } from "./load.js";
 
-/** Options of {@link resume} and {@link cancel}. */
-export interface ResumeOptions {
+/** Options of {@link attach} and {@link cancel}. */
+export interface AttachOptions {
   /** ID of the run. Without it, the command lists the runs of the project to choose from. */
   workflowId?: string | undefined;
   /**
@@ -35,7 +35,7 @@ export interface ResumeOptions {
   signal: AbortSignal;
   /** Called before the command runs a Worker. */
   prepareEngine?: () => void;
-  /** Resumes a run that another version of aitw started, which can fail. */
+  /** Attaches to a run that another version of aitw started, which can fail. */
   force?: boolean | undefined;
   /**
    * Version of this aitw. When the server is not given, a resident process of the same version
@@ -68,8 +68,8 @@ export const stepOrder = async (root: string, name: string): Promise<string[] | 
 
 /** Finds the project root, and checks that the server keeps its runs. */
 const findRoot = async (
-  action: "cancel" | "resume",
-  { server }: ResumeOptions,
+  action: "cancel" | "attach",
+  { server }: AttachOptions,
   context: CommandContext,
 ): Promise<string | undefined> => {
   const found = await findProjectRoot(context.cwd);
@@ -89,12 +89,12 @@ const findRoot = async (
 /**
  * Selects a running run of the project, by its ID or by asking in the terminal.
  *
- * @param action What the command does with the run, such as `resume`, for messages.
+ * @param action What the command does with the run, such as `attach`, for messages.
  */
 const selectRun = async (
-  action: "cancel" | "resume",
+  action: "cancel" | "attach",
   { address, root }: { address: string; root: string },
-  { signal, workflowId }: ResumeOptions,
+  { signal, workflowId }: AttachOptions,
   context: CommandContext,
   terminal: ReturnType<typeof createTerminal>,
 ): Promise<Selected> => {
@@ -108,7 +108,7 @@ const selectRun = async (
     return { ok: true, run };
   }
   if (runs.length === 0) {
-    context.stdout(`No runs to ${action} in this project\n`);
+    context.stdout(`No runs to ${action === "attach" ? "attach to" : action} in this project\n`);
     return { exitCode: 0, ok: false };
   }
   const run = await chooseRun(runs, terminal, signal);
@@ -120,13 +120,14 @@ const selectRun = async (
 };
 
 /**
- * Resumes a run of the project, such as after the process that started it exited.
+ * Attaches to a run of the project and follows it, such as after the process that started it
+ * exited. When no Worker runs it, the command runs one, so the run goes on.
  *
  * @returns The exit code of the command.
  */
-export const resume = async (options: ResumeOptions, context: CommandContext): Promise<number> => {
+export const attach = async (options: AttachOptions, context: CommandContext): Promise<number> => {
   const { prepareEngine, signal } = options;
-  const root = await findRoot("resume", options, context);
+  const root = await findRoot("attach", options, context);
   if (root === undefined) {
     return 1;
   }
@@ -137,7 +138,7 @@ export const resume = async (options: ResumeOptions, context: CommandContext): P
     server = opened.server;
     const { servedTaskQueue } = opened;
     const selected = await selectRun(
-      "resume",
+      "attach",
       { address: server.address, root },
       options,
       context,
@@ -199,7 +200,7 @@ export const resume = async (options: ResumeOptions, context: CommandContext): P
  *
  * @returns The exit code of the command.
  */
-export const cancel = async (options: ResumeOptions, context: CommandContext): Promise<number> => {
+export const cancel = async (options: AttachOptions, context: CommandContext): Promise<number> => {
   const { prepareEngine, signal } = options;
   const root = await findRoot("cancel", options, context);
   if (root === undefined) {

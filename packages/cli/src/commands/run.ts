@@ -141,7 +141,7 @@ const runWorkflowCommand = async (
         taskQueue: servedTaskQueue,
       });
       context.stdout(
-        `${name}: started ${workflowId} in aitw daemon. Its questions wait in "aitw inbox list", and "aitw resume ${workflowId}" follows it\n`,
+        `${name}: started ${workflowId} in aitw daemon. Its questions wait in "aitw inbox list", and "aitw attach ${workflowId}" follows it\n`,
       );
       return 0;
     }
@@ -157,10 +157,10 @@ const runWorkflowCommand = async (
               ...options,
               inputs: read.values,
               intermediate: workflow.intermediate,
-              // The memo marks the run, so that aitw resume can find the runs of a project.
+              // The memo marks the run, so that aitw attach can find the runs of a project.
               memo,
               name,
-              // aitw resume does not follow a run that this process follows.
+              // aitw attach does not follow a run that this process follows.
               onStart: (workflowId) => {
                 lock = acquireRunLock(projectLockDirectory(root), workflowId);
                 if (fromAi) {

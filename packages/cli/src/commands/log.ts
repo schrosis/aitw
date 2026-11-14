@@ -15,7 +15,7 @@ import type { ServerOptions } from "../server.js";
 import { projectLogDirectory } from "../state.js";
 import { aitwDirectory, findProjectRoot } from "../workflows.js";
 import type { CommandContext } from "./load.js";
-import { stepOrder } from "./resume.js";
+import { stepOrder } from "./attach.js";
 
 /** Interval of checking whether a followed run still runs, in milliseconds. */
 const runningPollIntervalMs = 1000;

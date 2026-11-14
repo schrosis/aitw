@@ -221,7 +221,7 @@ describe("run", () => {
       [
         "Waiting for the running step to finish, so that the run can be resumed.",
         "Press Ctrl+C again to exit now. The running step will fail, and the run cannot be resumed.",
-        `run-detach: detached. Run "aitw resume --address ${environment.address}" to continue`,
+        `run-detach: detached. Run "aitw attach --address ${environment.address}" to continue`,
         "",
       ].join("\n"),
     );

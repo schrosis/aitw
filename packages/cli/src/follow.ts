@@ -189,7 +189,7 @@ export const followRun = async (
         runningStep = undefined;
       }
       if (fromAi) {
-        // The output of steps can be long, and a program reads it with aitw resume if needed.
+        // The output of steps can be long, and a program reads it with aitw log if needed.
         if (event.type !== "stepOutput") {
           write(event);
         }
@@ -286,7 +286,7 @@ export const followRun = async (
         }
         return detachedExitCode;
       }
-      context.stderr(`${name}: detached. Run "aitw resume${server.options}" to continue\n`);
+      context.stderr(`${name}: detached. Run "aitw attach${server.options}" to continue\n`);
       return detachedExitCode;
     }
     if (fromAi) {
@@ -317,7 +317,7 @@ export const followRun = async (
     }
     if (error instanceof IncompatibleRunError) {
       context.stderr(
-        `${name}: ${error.message}. Resume it with the version of aitw that started it, or pass --force to try anyway\n`,
+        `${name}: ${error.message}. Attach to it with the version of aitw that started it, or pass --force to try anyway\n`,
       );
       return 1;
     }

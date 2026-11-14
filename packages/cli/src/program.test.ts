@@ -59,7 +59,7 @@ describe("createProgram", () => {
       "help",
       "Run workflows:",
       "run",
-      "resume",
+      "attach",
       "cancel",
       "inbox",
       "log",

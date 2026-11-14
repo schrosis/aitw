@@ -94,7 +94,7 @@ export interface AnswerTarget {
  * Formats a question with the command that answers it.
  *
  * `aitw inbox answer` answers only a run that the resident process runs, so another run is
- * answered with `aitw resume`, which follows it.
+ * answered with `aitw attach`, which follows it.
  */
 export const formatQuestion = (
   question: InboxQuestion,
@@ -129,7 +129,7 @@ export const formatQuestion = (
   lines.push(
     run.taskQueue === servedTaskQueue
       ? `  aitw inbox answer ${run.workflowId} --step ${step} --visit ${visit} --values '{...}' --detach${serverOptions}`
-      : `  aitw resume ${run.workflowId}${serverOptions}  (aitw daemon does not run it)`,
+      : `  aitw attach ${run.workflowId}${serverOptions}  (aitw daemon does not run it)`,
   );
   return `${lines.join("\n")}\n`;
 };
@@ -188,7 +188,7 @@ const listQuestions = async (options: InboxOptions, context: CommandContext): Pr
       }
       for (const { reason, run } of unreadable) {
         context.stderr(
-          `${run.workflowId}: cannot read what it waits for: ${reason}. Run "aitw resume ${run.workflowId}${server.options}" to follow it\n`,
+          `${run.workflowId}: cannot read what it waits for: ${reason}. Run "aitw attach ${run.workflowId}${server.options}" to follow it\n`,
         );
       }
       if (questions.length === 0) {
@@ -263,7 +263,7 @@ const answerQuestion = async (options: AnswerOptions, context: CommandContext): 
       // process.
       if (servedTaskQueue === undefined || run.taskQueue !== servedTaskQueue) {
         context.stderr(
-          `${run.name}: aitw daemon does not run ${workflowId}, so it would stop after the answer. Run "aitw resume ${workflowId}${server.options}" to answer and follow it\n`,
+          `${run.name}: aitw daemon does not run ${workflowId}, so it would stop after the answer. Run "aitw attach ${workflowId}${server.options}" to answer and follow it\n`,
         );
         return 1;
       }

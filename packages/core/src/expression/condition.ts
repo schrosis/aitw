@@ -1,4 +1,5 @@
-import { expandIndexes } from "./template.js";
+import { ExpressionError, tokenize } from "./lexer.js";
+import type { Operator, Token } from "./lexer.js";
 
 /** A condition of a transition, as a tree. */
 export type Condition =
@@ -16,58 +17,11 @@ export type ParseConditionResult =
 /** Result of {@link evaluateCondition}. */
 export type EvaluateConditionResult = { ok: true; value: boolean } | { ok: false; message: string };
 
-type Token =
-  | { kind: "operator"; value: string }
-  | { kind: "literal"; value: boolean | number | string | null }
-  | { kind: "reference"; path: string[] };
-
-// Names can start with _, unlike those of a template, because environment variables can.
-const tokenPattern =
-  /\s*(?:(?<operator>==|!=|&&|\|\||!|\(|\))|'(?<text>(?:[^']|'')*)'|(?<number>-?\d+(?:\.\d+)?)|(?<name>[A-Za-z_][A-Za-z0-9_]*(?:\[\d+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[\d+\])?)*))/uy;
-
-const keywords: ReadonlyMap<string, boolean | null> = new Map([
-  ["false", false],
-  ["null", null],
-  ["true", true],
-]);
-
-/** A problem in a condition, which the functions of this module report as a result. */
-class ConditionError extends Error {}
-
-const tokenize = (expression: string): Token[] => {
-  const tokens: Token[] = [];
-  const end = expression.trimEnd().length;
-  tokenPattern.lastIndex = 0;
-  while (tokenPattern.lastIndex < end) {
-    const position = tokenPattern.lastIndex;
-    const groups = tokenPattern.exec(expression)?.groups;
-    if (groups === undefined) {
-      throw new ConditionError(`Unexpected text: ${expression.slice(position).trim()}`);
-    }
-    const { name, number, operator, text } = groups;
-    if (operator !== undefined) {
-      tokens.push({ kind: "operator", value: operator });
-    } else if (text !== undefined) {
-      tokens.push({ kind: "literal", value: text.replaceAll("''", "'") });
-    } else if (number !== undefined) {
-      tokens.push({ kind: "literal", value: Number(number) });
-    } else if (name !== undefined) {
-      const keyword = keywords.get(name);
-      tokens.push(
-        keyword === undefined
-          ? { kind: "reference", path: expandIndexes(name.split(".")) }
-          : { kind: "literal", value: keyword },
-      );
-    }
-  }
-  return tokens;
-};
-
 /** Parses tokens, where `||` binds loosest, then `&&`, the comparisons, and `!`. */
 const parseTokens = (tokens: readonly Token[]): Condition => {
   let index = 0;
 
-  const takeOperator = (...operators: readonly string[]): string | undefined => {
+  const takeOperator = (...operators: readonly Operator[]): Operator | undefined => {
     const token = tokens[index];
     if (token?.kind === "operator" && operators.includes(token.value)) {
       index += 1;
@@ -80,13 +34,13 @@ const parseTokens = (tokens: readonly Token[]): Condition => {
     if (takeOperator("(") !== undefined) {
       const inner = parseOr();
       if (takeOperator(")") === undefined) {
-        throw new ConditionError("Expected )");
+        throw new ExpressionError("Expected )");
       }
       return inner;
     }
     const token = tokens[index];
     if (token === undefined || token.kind === "operator") {
-      throw new ConditionError(
+      throw new ExpressionError(
         token === undefined ? "Expected a value at the end" : `Unexpected ${token.value}`,
       );
     }
@@ -127,7 +81,7 @@ const parseTokens = (tokens: readonly Token[]): Condition => {
   const condition = parseOr();
   const rest = tokens[index];
   if (rest !== undefined) {
-    throw new ConditionError(
+    throw new ExpressionError(
       rest.kind === "operator" ? `Unexpected ${rest.value}` : "Expected an operator",
     );
   }
@@ -149,10 +103,10 @@ export const parseCondition = (text: string): ParseConditionResult => {
     return { message: `A condition must be one \${{ }} expression: ${text}`, ok: false };
   }
   try {
-    const tokens = tokenize(source.slice(open.length, -close.length));
+    const tokens = tokenize(source.slice(open.length, -close.length), "condition");
     return { condition: parseTokens(tokens), ok: true };
   } catch (error) {
-    if (error instanceof ConditionError) {
+    if (error instanceof ExpressionError) {
       return { message: `Invalid condition: ${source}. ${error.message}`, ok: false };
     }
     throw error;
@@ -199,7 +153,7 @@ const readReference = (
 
 const expectBoolean = (value: unknown): boolean => {
   if (typeof value !== "boolean") {
-    throw new ConditionError(
+    throw new ExpressionError(
       `Expected true or false but found ${value === null ? "null" : typeof value}`,
     );
   }
@@ -255,7 +209,7 @@ export const evaluateCondition = (
   try {
     return { ok: true, value: expectBoolean(evaluate(condition, context)) };
   } catch (error) {
-    if (error instanceof ConditionError) {
+    if (error instanceof ExpressionError) {
       return { message: error.message, ok: false };
     }
     throw error;

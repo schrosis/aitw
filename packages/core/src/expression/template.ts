@@ -1,4 +1,5 @@
 import { identifierSource } from "../identifier.js";
+import { expandIndexes } from "./lexer.js";
 
 /** A part of a template: literal text or a reference such as `steps.fetch.outputs.title`. */
 export type TemplatePart =
@@ -12,15 +13,6 @@ export type Template = TemplatePart[];
 export type ParseTemplateResult = { ok: true; template: Template } | { ok: false; message: string };
 
 const segmentPattern = new RegExp(`^${identifierSource}(?:\\[\\d+\\])?$`, "u");
-
-/** Splits the indexes off the segments of a path, such as `visits[0]` into `visits` and `0`. */
-export const expandIndexes = (segments: readonly string[]): string[] =>
-  segments.flatMap((segment) => {
-    const match = /^(?<name>[^[\]]+)\[(?<index>\d+)\]$/u.exec(segment);
-    return match?.groups?.name !== undefined && match.groups.index !== undefined
-      ? [match.groups.name, match.groups.index]
-      : [segment];
-  });
 
 const open = "${{";
 const close = "}}";

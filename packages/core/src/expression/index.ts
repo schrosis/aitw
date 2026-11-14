@@ -8,6 +8,7 @@ export { embedValue, evaluateTemplate, pickReferences } from "./evaluate.js";
 export type { EvaluateResult } from "./evaluate.js";
 export { parseTemplate } from "./template.js";
 export type { ParseTemplateResult, Template, TemplatePart } from "./template.js";
+export type { ValueExpression } from "./value.js";
 
 /** Parses and evaluates a string that may contain `${{ }}` references. */
 export const evaluateExpression = (

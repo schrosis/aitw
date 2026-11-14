@@ -55,6 +55,7 @@ export type {
   ParseTemplateResult,
   Template,
   TemplatePart,
+  ValueExpression,
 } from "./expression/index.js";
 export {
   checkDotenvPath,

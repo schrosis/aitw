@@ -142,6 +142,12 @@ describe("renderMermaid", () => {
     expect(labelOf("${{ a == 'x || y' && b }}")).toBe("a == 'x || y'<br/>&& b");
   });
 
+  it("keeps the parentheses and quotes of a condition that calls a function", () => {
+    expect(labelOf("${{ trim(outputs.x) == 'ok' && outputs.y != 'a&&b' }}")).toBe(
+      "trim(outputs.x) == 'ok'<br/>&& outputs.y != 'a&&b'",
+    );
+  });
+
   it("writes a condition of several lines as its parts", () => {
     expect(labelOf("${{ a == 1\n  || b == 2 }}")).toBe("a == 1<br/>|| b == 2");
   });

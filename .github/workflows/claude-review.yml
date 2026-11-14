@@ -237,8 +237,14 @@ jobs:
           # Submit the review on the reviewed commit, which a later push does not change.
           # Approving requires "Allow GitHub Actions to create and approve pull requests".
           # A failure leaves a warning, so that the status below is still reported.
+          # The body starts with the kind of the review, as the comments before did.
           if [ -n "$event" ]; then
-            jq -n --arg body "${summary:-$verdict}" --arg event "$event" --arg commit_id "$SHA" \
+            heading="$event"
+            if [ "$verdict" != "$event" ]; then
+              heading="${event}（判定は ${verdict} ですが、未解決の必須のスレッドが残っています）"
+            fi
+            body="$(printf '%s\n\n%s' "$heading" "$summary")"
+            jq -n --arg body "$body" --arg event "$event" --arg commit_id "$SHA" \
               '{body: $body, event: $event, commit_id: $commit_id}' \
               | gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" --input - > /dev/null \
               || echo "::warning::Could not submit the $event review"

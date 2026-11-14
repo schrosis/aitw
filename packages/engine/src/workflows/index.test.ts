@@ -662,6 +662,92 @@ describe("aitw", () => {
     });
   }, 60_000);
 
+  it("evaluates a function call in the inputs of a step", async () => {
+    const { requests, result } = await run(
+      {
+        ...intermediate,
+        inputs: { title: { required: true, type: "string" } },
+        steps: {
+          fetch: { ...step("./fetch.sh", "report"), outputs: { title: "${{ result.stdout }}" } },
+          report: {
+            ...step('./report.sh "${{ inputs.title }}" "${{ inputs.name }}"', null),
+            inputs: {
+              name: "${{ trim(workflow.inputs.title) }}",
+              title: "[${{ trim(steps.fetch.outputs.title) }}]",
+            },
+          },
+        },
+      },
+      {},
+      { "./fetch.sh": "  hello \n\n" },
+      { title: "\taitw " },
+    );
+
+    expect(result).toEqual({ ok: true, value: { executedSteps: ["fetch", "report"] } });
+    expect(requests.at(-1)).toEqual({
+      inputs: { name: "aitw", title: "[hello]" },
+      run: './report.sh "[hello]" "aitw"',
+      timeoutMs: 5000,
+    });
+  }, 60_000);
+
+  it("stops when a function in the inputs of a step gets a workflow input that is not given", async () => {
+    const { requests, result } = await run(
+      {
+        ...intermediate,
+        inputs: { note: { required: false, type: "string" } },
+        steps: {
+          fetch: step("./fetch.sh", "report"),
+          report: {
+            ...step("./report.sh", null),
+            inputs: { note: "${{ trim(workflow.inputs.note) }}" },
+          },
+        },
+      },
+      {},
+      {},
+      {},
+    );
+
+    expect(result).toMatchObject({
+      error: {
+        cause: {
+          message:
+            "steps.report.inputs.note: trim expects a string but got null: ${{ trim(workflow.inputs.note) }}",
+          nonRetryable: true,
+          type: "InvalidExpression",
+        },
+      },
+      ok: false,
+    });
+    expect(requests.map(({ run: command }) => command)).toEqual(["./fetch.sh"]);
+  }, 60_000);
+
+  it("sends the outputs referenced in the argument of a function to a step", async () => {
+    const { requests, stepRequests } = await run(
+      {
+        ...intermediate,
+        steps: {
+          fetch: {
+            ...step("./fetch.sh", "report"),
+            outputs: { title: "${{ result.stdout }}", unused: "${{ result.stderr }}" },
+          },
+          report: {
+            ...step('./report.sh "${{ trim(steps.fetch.outputs.title) }}"', null),
+            outputs: { title: "${{ trim(steps.fetch.outputs.title) }}" },
+          },
+        },
+      },
+      {},
+      { "./fetch.sh": " hello \n" },
+    );
+
+    expect(stepRequests.at(-1)?.references).toEqual({
+      steps: { fetch: { outputs: { title: " hello " } } },
+    });
+    expect(requests.at(-1)?.run).toBe('./report.sh "hello"');
+  }, 60_000);
+
   it("fails when the combined input exceeds the size limit", async () => {
     const half = "x".repeat(300 * 1024);
     const { requests, result } = await run(

@@ -20,6 +20,11 @@ export const describeType = (value: unknown): string =>
  * Removes the white space and line terminators at the start and the end of a string, as
  * `String.prototype.trim` does. It fails on any other value, including `null`, rather than
  * converting it.
+ *
+ * A value that is absent is `null`, so passing one fails: the outputs of a step that has not run,
+ * such as one on another branch or after a loop in its first round, an optional input that is not
+ * given, or `result.data` of an AI step that failed. The `result.stdout` and `result.stderr` of a
+ * script are always strings.
  */
 export const trim: Helper = {
   arity: { max: 1, min: 1 },

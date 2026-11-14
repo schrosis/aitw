@@ -16,6 +16,7 @@ describe("createAiTerminalPlugin", () => {
     const answering = method.respond({
       answers: { ok: { required: true, type: "boolean" } },
       config: undefined,
+      log: () => {},
       options: { message: "Deploy?", schema: {} },
       run: { inputs: { target: "prod" }, workflowId: "deploy-1" },
       signal: controller.signal,

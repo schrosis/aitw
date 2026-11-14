@@ -258,6 +258,7 @@ describe("ugoke wait steps that the Worker answers", () => {
           {
             answers: { name: { required: true, type: "string" } },
             config: undefined,
+            log: expect.any(Function) as unknown,
             options: { message: "Hello, who are you?" },
             run: { inputs: { greeting: "Hello" }, workflowId: handle.workflowId },
             startedAt: expect.any(Date) as unknown,

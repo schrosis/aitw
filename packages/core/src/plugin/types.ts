@@ -83,6 +83,13 @@ export interface WaitResponseContext<Options, Config = unknown> {
    * method can tell what happened while the step waited from what happened before.
    */
   startedAt: Date;
+  /**
+   * Writes a line to the log of the Worker, for those who operate it, such as that errors keep
+   * occurring.
+   *
+   * Some Workers write nothing. It does not show progress to the user.
+   */
+  log: (message: string) => void;
 }
 
 /** A provider that runs `ai` steps, such as `claude-code`. */

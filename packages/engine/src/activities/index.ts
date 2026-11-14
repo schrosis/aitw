@@ -53,6 +53,11 @@ export interface ActivityDependencies {
    */
   stopping?: AbortSignal | undefined;
   /**
+   * Writes a line to the log of the Worker, such as of the resident process. Nothing is written
+   * when it is omitted.
+   */
+  log?: ((message: string) => void) | undefined;
+  /**
    * Interval of activity heartbeats, in milliseconds.
    *
    * Temporal delivers cancellation to an activity only through heartbeats. Keep it shorter
@@ -304,6 +309,8 @@ const discardEvents: EventLog = {
   read: async () => ({ cursor: "", events: [] }),
 };
 
+const discardLog = (): void => {};
+
 /** Reasons of an aborted activity that mean the step itself failed. */
 const failedAbortReasons = new Set(["TIMED_OUT", "HEARTBEAT_DETAILS_CONVERSION_FAILED"]);
 
@@ -413,6 +420,7 @@ export const createActivities = ({
   aiRunner,
   eventLog = discardEvents,
   heartbeatIntervalMs = 5000,
+  log = discardLog,
   plugins = createPluginRegistry(),
   readEnvironment,
   scriptRunner,
@@ -756,11 +764,21 @@ export const createActivities = ({
       const startedAt = readStartedAt(requestedStart, context.info.scheduledTimestampMs);
       const cancelled = context.cancellationSignal;
       const signal = stopping === undefined ? cancelled : AbortSignal.any([cancelled, stopping]);
+      // The log is only for those who operate the Worker, so a failing log must not change the
+      // result of the wait.
+      const writeLog = (message: string): void => {
+        try {
+          log(`steps.${step}: ${message}`);
+        } catch (error) {
+          context.log.warn("Failed to write to the log of the Worker", { error, step });
+        }
+      };
       const heartbeat = setInterval(() => context.heartbeat(), heartbeatIntervalMs);
       try {
         return await method.respond({
           answers,
           config: plugins.waitMethodConfig(name),
+          log: writeLog,
           options: validated.value,
           run,
           signal,

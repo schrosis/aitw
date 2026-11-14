@@ -139,6 +139,7 @@ const respondWith = async (
   const values = await method.respond({
     answers,
     config: undefined,
+    log: () => {},
     options: validated.value,
     run: { inputs: {}, workflowId: "ask-1" },
     signal,
@@ -281,6 +282,7 @@ const respondInteractively = async (
   return method.respond({
     answers: method.answers?.(validated.value, undefined) ?? {},
     config: undefined,
+    log: () => {},
     options: validated.value,
     run: { inputs: {}, workflowId: "ask-1" },
     signal,

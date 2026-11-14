@@ -8,9 +8,9 @@ export type {
   StepOutput,
 } from "./activities/index.js";
 export {
+  attachWorkflow,
   configureRuntime,
   listRunningWorkflows,
-  resumeWorkflow,
   runWorkflow,
   startWorkflow,
   terminateWorkflow,
@@ -26,9 +26,9 @@ export {
 export { createMemoryEventLog, followEvents } from "./events.js";
 export type { EventFollower, FollowEventsOptions } from "./events.js";
 export type {
+  AttachWorkflowOptions,
   FollowOptions,
   ListRunningWorkflowsOptions,
-  ResumeWorkflowOptions,
   RunningWorkflow,
   RunOutcome,
   RunWorkflowOptions,

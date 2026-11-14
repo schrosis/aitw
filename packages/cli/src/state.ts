@@ -49,7 +49,7 @@ export const projectLockDirectory = (root: string): string =>
  * The host name keeps the projects of hosts that share a Temporal Server apart. The workflow code
  * version keeps runs of other versions away from this Worker, because replaying them with this
  * code can fail (C12a). A run of another version stays on its task queue until a matching aitw,
- * or `aitw resume --force`, continues it.
+ * or `aitw attach --force`, continues it.
  */
 export const projectTaskQueue = (root: string): string => {
   const host = hostname()

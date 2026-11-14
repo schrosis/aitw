@@ -10,7 +10,7 @@ import { loadEncryptionKey } from "../encryption.ts";
 import { listProjectRuns } from "../runs.ts";
 import { createOutput, fixtureProject } from "../testing.ts";
 import { answerInboxCommand, formatQuestion, listInboxCommand } from "./inbox.ts";
-import { cancel } from "./resume.ts";
+import { cancel } from "./attach.ts";
 import { run } from "./run.ts";
 
 const root = realpathSync(fixtureProject);
@@ -123,7 +123,7 @@ describe("inbox", () => {
           "    name: string (required)",
           "    approve: boolean",
           // The resident process does not run it, so aitw inbox answer would refuse it.
-          `  aitw resume ${workflowId} --address ${environment.address}  (aitw daemon does not run it)`,
+          `  aitw attach ${workflowId} --address ${environment.address}  (aitw daemon does not run it)`,
         ].join("\n"),
       );
     } finally {
@@ -140,7 +140,7 @@ describe("inbox", () => {
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain(`${workflowId}: cannot read what it waits for: `);
       expect(result.stderr).toContain(
-        `Run "aitw resume ${workflowId} --address ${environment.address}" to follow it\n`,
+        `Run "aitw attach ${workflowId} --address ${environment.address}" to follow it\n`,
       );
     } finally {
       await cancelRun(workflowId);
@@ -152,7 +152,7 @@ describe("inbox", () => {
     try {
       await expect(answer(workflowId, '{"name":"aitw"}')).resolves.toEqual({
         exitCode: 1,
-        stderr: `wait-valid: aitw daemon does not run ${workflowId}, so it would stop after the answer. Run "aitw resume ${workflowId} --address ${environment.address}" to answer and follow it\n`,
+        stderr: `wait-valid: aitw daemon does not run ${workflowId}, so it would stop after the answer. Run "aitw attach ${workflowId} --address ${environment.address}" to answer and follow it\n`,
         stdout: "",
       });
     } finally {

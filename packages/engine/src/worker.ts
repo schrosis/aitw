@@ -39,7 +39,7 @@ export interface RunningWorker {
   /**
    * Stops taking tasks, waits for running scripts to finish, and closes the connection.
    *
-   * A script that is stopped fails its step, and the run could not be resumed.
+   * A script that is stopped fails its step, and the run could not be continued.
    */
   stop: () => Promise<void>;
 }

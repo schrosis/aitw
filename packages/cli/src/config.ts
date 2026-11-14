@@ -30,7 +30,7 @@ export const projectConfigSchema = z
           ),
       })
       .optional()
-      .describe("How aitw run and aitw resume show the progress of a run"),
+      .describe("How aitw run and aitw attach show the progress of a run"),
     plugins: z
       .record(
         z

@@ -7,7 +7,7 @@ import { Command, InvalidArgumentError, Option } from "@commander-js/extra-typin
 import { answerInboxCommand, listInboxCommand } from "./commands/inbox.js";
 import type { CommandContext } from "./commands/load.js";
 import { log } from "./commands/log.js";
-import { cancel, resume } from "./commands/resume.js";
+import { attach, cancel } from "./commands/attach.js";
 import { run } from "./commands/run.js";
 import { showDaemonStatus, startDaemon, stopDaemon } from "./daemon/commands.js";
 import { runDaemon } from "./daemon/process.js";
@@ -156,9 +156,9 @@ Without server options, the command uses temporal.address in .aitw/config.yaml, 
 Temporal Server of the resident process that "aitw daemon start" starts. When the resident
 process runs, it runs the steps on that server, so the run keeps going after this command exits.`;
 const interruptHelp = `
-Press Ctrl+C to detach: the run waits in Temporal, and "aitw resume" continues it.
+Press Ctrl+C to detach: the run waits in Temporal, and "aitw attach" continues it.
 A running script finishes first. Press Ctrl+C again to exit now, which fails the running
-step so that the run cannot be resumed. A development server without --dev-db keeps no
+step so that the run cannot be continued. A development server without --dev-db keeps no
 runs, so Ctrl+C cancels the run there. Use "aitw cancel" to stop a run.`;
 
 const addressOption = () =>
@@ -275,15 +275,15 @@ ${daemonHelp}`,
     });
 
   program
-    .command("resume")
-    .description("Resume a run of the project, such as one that was detached")
+    .command("attach")
+    .description("Attach to a run of the project and follow it, such as one that was detached")
     .argument("[workflow-id]", "ID of the run. Without it, the runs of the project are listed")
     .addOption(addressOption())
     .option("--dev", "start a Temporal development server from --dev-db")
     .option("--dev-db <path>", devDbDescription)
     .option("--temporal-bin <path>", temporalBinDescription)
     .option("--dev-ui", devUiDescription)
-    .option("--force", "resume a run that another version of aitw started, which can fail")
+    .option("--force", "attach to a run that another version of aitw started, which can fail")
     .addHelpText(
       "after",
       `${interruptHelp}
@@ -293,7 +293,7 @@ ${daemonHelp}`,
       const server = toServerOptions(options, command);
       const signal = context.interruptSignal();
       context.setExitCode(
-        await resume(
+        await attach(
           {
             version,
             force,
@@ -379,7 +379,7 @@ ${daemonHelp}`,
       `
 One of --from-ai and --detach is required. --detach needs a run that aitw daemon runs, such
 as a run that was detached from "aitw run". To answer a run and follow it in the terminal, use
-"aitw resume".`,
+"aitw attach".`,
     )
     .action(async (workflowId, { address, detach, fromAi, step, values, visit }, command) => {
       if (detach !== true && fromAi !== true) {

@@ -30,7 +30,7 @@ export interface WaitMethod<Options = unknown, Config = unknown> {
    * Where {@link WaitMethod.respond} runs. Defaults to `follower`.
    *
    * - `follower`: the process that follows the run, such as `aitw run`, which has a terminal.
-   *   A run that no process follows is not answered until one resumes it.
+   *   A run that no process follows is not answered until one attaches to it.
    * - `worker`: the Worker of the run, such as of the resident process, also while no process
    *   follows the run. Use it for a method that answers outside the terminal, such as from a
    *   chat. The workflow then accepts answers only from the method.

@@ -62,10 +62,10 @@ export const configureRuntime = ({ logLevel }: RuntimeOptions): void => {
 /** How a run ended for the process that followed it. */
 export type RunOutcome =
   | { status: "completed"; workflowId: string; executedSteps: string[] }
-  /** The process stopped following, and the run waits in Temporal until it is resumed. */
+  /** The process stopped following, and the run waits in Temporal until a process attaches to it. */
   | { status: "detached"; workflowId: string };
 
-/** Options of {@link runWorkflow} and {@link resumeWorkflow}. */
+/** Options of {@link runWorkflow} and {@link attachWorkflow}. */
 export interface FollowOptions {
   /** Address of the Temporal Server, such as `localhost:7233`. */
   address: string;
@@ -91,7 +91,7 @@ export interface FollowOptions {
    * Stops following the run when aborted, and leaves the workflow running in Temporal.
    *
    * The Worker of this process stops taking new tasks, and waits for a running script to
-   * finish, so that the run can be resumed.
+   * finish, so that the run can go on when a process attaches to it.
    */
   detach?: AbortSignal;
   /**
@@ -115,8 +115,8 @@ export interface FollowOptions {
    */
   beforeFollow?: (handle: WorkflowHandle) => Promise<void>;
   /**
-   * Shows only the events that the run stores from now on. By default, a resumed run shows its
-   * earlier events first.
+   * Shows only the events that the run stores from now on. By default, a run that a process attaches
+   * to shows its earlier events first.
    */
   skipEarlierEvents?: boolean;
 }
@@ -143,13 +143,13 @@ export interface RunWorkflowOptions extends FollowOptions {
   taskQueue?: string;
 }
 
-/** Options of {@link resumeWorkflow}. */
-export interface ResumeWorkflowOptions extends FollowOptions {
+/** Options of {@link attachWorkflow}. */
+export interface AttachWorkflowOptions extends FollowOptions {
   /** ID of a running workflow. */
   workflowId: string;
-  /** Cancels the workflow as soon as it is resumed, such as for `aitw cancel`. */
+  /** Cancels the workflow as soon as it attaches to it, such as for `aitw cancel`. */
   cancel?: boolean;
-  /** Resumes a run that workflow code of another version started, which can fail. */
+  /** Attaches to a run that workflow code of another version started, which can fail. */
   force?: boolean;
   /**
    * Task queue that another Worker serves, such as of a resident process. A run on it is followed
@@ -161,7 +161,7 @@ export interface ResumeWorkflowOptions extends FollowOptions {
 /**
  * Time that a detaching Worker waits for a running script to finish.
  *
- * A script that is stopped fails its step, and the run could not be resumed.
+ * A script that is stopped fails its step, and the run could not be continued.
  */
 const detachGraceTime = "1 day";
 
@@ -360,8 +360,8 @@ const follow = async (
     await follower?.stop();
   }
 
-  // The run may have ended while the Worker waited for the last script. A run that cannot be
-  // resumed is reported like any other end, and the result throws when it failed.
+  // The run may have ended while the Worker waited for the last script. A run that has ended
+  // is reported like any other end, and the result throws when it failed.
   if (outcome.status === "detached" && handle !== undefined) {
     const { status } = await handle.describe();
     if (status.name !== "RUNNING") {
@@ -445,12 +445,12 @@ export const startWorkflow = async (options: StartWorkflowOptions): Promise<stri
 };
 
 /**
- * Follows a running workflow with a Worker on its task queue, such as after the process that
- * started it exited.
+ * Attaches to a running workflow and follows it with a Worker on its task queue, such as after
+ * the process that started it exited.
  *
  * @throws When the workflow is not running, or when it fails.
  */
-export const resumeWorkflow = async (options: ResumeWorkflowOptions): Promise<RunOutcome> => {
+export const attachWorkflow = async (options: AttachWorkflowOptions): Promise<RunOutcome> => {
   const { address, cancel = false, force = false, namespace = "default", workflowId } = options;
   return withConnections(address, async (clientConnection, workerConnection) => {
     const client = new Client({

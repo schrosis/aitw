@@ -172,7 +172,7 @@ describe("aitw daemon", () => {
     // aitw run detached at once, because the resident process runs the script.
     expect(run.exitCode).toBe(3);
     expect(run.output).not.toContain("Waiting for the running step");
-    expect(run.output).toContain('run-detach: detached. Run "aitw resume" to continue\n');
+    expect(run.output).toContain('run-detach: detached. Run "aitw attach" to continue\n');
 
     // The resident process finishes the run in the background.
     const finished = '"outcome":"succeeded","step":"report","type":"stepFinished"';

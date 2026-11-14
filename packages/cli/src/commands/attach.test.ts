@@ -11,12 +11,12 @@ import { acquireRunLock } from "../lock.ts";
 import { listProjectRuns } from "../runs.ts";
 import { projectHash, projectLockDirectory, projectMemoKey, workflowMemoKey } from "../state.ts";
 import { createOutput, fixtureProject } from "../testing.ts";
-import { cancel, resume } from "./resume.ts";
+import { attach, cancel } from "./attach.ts";
 import { run } from "./run.ts";
 
 const root = realpathSync(fixtureProject);
 
-describe("resume and cancel", () => {
+describe("attach and cancel", () => {
   let environment: TestWorkflowEnvironment;
 
   beforeAll(async () => {
@@ -62,10 +62,10 @@ describe("resume and cancel", () => {
   };
 
   const execute = async (
-    command: typeof resume,
+    command: typeof attach,
     workflowId?: string,
     stdin = "",
-    target: Parameters<typeof resume>[0]["server"] = server(),
+    target: Parameters<typeof attach>[0]["server"] = server(),
   ) => {
     const output = createOutput();
     const exitCode = await command(
@@ -80,18 +80,18 @@ describe("resume and cancel", () => {
     return { exitCode, ...output.written };
   };
 
-  it("lists the runs of the project and resumes the selected one", async () => {
+  it("lists the runs of the project and attaches to the selected one", async () => {
     const workflowId = await detachWaiting();
     const runs = await listProjectRuns(environment.address, root);
     const index = runs.findIndex((candidate) => candidate.workflowId === workflowId) + 1;
 
-    const result = await execute(resume, undefined, `${index}\nschrosis\ny\n`);
+    const result = await execute(attach, undefined, `${index}\nschrosis\ny\n`);
 
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
     expect(result.stdout).toContain(
       `${index}. wait-valid  waiting at ask: Hello, what is your name?  started just now\n`,
     );
-    // The resumed run shows the earlier progress, and continues from the wait step.
+    // The run that it attaches to shows the earlier progress, and continues from the wait step.
     expect(result.stdout).toMatch(
       /Select a run \(1-\d+\): \d+\nask\n│ > Hello, what is your name\?\nname \(string, required\): schrosis\n/u,
     );
@@ -111,11 +111,11 @@ describe("resume and cancel", () => {
     expect(runs.map((candidate) => candidate.workflowId)).not.toContain(workflowId);
   }, 60_000);
 
-  it("does not resume a run that another process follows", async () => {
+  it("does not attach to a run that another process follows", async () => {
     const workflowId = await detachWaiting();
     const lock = acquireRunLock(projectLockDirectory(root), workflowId);
     try {
-      const result = await execute(resume, workflowId);
+      const result = await execute(attach, workflowId);
 
       expect(result).toMatchObject({ exitCode: 1 });
       expect(result.stderr).toBe(
@@ -127,7 +127,7 @@ describe("resume and cancel", () => {
     }
   }, 60_000);
 
-  it("does not resume a run of another version, and terminates it to cancel it", async () => {
+  it("does not attach to a run of another version, and terminates it to cancel it", async () => {
     const handle = await environment.client.workflow.start("aitw", {
       args: [
         {
@@ -157,15 +157,15 @@ describe("resume and cancel", () => {
       workflowId: `old-${randomUUID()}`,
     });
 
-    const listed = await execute(resume, undefined, "");
+    const listed = await execute(attach, undefined, "");
     expect(listed.stdout).toMatch(
       /\d+\. old {2}starting {2}started just now {2}\(started by another version of aitw\)\n/u,
     );
 
-    const resumed = await execute(resume, handle.workflowId);
-    expect(resumed).toMatchObject({ exitCode: 1 });
-    expect(resumed.stderr).toContain("was started by workflow code version 0");
-    expect(resumed.stderr).toContain("pass --force to try anyway");
+    const attached = await execute(attach, handle.workflowId);
+    expect(attached).toMatchObject({ exitCode: 1 });
+    expect(attached.stderr).toContain("was started by workflow code version 0");
+    expect(attached.stderr).toContain("pass --force to try anyway");
 
     await expect(execute(cancel, handle.workflowId)).resolves.toEqual({
       exitCode: 0,
@@ -177,7 +177,7 @@ describe("resume and cancel", () => {
   }, 60_000);
 
   it("reports a run that is not running in the project", async () => {
-    await expect(execute(resume, "missing-1")).resolves.toEqual({
+    await expect(execute(attach, "missing-1")).resolves.toEqual({
       exitCode: 1,
       stderr: "No running run missing-1 in this project\n",
       stdout: "",
@@ -185,10 +185,10 @@ describe("resume and cancel", () => {
   }, 60_000);
 
   it("needs --dev-db with --dev", async () => {
-    await expect(execute(resume, undefined, "", { type: "dev" })).resolves.toEqual({
+    await expect(execute(attach, undefined, "", { type: "dev" })).resolves.toEqual({
       exitCode: 1,
       stderr:
-        "aitw resume needs --dev-db with --dev, because a development server without it keeps no runs\n",
+        "aitw attach needs --dev-db with --dev, because a development server without it keeps no runs\n",
       stdout: "",
     });
   });

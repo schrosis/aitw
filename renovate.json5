@@ -38,5 +38,11 @@
       groupName: "temporal",
       matchPackageNames: ["@temporalio/*"],
     },
+    {
+      // The prompts depend on @inquirer/core. Updating them together keeps one version of it and
+      // of its dependencies in the lockfile.
+      groupName: "inquirer",
+      matchPackageNames: ["@inquirer/*"],
+    },
   ],
 }

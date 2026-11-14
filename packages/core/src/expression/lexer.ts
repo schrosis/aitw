@@ -77,7 +77,11 @@ export const tokenize = (expression: string, names: ReferenceNames): Token[] => 
       throw new ExpressionError(`Unexpected text: ${expression.slice(position).trim()}`);
     }
     const { name, number, operator, text } = groups;
-    if (operator !== undefined && isOperator(operator)) {
+    if (operator !== undefined) {
+      // The pattern is built from the same list, so this fails only on a bug of this module.
+      if (!isOperator(operator)) {
+        throw new Error(`The pattern matched an unknown operator: ${operator}`);
+      }
       tokens.push({ kind: "operator", value: operator });
     } else if (text !== undefined) {
       tokens.push({ kind: "literal", value: text.replaceAll("''", "'") });

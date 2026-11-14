@@ -70,7 +70,7 @@ describe("validateIntermediate for AI steps", () => {
     expect(errorsOf(review({ outputs: { text: "${{ result.data }}" } }))).toEqual([]);
     expect(errorsOf(review({ outputs: { verdict: "${{ result.data.verdict }}" } }))).toEqual([
       {
-        message: "Step review has no schema, so result.data is text: ${{ result.data.verdict }}",
+        message: "Step review has no schema, so result.data is text: result.data.verdict",
         path: ["steps", "review", "outputs", "verdict"],
       },
     ]);
@@ -109,7 +109,7 @@ describe("validateIntermediate for AI steps", () => {
     ).toEqual([
       {
         message:
-          "The schema of step review does not declare the property summary: ${{ result.data.summary }}",
+          "The schema of step review does not declare the property summary: result.data.summary",
         path: ["steps", "review", "outputs", "summary"],
       },
     ]);

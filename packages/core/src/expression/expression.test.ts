@@ -14,7 +14,11 @@ describe("parseTemplate", () => {
       ok: true,
       template: [
         { type: "text", value: "a " },
-        { path: ["inputs", "title"], source: "${{ inputs.title }}", type: "reference" },
+        {
+          expression: { path: ["inputs", "title"], type: "reference" },
+          source: "${{ inputs.title }}",
+          type: "expression",
+        },
         { type: "text", value: " b" },
       ],
     });
@@ -28,14 +32,140 @@ describe("parseTemplate", () => {
     expect(parseTemplate("")).toEqual({ ok: true, template: [] });
   });
 
+  it.each(["${{ inputs.title", "${{ }}", "${{ inputs..title }}", "${{ inputs.a + 1 }}"])(
+    "rejects %j",
+    (text) => {
+      expect(parseTemplate(text)).toMatchObject({ ok: false });
+    },
+  );
+});
+
+describe("parseTemplate calls", () => {
+  it("parses a call with references, literals, and nested calls in its arguments", () => {
+    expect(
+      parseTemplate("${{ trim(steps.a.visits[0].outputs.v, 'x', 1, trim(result.stdout)) }}"),
+    ).toEqual({
+      ok: true,
+      template: [
+        {
+          expression: {
+            arguments: [
+              { path: ["steps", "a", "visits", "0", "outputs", "v"], type: "reference" },
+              { type: "literal", value: "x" },
+              { type: "literal", value: 1 },
+              {
+                arguments: [{ path: ["result", "stdout"], type: "reference" }],
+                name: "trim",
+                type: "call",
+              },
+            ],
+            name: "trim",
+            type: "call",
+          },
+          source: "${{ trim(steps.a.visits[0].outputs.v, 'x', 1, trim(result.stdout)) }}",
+          type: "expression",
+        },
+      ],
+    });
+  });
+
+  it("parses a call of an unknown function, which validation reports", () => {
+    expect(parseTemplate("${{ json(input) }}")).toEqual({
+      ok: true,
+      template: [
+        {
+          expression: {
+            arguments: [{ path: ["input"], type: "reference" }],
+            name: "json",
+            type: "call",
+          },
+          source: "${{ json(input) }}",
+          type: "expression",
+        },
+      ],
+    });
+  });
+
+  it("reads a name without ( after it as a reference", () => {
+    expect(parseTemplate("${{ trim.x }}")).toMatchObject({
+      ok: true,
+      template: [{ expression: { path: ["trim", "x"], type: "reference" } }],
+    });
+  });
+
+  it("keeps the text around a call", () => {
+    expect(parseTemplate("[${{ trim(inputs.title) }}]")).toMatchObject({
+      ok: true,
+      template: [
+        { type: "text", value: "[" },
+        { expression: { name: "trim", type: "call" }, type: "expression" },
+        { type: "text", value: "]" },
+      ],
+    });
+  });
+
   it.each([
-    "${{ inputs.title",
-    "${{ }}",
-    "${{ inputs..title }}",
-    "${{ json(input) }}",
-    "${{ inputs.a + 1 }}",
-  ])("rejects %j", (text) => {
-    expect(parseTemplate(text)).toMatchObject({ ok: false });
+    ["${{ trim (inputs.title) }}", "Expected the end"],
+    ["${{ trim(inputs.title }}", "Expected )"],
+    ["${{ trim(inputs.title, ) }}", "Expected a value after ,"],
+    ["${{ trim(a == b) }}", "Operators can be used only in the if of next"],
+    ["${{ inputs.a == 'x' }}", "Operators can be used only in the if of next"],
+    ["${{ !inputs.a }}", "Operators can be used only in the if of next"],
+    ["${{ inputs.a && inputs.b }}", "Operators can be used only in the if of next"],
+    ["${{ inputs.a inputs.b }}", "Expected the end"],
+    ["${{ trim(a) trim(b) }}", "Expected the end"],
+    ["${{ 'abc' }}", "Use a reference or a function call"],
+    ["${{ 3 }}", "Use a reference or a function call"],
+    ["${{ true }}", "Use a reference or a function call"],
+    ["${{ null }}", "Use a reference or a function call"],
+    ["${{ }}", "Expected a value at the end"],
+    ["${{ ) }}", "Unexpected )"],
+  ])("rejects %j", (text, detail) => {
+    expect(parseTemplate(text)).toEqual({
+      message: `Invalid expression: ${text}. ${detail}`,
+      ok: false,
+    });
+  });
+
+  it("does not end an expression at }} in a string", () => {
+    expect(parseTemplate("${{ trim('a}}b') }}!")).toEqual({
+      ok: true,
+      template: [
+        {
+          expression: {
+            arguments: [{ type: "literal", value: "a}}b" }],
+            name: "trim",
+            type: "call",
+          },
+          source: "${{ trim('a}}b') }}",
+          type: "expression",
+        },
+        { type: "text", value: "!" },
+      ],
+    });
+  });
+
+  it("reads '' as a quote in a string", () => {
+    expect(parseTemplate("${{ trim('it''s }}') }}")).toMatchObject({
+      ok: true,
+      template: [
+        {
+          expression: { arguments: [{ type: "literal", value: "it's }}" }] },
+          source: "${{ trim('it''s }}') }}",
+        },
+      ],
+    });
+    expect(parseTemplate("${{ trim('') }}")).toMatchObject({
+      ok: true,
+      template: [{ expression: { arguments: [{ type: "literal", value: "" }] } }],
+    });
+  });
+
+  it("reports a string that is not closed", () => {
+    expect(parseTemplate("${{ trim('a) }}")).toEqual({
+      message: "Unterminated expression: ${{ trim('a) }}",
+      ok: false,
+    });
   });
 });
 
@@ -148,6 +278,66 @@ describe("evaluateExpression", () => {
   });
 });
 
+describe("evaluateExpression calls", () => {
+  const values = {
+    inputs: { count: 3, title: "  hello \n" },
+    result: { stdout: " out\n" },
+  };
+
+  it("keeps the string of a single call", () => {
+    expect(evaluateExpression("${{ trim(inputs.title) }}", values)).toEqual({
+      ok: true,
+      value: "hello",
+    });
+    expect(evaluateExpression("${{ trim(trim(' a ')) }}", values)).toEqual({
+      ok: true,
+      value: "a",
+    });
+  });
+
+  it("embeds the value of a call when mixed with text", () => {
+    expect(
+      evaluateExpression("[${{ trim(inputs.title) }}] ${{ trim(result.stdout) }}", values),
+    ).toEqual({ ok: true, value: "[hello] out" });
+  });
+
+  it("fails on an argument that is not a string", () => {
+    expect(evaluateExpression("${{ trim(inputs.count) }}", values)).toEqual({
+      message: "trim expects a string but got number: ${{ trim(inputs.count) }}",
+      ok: false,
+    });
+  });
+
+  it("fails on a step that did not run, which reads as null", () => {
+    expect(evaluateExpression("${{ trim(steps.report.outputs.title) }}", values)).toEqual({
+      message: "trim expects a string but got null: ${{ trim(steps.report.outputs.title) }}",
+      ok: false,
+    });
+    expect(evaluateExpression("[${{ trim(steps.report.outputs.title) }}]", values)).toEqual({
+      message: "trim expects a string but got null: ${{ trim(steps.report.outputs.title) }}",
+      ok: false,
+    });
+  });
+
+  it("reports an unknown reference in an argument with the whole expression", () => {
+    expect(evaluateExpression("a ${{ trim(inputs.missing) }}", values)).toEqual({
+      message: "Unknown reference: ${{ trim(inputs.missing) }}",
+      ok: false,
+    });
+  });
+
+  it("guards an unknown function and a wrong number of arguments", () => {
+    expect(evaluateExpression("${{ json(inputs.title) }}", values)).toEqual({
+      message: "Unknown function: json: ${{ json(inputs.title) }}",
+      ok: false,
+    });
+    expect(evaluateExpression("${{ trim(inputs.title, inputs.title) }}", values)).toEqual({
+      message: "trim takes 1 argument but got 2: ${{ trim(inputs.title, inputs.title) }}",
+      ok: false,
+    });
+  });
+});
+
 describe("pickReferences", () => {
   const roots = new Set(["steps", "workflow"]);
   const values = {
@@ -188,6 +378,22 @@ describe("pickReferences", () => {
     );
 
     expect(picked).toEqual({ steps: { review: { outputs: { data: null } } } });
+  });
+
+  it("picks the references in the arguments of calls", () => {
+    expect(
+      pickReferences(
+        [
+          "${{ trim(steps.fetch.outputs.title) }}",
+          "[${{ trim(trim(workflow.inputs.level)) }}] ${{ trim(inputs.title) }}",
+        ],
+        values,
+        roots,
+      ),
+    ).toEqual({
+      steps: { fetch: { outputs: { title: "hello" } } },
+      workflow: { inputs: { level: "high" } },
+    });
   });
 
   it("skips unknown references and invalid templates", () => {

@@ -53,6 +53,7 @@ export type {
   EvaluateResult,
   ParseConditionResult,
   ParseTemplateResult,
+  ReferenceOrCall,
   Template,
   TemplatePart,
   ValueExpression,

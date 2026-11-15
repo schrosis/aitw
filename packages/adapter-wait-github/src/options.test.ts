@@ -268,6 +268,7 @@ describe("githubConfigSchema", () => {
     ["10s", 10_000],
     ["1m", 60_000],
     ["1h", 3_600_000],
+    ["168h", 604_800_000],
   ])("converts a pollInterval of %s to milliseconds", (pollInterval, ms) => {
     expect(validateWithSchema(githubConfigSchema, { pollInterval })).toEqual({
       ok: true,
@@ -278,6 +279,13 @@ describe("githubConfigSchema", () => {
   it("rejects a pollInterval shorter than 10 seconds", () => {
     expect(validateWithSchema(githubConfigSchema, { pollInterval: "9s" })).toEqual({
       errors: [{ message: "Must be 10s or longer", path: ["pollInterval"] }],
+      ok: false,
+    });
+  });
+
+  it("rejects a pollInterval longer than 168 hours", () => {
+    expect(validateWithSchema(githubConfigSchema, { pollInterval: "169h" })).toEqual({
+      errors: [{ message: "Must be 168h or shorter", path: ["pollInterval"] }],
       ok: false,
     });
   });

@@ -206,6 +206,9 @@ export const resolveTarget = (options: GithubPrOptions): PullRequestTarget => {
 /** Shortest interval between checks of GitHub. */
 export const minPollIntervalMs = 10_000;
 
+/** Longest interval between checks of GitHub. */
+export const maxPollIntervalMs = 168 * 60 * 60_000;
+
 /** Schema of the settings of the `github` plugin in `.ugoke/config.yaml`. */
 export const githubConfigSchema = z.strictObject({
   pollInterval: z
@@ -214,6 +217,7 @@ export const githubConfigSchema = z.strictObject({
     .default("30s")
     .transform(parseDuration)
     .refine((ms) => ms >= minPollIntervalMs, "Must be 10s or longer")
+    .refine((ms) => ms <= maxPollIntervalMs, "Must be 168h or shorter")
     .describe("Interval between checks of GitHub, such as 30s or 1m"),
 });
 

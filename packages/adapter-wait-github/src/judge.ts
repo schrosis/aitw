@@ -67,6 +67,8 @@ const judgeChecks = (snapshot: PullRequestSnapshot, names: readonly string[]): J
   const failedNames: string[] = [];
   const matchedChecks: Check[] = [];
   for (const name of names) {
+    // The source returns only the latest result of each check, so checks of the same name are
+    // different jobs, such as jobs of the same name in different workflows.
     const checks = snapshot.checks.filter((check) => check.name === name);
     // A name that has not appeared yet is not completed.
     if (checks.length === 0 || !checks.every(isCompleted)) {
@@ -101,13 +103,22 @@ const judgeReviews = (
   const since = Math.floor(startedAt.getTime() / 1000) * 1000;
   const states = options.review?.states;
   const authors = options.review?.authors?.map(normalizeLogin);
-  const review = snapshot.reviews.find(
+  const newReviews = snapshot.reviews.filter(
     (candidate): candidate is CountedReview =>
       isCountedState(candidate) &&
       candidate.submittedAt !== null &&
       Date.parse(candidate.submittedAt) >= since &&
       (states === undefined || states.includes(candidate.state)) &&
       (authors === undefined || authors.includes(normalizeLogin(candidate.author))),
+  );
+  // Reviews are in the order that they were created, and a pending review is submitted later than
+  // the reviews created after it, so the earliest submission is not always the first.
+  const review = newReviews.reduce<CountedReview | undefined>(
+    (earliest, candidate) =>
+      earliest === undefined || Date.parse(candidate.submittedAt) < Date.parse(earliest.submittedAt)
+        ? candidate
+        : earliest,
+    undefined,
   );
   if (review === undefined) {
     return waiting;

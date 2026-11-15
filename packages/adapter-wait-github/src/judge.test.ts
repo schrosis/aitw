@@ -439,6 +439,19 @@ describe("judge", () => {
       });
     });
 
+    it("answers the earliest submission over the order that the reviews were created", () => {
+      // The first review was pending and was submitted after the second one.
+      const reviews = [
+        reviewOf({ submittedAt: "2026-11-14T03:20:00Z", url: `${url}#pullrequestreview-1` }),
+        reviewOf({ submittedAt: "2026-11-14T03:10:00Z", url: `${url}#pullrequestreview-2` }),
+      ];
+
+      expect(judgeReviews(reviews)).toMatchObject({
+        type: "answer",
+        values: { occurredAt: "2026-11-14T03:10:00Z", reviewUrl: `${url}#pullrequestreview-2` },
+      });
+    });
+
     it("does not answer the values of checks", () => {
       const judgement = judge(
         snapshotOf({ checks: [checkRunOf("test", null)], reviews: [reviewOf()] }),

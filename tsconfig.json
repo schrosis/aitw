@@ -9,6 +9,7 @@
     { "path": "packages/dotenv" },
     { "path": "packages/adapter-ai-claude-code" },
     { "path": "packages/adapter-wait-terminal" },
+    { "path": "packages/adapter-wait-github" },
     { "path": "packages/cli" }
   ]
 }

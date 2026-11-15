@@ -17,13 +17,20 @@ const officialAiProviders: Readonly<Record<string, string>> = {
   "claude-code": "@ugoke/adapter-ai-claude-code",
 };
 
+/** Packages of the official plugins, keyed by the names of the wait methods that they provide. */
+const officialWaitMethods: Readonly<Record<string, string>> = {
+  github_pr: "@ugoke/adapter-wait-github",
+};
+
 /**
  * Tells which package provides an official extension that no loaded plugin provides.
  *
  * Only the terminal is built in, so a project installs and names the other plugins.
  */
 export const missingHint: MissingHint = (kind, name) => {
-  const packageName = kind === "aiProvider" ? officialAiProviders[name] : undefined;
+  const packages = kind === "aiProvider" ? officialAiProviders : officialWaitMethods;
+  // Names such as `toString` are not official extensions, even though objects inherit them.
+  const packageName = Object.hasOwn(packages, name) ? packages[name] : undefined;
   return packageName === undefined
     ? undefined
     : `Install ${packageName} and add it to plugins in .ugoke/config.yaml`;

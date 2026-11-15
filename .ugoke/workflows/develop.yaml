@@ -1,0 +1,352 @@
+$schema: ../schemas/workflow.schema.json
+
+version: v0.1
+
+inputs:
+  name:
+    type: string
+    required: true
+    description: plan で作った作業の名前。docs/work/<name>/tasks.md の、まだ終わっていない最初のタスクを実装する
+
+env:
+  WORK_NAME: ${{ workflow.inputs.name }}
+
+start: pick
+
+steps:
+  # 1. タスクを拾う
+  # 先頭の `- [ ] ` の行から、次のタスクの行の前までを 1 つのタスクとして出す。
+  pick:
+    type: script
+    run: |
+      case "$WORK_NAME" in
+        '' | -* | *[!a-z0-9-]*)
+          echo "The name must contain only lowercase letters, digits, or -, and not start with -: $WORK_NAME" >&2
+          exit 1
+          ;;
+      esac
+      dir="docs/work/$WORK_NAME"
+      for file in requirements.md design.md tasks.md; do
+        if [ ! -f "$dir/$file" ]; then
+          echo "$dir/$file does not exist. Run the plan workflow first" >&2
+          exit 1
+        fi
+      done
+      task=$(awk '
+        /^- \[ \] / { if (found) exit; found = 1; print; next }
+        found && /^- / { exit }
+        found && /^[^ \t]/ && !/^[[:space:]]*$/ { exit }
+        found { print }
+      ' "$dir/tasks.md")
+      if [ -z "$task" ]; then
+        echo "Every task in $dir/tasks.md is done" >&2
+        exit 1
+      fi
+      printf '%s\n' "$task"
+    outputs:
+      task: ${{ trim(result.stdout) }}
+    next: implement
+
+  # 2. 実装
+  implement:
+    type: ai
+    provider: claude-code
+    model: claude-opus-5-5
+    timeout: 60m
+    prompt: |
+      ugoke リポジトリで、次のタスクを実装してください。
+      コミット、push、ブランチの作成はしないでください。
+      docs/work/${{ workflow.inputs.name }}/ の文書は変更しないでください。変更が要るときは、下の
+      `人間の判断を仰ぐとき` に従ってください。
+
+      ## タスク
+      ${{ steps.pick.outputs.task }}
+
+      ## 要件、設計、タスクの一覧
+      docs/work/${{ workflow.inputs.name }}/ の requirements.md、design.md、tasks.md を読んで、
+      それに沿って実装してください。
+
+      ## 確かめ方
+      pnpm check は、あなたが作業を終えた後にワークフローが実行し、失敗したら結果を渡して戻します。
+      あなたは pnpm check を実行せず、変更に関係するものだけを実行してください。
+      たとえば pnpm --filter <パッケージ> test、pnpm typecheck、pnpm lint です。
+      ugoke パッケージのテストにはビルドの結果が要るため、その場合は先に pnpm build を実行してください。
+
+      ## これまでのまとめ（前回あなたが書いたもの。空なら初回）
+      ${{ steps.implement.outputs.summary }}
+
+      ## 前回の pnpm check の結果（空なら未実行）
+      ${{ steps.check.outputs.log }}
+
+      ## 最後に受けたレビューの指摘（空ならなし）
+      ${{ steps.review.outputs.findings }}
+
+      ## 最後に受けた判断の回答（空ならなし）
+      ${{ steps.decide.outputs.answer }}
+
+      上の指摘や回答のうち、まだ対応していないものに対応してください。
+      これまでのまとめで対応済みのものに、もう一度対応する必要はありません。
+
+      ## 人間の判断を仰ぐとき
+      次のような、あなたが決めるべきでないことにぶつかったら、作業を途中で止めて status を
+      needs_decision にし、question に判断してほしいことを書いてください。
+      - 要件、設計、タスクの一覧から外れる必要がある。またはそれらが間違っている、足りない
+      - 仕様が曖昧で、妥当な解釈が複数あり、どれを選ぶかで結果が変わる
+      - 公開 API、設定、データの形式など、後から変えにくいものを決める必要がある
+      - 依存の追加、ファイルの削除など、設計にない大きな変更が要る
+      question には、背景、選択肢、あなたのおすすめとその理由を書いてください。
+      要件、設計、タスクの一覧を直すべきなら、そのこともおすすめに書いてください。
+      既存のコード、要件と設計から判断できることは、聞かずに進めてください。
+
+      作業を終えたら status を done にし、question は空にしてください。
+
+      ## 要件、設計、タスクの一覧への反映
+      タスクを終えると、ワークフローが tasks.md のこのタスクに完了の印を付けます。
+      次のどれかに当たるときだけ、reflect を true にしてください。別のステップが文書を直します。
+      - 実装が要件や設計から外れた。または、実装の中で要件や設計にないことを決めた
+      - 後のタスクの内容を直す必要がある気づきがある
+      どれにも当たらなければ false にしてください。
+
+      ## まとめの書き方
+      summary には、今回の分だけでなく、これまでのまとめを引き継いで、このタスク全体を通して
+      何をしたかを書いてください。受けた指摘や判断と、それにどう対応したかも含めてください。
+      要件や設計から外れたこと、後のタスクに関わる気づきがあれば、それも書いてください。
+    schema:
+      type: object
+      properties:
+        status:
+          enum: [done, needs_decision]
+          description: 作業を終えたなら done、人間の判断を待つなら needs_decision
+        question:
+          type: string
+          description: 判断してほしいこと。背景、選択肢、おすすめと理由を Markdown で書く。done なら空
+        summary:
+          type: string
+          description: タスク全体を通して、したことと、わかったこと。Markdown で簡潔に書く
+        reflect:
+          type: boolean
+          description: 要件、設計、後のタスクに反映すべきことがあれば true
+      required: [status, question, summary, reflect]
+    with:
+      allowedTools: [Read, Edit, Write, Grep, Glob, Bash]
+    outputs:
+      status: ${{ result.data.status }}
+      question: ${{ result.data.question }}
+      summary: ${{ result.data.summary }}
+      reflect: ${{ result.data.reflect }}
+    next:
+      - if: ${{ result.data.status == 'needs_decision' }}
+        to: decide
+      - to: check
+
+  # 3. 実装中に人間の判断を仰ぐ
+  decide:
+    type: wait
+    method: terminal
+    with:
+      message: |
+        ## タスク
+        ${{ steps.pick.outputs.task }}
+
+        ## ここまでのまとめ
+        ${{ steps.implement.outputs.summary }}
+
+        ## 判断してほしいこと
+        ${{ steps.implement.outputs.question }}
+
+        要件、設計、タスクを直すなら `反映して終える` を選んでください。
+        直す場合は、このタスクは終えずに止まりますので、develop をもう一度回してください。
+      schema:
+        action:
+          type: choice
+          options: [続ける, 反映して終える]
+          required: true
+        answer:
+          type: string
+          multiline: true
+          required: true
+          description: 判断の内容。反映して終えるなら、要件、設計、タスクをどう直すか
+    outputs:
+      action: ${{ result.action }}
+      answer: ${{ result.answer }}
+    next:
+      - if: ${{ result.action == '反映して終える' }}
+        to: reflect
+      - to: implement
+
+  # 4. リンター、フォーマット、テストなどのチェック
+  check:
+    type: script
+    continueOnError: true
+    timeout: 30m
+    # mise の temporal のシムは、テストが起動する常駐プロセスの中では使えないため、実体を先に置く。
+    # 失敗したときだけ、outputs の上限を超えないよう最後の 200 行を出す。
+    run: |
+      temporal=$(mise which temporal)
+      PATH="$(dirname "$temporal"):$PATH"
+      code=0
+      out=$(pnpm check 2>&1) || code=$?
+      if [ "$code" -ne 0 ]; then
+        printf '%s\n' "$out" | tail -n 200
+      else
+        echo "pnpm check passed"
+      fi
+      exit "$code"
+    outputs:
+      log: ${{ result.stdout }}
+    next:
+      - if: ${{ !result.ok }}
+        to: implement
+      - to: review
+
+  # 5. レビュー
+  review:
+    type: ai
+    provider: claude-code
+    model: claude-opus-5-5
+    prompt: |
+      ugoke リポジトリの、まだコミットしていない変更をレビューしてください。コードは変更しないでください。
+      git diff と git status で変更を確かめ、.claude/review.md の観点に従ってください。
+      作業ツリーには、前のタスクの変更が残っていることがあります。このタスクの変更を中心に見てください。
+
+      ## タスク
+      ${{ steps.pick.outputs.task }}
+
+      ## 要件、設計、タスクの一覧
+      docs/work/${{ workflow.inputs.name }}/ の requirements.md、design.md、tasks.md
+
+      ## 実装した人のまとめ
+      ${{ steps.implement.outputs.summary }}
+
+      ## これまでのレビューのまとめ（前回あなたが書いたもの。空なら初回）
+      ${{ steps.review.outputs.summary }}
+
+      タスクの完了の条件を満たしているか、要件と設計に沿っているかも確かめてください。
+      直すべき問題があれば verdict を changes にし、findings に今回の指摘を書いてください。
+      なければ approve にし、findings は空にしてください。
+
+      summary には、今回の分だけでなく、これまでのレビューのまとめを引き継いで、レビュー全体を
+      通して確かめたこと、出した指摘、それぞれが対応済みかどうかを書いてください。
+    schema:
+      type: object
+      properties:
+        verdict:
+          enum: [approve, changes]
+        findings:
+          type: string
+          description: 今回の指摘。Markdown で書く。approve なら空
+        summary:
+          type: string
+          description: レビュー全体を通して、確かめたこと、指摘と対応の状況。Markdown で書く
+      required: [verdict, findings, summary]
+    with:
+      allowedTools: [Read, Grep, Glob, "Bash(git diff:*)", "Bash(git status:*)", "Bash(git log:*)"]
+    outputs:
+      verdict: ${{ result.data.verdict }}
+      findings: ${{ result.data.findings }}
+      summary: ${{ result.data.summary }}
+    next:
+      - if: ${{ result.data.verdict == 'changes' }}
+        to: implement
+      - to: mark_done
+
+  # 6. タスクに完了の印を付ける
+  # 変更は人間が PR でレビューする。拾ったタスクが今も先頭の未完了のタスクであることを確かめてから付ける。
+  mark_done:
+    type: script
+    env:
+      TASK: ${{ steps.pick.outputs.task }}
+    run: |
+      file="docs/work/$WORK_NAME/tasks.md"
+      line=$(printf '%s\n' "$TASK" | head -n 1)
+      first=$(grep -m 1 '^- \[ \] ' "$file" || true)
+      if [ "$first" != "$line" ]; then
+        echo "The first unfinished task in $file is not the one that ran: $first" >&2
+        exit 1
+      fi
+      tmp="$file.tmp.$$"
+      awk 'done || !/^- \[ \] / { print; next } { sub(/^- \[ \] /, "- [x] "); print; done = 1 }' "$file" > "$tmp"
+      mv "$tmp" "$file"
+      printf '%s\n' "$line" | sed 's/^- \[ \] /- [x] /'
+    outputs:
+      line: ${{ trim(result.stdout) }}
+    next:
+      - if: ${{ steps.implement.outputs.reflect }}
+        to: reflect
+      - to: end
+
+  # 7. 要件、設計、タスクに反映する
+  # 実装が要件や設計から外れたときと、実装の途中で止めたときだけ動く。直すところだけを Edit で直す。
+  reflect:
+    type: ai
+    provider: claude-code
+    model: claude-opus-5-5
+    prompt: |
+      ugoke リポジトリの docs/work/${{ workflow.inputs.name }}/ にある requirements.md、design.md、
+      tasks.md に、次の結果を反映してください。
+      直すところだけを Edit で直してください。直さない文書は、書き直さないでください。
+      ほかのファイルは変更しないでください。
+
+      ## タスク
+      ${{ steps.pick.outputs.task }}
+
+      ## 完了の印（空なら、タスクは完了していません）
+      ${{ steps.mark_done.outputs.line }}
+
+      ## 実装のまとめ
+      ${{ steps.implement.outputs.summary }}
+
+      ## 実装中の判断
+      ### 質問
+      ${{ steps.implement.outputs.question }}
+
+      ### 回答
+      ${{ steps.decide.outputs.answer }}
+
+      ## 反映のしかた
+      完了の印があれば、タスクは完了しています。tasks.md の印は、ワークフローが付けました。
+      - 実装で要件や設計から外れたこと、決まったことがあれば、requirements.md と design.md に反映する
+      - 後のタスクに影響する気づきがあれば、そのタスクの内容を直す
+
+      完了の印が空なら、実装の途中で判断を受けて止めています。タスクは完了していません。
+      - 回答に沿って、requirements.md、design.md、tasks.md を直す
+      - このタスクは `- [ ] ` のままにする。内容を直す、分ける、前に新しいタスクを足すのはよい
+      - 作業ツリーに残った途中の変更は、次の develop が引き継ぐ。そのことを踏まえてタスクを書く
+
+      tasks.md の形は変えないでください。develop は、先頭の `- [ ] ` の行から、次のタスクの行の前
+      までを 1 つのタスクとして読みます。
+    schema:
+      type: object
+      properties:
+        changes:
+          type: string
+          description: 何をどう直したか。直すことがなかったなら、その理由。Markdown で書く
+      required: [changes]
+    with:
+      allowedTools:
+        - Read
+        - Grep
+        - Glob
+        - Edit(docs/work/${{ workflow.inputs.name }}/**)
+        - Bash(git diff:*)
+        - Bash(git status:*)
+    outputs:
+      changes: ${{ result.data.changes }}
+    next: reported
+
+  reported:
+    type: wait
+    method: terminal
+    with:
+      message: |
+        docs/work/${{ workflow.inputs.name }}/ に反映したよ。
+
+        ${{ steps.reflect.outputs.changes }}
+      schema:
+        acknowledged:
+          type: choice
+          options: [確認した]
+          required: true
+    outputs:
+      acknowledged: ${{ result.acknowledged }}
+    next: end

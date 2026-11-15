@@ -1,0 +1,352 @@
+$schema: ../schemas/workflow.schema.json
+
+version: v0.1
+
+inputs:
+  name:
+    type: string
+    required: true
+    description: 作業の名前。docs/work/<name>/ に要件、設計、タスクを置く。英小文字、数字、- だけ
+  request:
+    type: string
+    required: true
+    description: 作りたいもの
+
+env:
+  WORK_NAME: ${{ workflow.inputs.name }}
+
+start: prepare
+
+# AI のステップは、自分の文書だけを書ける。初回は全文を書き、差し戻されたら直すところだけを直す。
+# 承認の前に、スクリプトが書かれた文書を読んで、変更のまとめと一緒に見せる。
+steps:
+  # docs/work/ は Git で追跡していないため、上書きすると戻せない。文書がすでにあれば止める。
+  prepare:
+    type: script
+    run: |
+      case "$WORK_NAME" in
+        '' | -* | *[!a-z0-9-]*)
+          echo "The name must contain only lowercase letters, digits, or -, and not start with -: $WORK_NAME" >&2
+          exit 1
+          ;;
+      esac
+
+      dir="docs/work/$WORK_NAME"
+      for file in requirements.md design.md tasks.md; do
+        if [ -e "$dir/$file" ]; then
+          echo "$dir/$file already exists. Use another name, or remove $dir first" >&2
+          exit 1
+        fi
+      done
+
+      mkdir -p "$dir"
+      echo "$dir"
+    outputs:
+      dir: ${{ trim(result.stdout) }}
+    next: requirements
+
+  # 1. 要件定義、機能設計
+  requirements:
+    type: ai
+    provider: claude-code
+    model: claude-opus-5-5
+    prompt: |
+      ugoke リポジトリで、次の作りたいものについて、要件定義と機能設計を書いてください。
+      文書は ${{ steps.prepare.outputs.dir }}/requirements.md に書いてください。
+      初回は Write で書き、差し戻されたときは、直すところだけを Edit で直してください。
+      ほかのファイルとコードは変更しないでください。
+
+      ## 作りたいもの
+      ${{ workflow.inputs.request }}
+
+      ## 差し戻しの理由（空なら初回）
+      ${{ steps.approve_requirements.outputs.feedback }}
+
+      ## 作業内容
+      README、docs/ と既存のコードを調べてから書いてください。
+
+      文書には、次の節を入れてください。
+      - 目的と背景（簡潔に書く）
+      - 要件: 何ができるようになるか。利用者から見た振る舞い、入出力、エラーの扱い
+      - 機能設計: 利用者に見える仕様（コマンド、設定、定義の書き方など）と、その例
+      - 範囲外: 今回やらないこと
+      - 未決の論点: 人間に決めてほしいこと。背景、選択肢、おすすめとその理由を書く。なければ「なし」
+
+      既存の決定（docs/）から判断できることは、論点にしないでください。
+    schema:
+      type: object
+      properties:
+        changes:
+          type: string
+          description: 初回なら「初版」。差し戻しのときは、理由ごとに何をどう直したか。Markdown で簡潔に書く
+        open_points:
+          type: string
+          description: 未決の論点の見出しと、選択肢とおすすめの要点。なければ「なし」。Markdown で簡潔に書く
+      required: [changes, open_points]
+    with:
+      allowedTools:
+        - Read
+        - Grep
+        - Glob
+        - Bash(git log:*)
+        - Bash(git diff:*)
+        - Bash(ls:*)
+        - Edit(docs/work/${{ workflow.inputs.name }}/requirements.md)
+    outputs:
+      changes: ${{ result.data.changes }}
+      open_points: ${{ result.data.open_points }}
+    next: show_requirements
+
+  show_requirements:
+    type: script
+    run: |
+      file="docs/work/$WORK_NAME/requirements.md"
+      if [ ! -s "$file" ]; then
+        echo "$file was not written" >&2
+        exit 1
+      fi
+      cat "$file"
+    outputs:
+      document: ${{ result.stdout }}
+    next: approve_requirements
+
+  approve_requirements:
+    type: wait
+    method: terminal
+    with:
+      message: |
+        ## 今回の変更
+        ${{ steps.requirements.outputs.changes }}
+
+        ## 未決の論点
+        ${{ steps.requirements.outputs.open_points }}
+
+        ---
+
+        ${{ steps.show_requirements.outputs.document }}
+
+        ---
+
+        ${{ steps.prepare.outputs.dir }}/requirements.md に書きました。この内容でいいですか？
+      schema:
+        decision:
+          type: choice
+          options: [OK, 差し戻し]
+          required: true
+        feedback:
+          type: string
+          multiline: true
+          description: 差し戻す理由。未決の論点に答えるときも、差し戻してここに書く
+    outputs:
+      decision: ${{ result.decision }}
+      feedback: ${{ result.feedback }}
+    next:
+      - if: ${{ result.decision == '差し戻し' }}
+        to: requirements
+      - to: design
+
+  # 2. 詳細設計、実装計画
+  design:
+    type: ai
+    provider: claude-code
+    model: claude-opus-5-5
+    prompt: |
+      ugoke リポジトリで、承認された要件と機能設計をもとに、詳細設計と実装計画を書いてください。
+      承認された要件と機能設計は ${{ steps.prepare.outputs.dir }}/requirements.md にあります。
+      文書は ${{ steps.prepare.outputs.dir }}/design.md に書いてください。
+      初回は Write で書き、差し戻されたときは、直すところだけを Edit で直してください。
+      ほかのファイルとコードは変更しないでください。
+
+      ## 差し戻しの理由（空なら初回）
+      ${{ steps.approve_design.outputs.feedback }}
+
+      ## 作業内容
+      既存のコードを調べてから書いてください。
+
+      文書には、次の節を入れてください。
+      - 全体の方針: どのパッケージに何を置くか、依存の向き
+      - 詳細設計: 変更するファイルごとの、型、関数、データの流れ、エラーの扱い
+      - 互換性: Workflow のリプレイ、定義の形式、設定への影響と、その対応
+      - テストと確かめ方: 何をどのテストで確かめるか。手で確かめること
+      - 実装計画: どの順で作るか。途中でも pnpm check が通る順にする
+      - 未決の論点: 人間に決めてほしいこと。背景、選択肢、おすすめとその理由を書く。なければ「なし」
+    schema:
+      type: object
+      properties:
+        changes:
+          type: string
+          description: 初回なら「初版」。差し戻しのときは、理由ごとに何をどう直したか。Markdown で簡潔に書く
+        open_points:
+          type: string
+          description: 未決の論点の見出しと、選択肢とおすすめの要点。なければ「なし」。Markdown で簡潔に書く
+      required: [changes, open_points]
+    with:
+      allowedTools:
+        - Read
+        - Grep
+        - Glob
+        - Bash(git log:*)
+        - Bash(git diff:*)
+        - Bash(ls:*)
+        - Edit(docs/work/${{ workflow.inputs.name }}/design.md)
+    outputs:
+      changes: ${{ result.data.changes }}
+      open_points: ${{ result.data.open_points }}
+    next: show_design
+
+  show_design:
+    type: script
+    run: |
+      file="docs/work/$WORK_NAME/design.md"
+      if [ ! -s "$file" ]; then
+        echo "$file was not written" >&2
+        exit 1
+      fi
+      cat "$file"
+    outputs:
+      document: ${{ result.stdout }}
+    next: approve_design
+
+  approve_design:
+    type: wait
+    method: terminal
+    with:
+      message: |
+        ## 今回の変更
+        ${{ steps.design.outputs.changes }}
+
+        ## 未決の論点
+        ${{ steps.design.outputs.open_points }}
+
+        ---
+
+        ${{ steps.show_design.outputs.document }}
+
+        ---
+
+        ${{ steps.prepare.outputs.dir }}/design.md に書きました。この内容でいいですか？
+      schema:
+        decision:
+          type: choice
+          options: [OK, 差し戻し]
+          required: true
+        feedback:
+          type: string
+          multiline: true
+          description: 差し戻す理由。未決の論点に答えるときも、差し戻してここに書く
+    outputs:
+      decision: ${{ result.decision }}
+      feedback: ${{ result.feedback }}
+    next:
+      - if: ${{ result.decision == '差し戻し' }}
+        to: design
+      - to: tasks
+
+  # 3. タスク分解
+  tasks:
+    type: ai
+    provider: claude-code
+    model: claude-opus-5-5
+    prompt: |
+      ugoke リポジトリで、承認された設計と実装計画を、実装のタスクに分けてください。
+      承認された要件と機能設計は ${{ steps.prepare.outputs.dir }}/requirements.md、
+      詳細設計と実装計画は ${{ steps.prepare.outputs.dir }}/design.md にあります。
+      タスクの一覧は ${{ steps.prepare.outputs.dir }}/tasks.md に書いてください。
+      初回は Write で書き、差し戻されたときは、直すところだけを Edit で直してください。
+      ほかのファイルとコードは変更しないでください。
+
+      ## 差し戻しの理由（空なら初回）
+      ${{ steps.approve_tasks.outputs.feedback }}
+
+      ## 作業内容
+      タスクは 1 つずつ、別々のワークフロー（develop）で、上から順に実装します。
+      - 1 つのタスクは、1 回のレビューで見られる大きさにする
+      - どのタスクを終えた時点でも、pnpm check が通るようにする
+      - 前のタスクに依存してよいが、後のタスクには依存しない
+
+      develop の AI は、.ugoke/ の下のファイルを変更できません（ワークフローの定義を実行中に変えない
+      ため）。.ugoke/ の変更など、develop でできない作業はタスクにせず、文書の最後の「人間が行う作業」
+      に書いてください。そこには `- [ ] ` を付けず、 `- ` で始めてください。develop が拾わないように
+      するためです。なければ、その節は書かないでください。
+
+      文書は、次の形で書いてください。develop は、先頭の `- [ ] ` の行から、次のタスクの行の前
+      までを 1 つのタスクとして読みます。タスクの詳細は、2 つの空白で字下げしてください。
+
+      ```markdown
+      # タスク
+
+      - [ ] T1: タスクの名前
+        - 内容: 何を作るか、どのファイルを変えるか
+        - 完了の条件: 何が確かめられたら終わりか
+      - [ ] T2: タスクの名前
+        - 内容: ...
+        - 完了の条件: ...
+
+      ## 人間が行う作業
+
+      - .ugoke/workflows/develop.yaml の ... を ... にする（T2 の後）
+      ```
+    schema:
+      type: object
+      properties:
+        changes:
+          type: string
+          description: 初回なら「初版」。差し戻しのときは、理由ごとに何をどう直したか。Markdown で簡潔に書く
+      required: [changes]
+    with:
+      allowedTools:
+        - Read
+        - Grep
+        - Glob
+        - Bash(git log:*)
+        - Bash(git diff:*)
+        - Bash(ls:*)
+        - Edit(docs/work/${{ workflow.inputs.name }}/tasks.md)
+    outputs:
+      changes: ${{ result.data.changes }}
+    next: show_tasks
+
+  show_tasks:
+    type: script
+    run: |
+      file="docs/work/$WORK_NAME/tasks.md"
+      if [ ! -s "$file" ]; then
+        echo "$file was not written" >&2
+        exit 1
+      fi
+      cat "$file"
+    outputs:
+      document: ${{ result.stdout }}
+    next: approve_tasks
+
+  approve_tasks:
+    type: wait
+    method: terminal
+    with:
+      message: |
+        ## 今回の変更
+        ${{ steps.tasks.outputs.changes }}
+
+        ---
+
+        ${{ steps.show_tasks.outputs.document }}
+
+        ---
+
+        ${{ steps.prepare.outputs.dir }}/tasks.md に書きました。この内容でいいですか？
+      schema:
+        decision:
+          type: choice
+          options: [OK, 差し戻し]
+          required: true
+        feedback:
+          type: string
+          multiline: true
+          description: 差し戻す理由
+    outputs:
+      decision: ${{ result.decision }}
+      feedback: ${{ result.feedback }}
+    next:
+      - if: ${{ result.decision == '差し戻し' }}
+        to: tasks
+      - to: end

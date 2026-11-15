@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "description": "JSON Schema of the file for editors, such as ./schemas/config.schema.json",
+          "type": "string"
+        },
+        "output": {
+          "description": "How ugoke run and ugoke attach show the progress of a run",
+          "type": "object",
+          "properties": {
+            "showCommands": {
+              "description": "Whether the progress shows what a step runs: the run of a script step and the prompt of an AI step. It is shown by default",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "plugins": {
+          "description": "Plugin packages to load, keyed by package name, such as @ugoke/adapter-ai-claude-code. They are found in the project, and then next to ugoke. The value is the settings of the plugin, which its config schema validates",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^(?:@[a-z0-9][a-z0-9._~-]*\\/)?[a-z0-9][a-z0-9._~-]*$"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/definitions/__schema0"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "@ugoke/adapter-ai-claude-code": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "maxProperties": 0,
+                  "type": "object"
+                }
+              ]
+            },
+            "@ugoke/adapter-wait-github": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "pollInterval": {
+                      "description": "Interval between checks of GitHub, such as 30s or 1m",
+                      "default": "30s",
+                      "type": "string",
+                      "pattern": "^[1-9][0-9]*(?:s|m|h)$"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
+        "temporal": {
+          "type": "object",
+          "properties": {
+            "address": {
+              "description": "Address of the Temporal Server of the project, such as temporal.example.com:7233. The server of ugoke daemon is used by default",
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "null"
+    }
+  ],
+  "definitions": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/__schema0"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/__schema0"
+          }
+        }
+      ]
+    }
+  }
+}

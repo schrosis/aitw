@@ -140,6 +140,7 @@ export const createProjectWorkers = ({
         aiRunner: createAiRunner({ cwd: root, plugins: registry }),
         encryptionKey: loadEncryptionKey(),
         eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
+        log: (message) => log(`${root}: ${message}`),
         onError: (error) => {
           log(
             `Worker of ${root} failed: ${error instanceof Error ? error.message : String(error)}`,

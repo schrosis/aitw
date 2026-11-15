@@ -917,11 +917,25 @@ describe("respondToWait", () => {
     visit: 0,
   };
 
-  /** Answers a wait step with a method that records what it receives. */
-  const respondToWait = async (request: Partial<WaitRequest>) => {
+  /**
+   * Answers a wait step with a method that records what it receives.
+   *
+   * @param respond Runs in the method after the context is recorded, such as to write to the log.
+   */
+  const respondToWait = async (
+    request: Partial<WaitRequest>,
+    {
+      log,
+      respond = () => {},
+    }: {
+      log?: (message: string) => void;
+      respond?: (context: WaitResponseContext<unknown>) => void;
+    } = {},
+  ) => {
     const contexts: WaitResponseContext<unknown>[] = [];
     const values = await new MockActivityEnvironment({ scheduledTimestampMs }).run(
       createActivities({
+        log,
         plugins: createPluginRegistry({
           builtins: [
             definePlugin({
@@ -931,6 +945,7 @@ describe("respondToWait", () => {
                   name: "chat",
                   respond: async (context) => {
                     contexts.push(context);
+                    respond(context);
                     return { name: "ugoke" };
                   },
                   respondIn: "worker",
@@ -967,4 +982,48 @@ describe("respondToWait", () => {
       expect(contexts[0]?.startedAt).toEqual(new Date(scheduledTimestampMs));
     },
   );
+
+  it("writes what the method logs to the log of the Worker, with the step", async () => {
+    const lines: string[] = [];
+
+    const { values } = await respondToWait(
+      {},
+      {
+        log: (message) => lines.push(message),
+        respond: ({ log }) => {
+          log("Failed to read the comments: rate limited");
+          log("Failed to read the comments again");
+        },
+      },
+    );
+
+    expect(values).toEqual({ name: "ugoke" });
+    expect(lines).toEqual([
+      "steps.ask: Failed to read the comments: rate limited",
+      "steps.ask: Failed to read the comments again",
+    ]);
+  });
+
+  it("lets the method log without a log of the Worker", async () => {
+    const { values } = await respondToWait(
+      {},
+      { respond: ({ log }) => log("Failed to read the comments") },
+    );
+
+    expect(values).toEqual({ name: "ugoke" });
+  });
+
+  it("answers the step when the log of the Worker fails", async () => {
+    const { values } = await respondToWait(
+      {},
+      {
+        log: () => {
+          throw new Error("The disk is full");
+        },
+        respond: ({ log }) => log("Failed to read the comments"),
+      },
+    );
+
+    expect(values).toEqual({ name: "ugoke" });
+  });
 });

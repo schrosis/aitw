@@ -170,6 +170,8 @@ const answerStep = async (
         method.respond({
           answers,
           config: plugins.waitMethodConfig(name),
+          // As in the temporary Worker of a run, nothing is written, to keep the progress intact.
+          log: () => {},
           options: validated.value,
           run: { inputs: workflowInputs, workflowId: handle.workflowId },
           signal: asking,

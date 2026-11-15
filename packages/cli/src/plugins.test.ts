@@ -223,6 +223,7 @@ describe("loadProjectPlugins", () => {
       method?.respond?.({
         answers: {},
         config: registry.waitMethodConfig("notify/ask"),
+        log: () => {},
         options: {},
         run: { inputs: {}, workflowId: "deploy-1" },
         signal: new AbortController().signal,

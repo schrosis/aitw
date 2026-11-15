@@ -28,6 +28,11 @@ export interface StartWorkerOptions {
   eventLog: EventLog;
   /** Plugins whose wait methods answer in the Worker, such as from a chat. */
   plugins?: PluginRegistry | undefined;
+  /**
+   * Writes a line to the log of the Worker, such as of the resident process. Nothing is written
+   * when it is omitted.
+   */
+  log?: ((message: string) => void) | undefined;
   /** Path of the workflow code. Defaults to {@link workflowsPath}. */
   workflowsPath?: string;
   /** Receives a failure of the Worker after it started. */
@@ -54,6 +59,7 @@ export const startWorker = async ({
   aiRunner,
   encryptionKey,
   eventLog,
+  log,
   namespace = "default",
   onError = () => {},
   plugins,
@@ -69,6 +75,7 @@ export const startWorker = async ({
       activities: createActivities({
         aiRunner,
         eventLog,
+        log,
         plugins,
         readEnvironment,
         scriptRunner,

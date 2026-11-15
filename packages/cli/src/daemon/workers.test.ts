@@ -16,6 +16,7 @@ describe("createProjectWorkers", () => {
   let file: string;
   let project: string;
   let started: StartWorkerOptions[];
+  let lines: string[];
 
   beforeEach(() => {
     directory = mkdtempSync(join(tmpdir(), "ugoke-workers-"));
@@ -23,6 +24,7 @@ describe("createProjectWorkers", () => {
     project = join(directory, "project");
     mkdirSync(join(project, ".ugoke"), { recursive: true });
     started = [];
+    lines = [];
   });
 
   afterEach(() => {
@@ -33,7 +35,7 @@ describe("createProjectWorkers", () => {
     createProjectWorkers({
       address: "127.0.0.1:7233",
       file,
-      log: () => {},
+      log: (message) => lines.push(message),
       prepareEngine: () => {},
       startWorker: async (options) => {
         started.push(options);
@@ -64,6 +66,15 @@ describe("createProjectWorkers", () => {
     expect(started[0]?.plugins?.waitMethodNames()).toEqual(["terminal"]);
     // The resident process has no terminal, so the terminal does not answer there.
     expect(started[0]?.plugins?.waitMethod("terminal")).not.toHaveProperty("respond");
+  });
+
+  it("writes what the Worker logs to the log of the resident process, with the project", async () => {
+    await create(succeed).add(project);
+    lines = [];
+
+    started[0]?.log?.("steps.review: Failed to read the comments");
+
+    expect(lines).toEqual([`${project}: steps.review: Failed to read the comments`]);
   });
 
   it("rejects a directory without .ugoke", async () => {

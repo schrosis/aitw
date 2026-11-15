@@ -71,6 +71,10 @@
                 "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                 "statusCheckRollup": {
                   "contexts": {
+                    "pageInfo": {
+                      "hasNextPage": false,
+                      "endCursor": "NA"
+                    },
                     "nodes": [
                       {
                         "__typename": "CheckRun",

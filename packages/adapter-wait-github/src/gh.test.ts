@@ -4,13 +4,21 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import type { GhResult, GhRunner } from "./gh.ts";
-import { createGhSource, pullRequestArgs, pullRequestQuery, rateLimitArgs } from "./gh.ts";
+import {
+  checksPageArgs,
+  checksPageQuery,
+  createGhSource,
+  pullRequestArgs,
+  pullRequestQuery,
+  rateLimitArgs,
+} from "./gh.ts";
 import type { PullRequestTarget } from "./options.ts";
-import type { PullRequestSnapshot } from "./source.ts";
+import type { Check, PullRequestSnapshot } from "./source.ts";
 import { GithubSourceError } from "./source.ts";
 
 // Outputs of gh 2.103.3 for a pull request of the repository of ugoke, with the owner, the
-// repository, the number, logins of people, bodies, IDs, and commits replaced.
+// repository, the number, logins of people, bodies, IDs, and commits replaced. The pageInfo of
+// the checks was added later in the same shape that gh returned for it.
 const mergedOutput = readFileSync(
   new URL("testdata/merged-pull-request.json", import.meta.url),
   "utf8",
@@ -128,6 +136,56 @@ const headOf = (pullRequest: PullRequestOutput): Record<string, unknown> => {
 
 const ok = (stdout: string): GhResult => ({ exitCode: 0, stderr: "", stdout });
 
+/** The pageInfo of the last page of checks. */
+const lastPage = { endCursor: "NA", hasNextPage: false };
+
+/** A check run in the output of gh, and the check that it becomes. */
+const checkRunPair = (name: string): { output: Record<string, unknown>; check: Check } => ({
+  check: {
+    completedAt: "2026-11-15T08:58:37Z",
+    conclusion: "success",
+    kind: "checkRun",
+    name,
+    status: "completed",
+  },
+  output: {
+    __typename: "CheckRun",
+    completedAt: "2026-11-15T08:58:37Z",
+    conclusion: "SUCCESS",
+    name,
+    status: "COMPLETED",
+  },
+});
+
+/** The output of gh for a page of checks after the first one. */
+const checksPageOutput = (
+  names: readonly string[],
+  pageInfo: { endCursor: string | null; hasNextPage: boolean },
+): GhResult =>
+  ok(
+    JSON.stringify({
+      data: {
+        repository: {
+          object: {
+            statusCheckRollup: {
+              contexts: { nodes: names.map((name) => checkRunPair(name).output), pageInfo },
+            },
+          },
+        },
+      },
+    }),
+  );
+
+/** The output of the merged pull request whose first page of checks continues after `Mg`. */
+const firstPageOutput = changedOutput((pullRequest) => {
+  headOf(pullRequest)["statusCheckRollup"] = {
+    contexts: {
+      nodes: [checkRunPair("first").output],
+      pageInfo: { endCursor: "Mg", hasNextPage: true },
+    },
+  };
+});
+
 const failed = (exitCode: number, stderr: string, stdout = ""): GhResult => ({
   exitCode,
   stderr,
@@ -157,15 +215,33 @@ const rateLimitOutput = (remaining: number, reset: number): GhResult =>
 
 type Reply = GhResult | Error;
 
-/** A runner that replies to queries of pull requests and of the rate limit, and records calls. */
+/**
+ * A runner that replies to queries of pull requests, of pages of checks in order, and of the rate
+ * limit, and records calls.
+ */
 const runnerOf = (
   pullRequest: Reply,
   rateLimit: Reply | ((signal: AbortSignal) => Promise<GhResult>) = rateLimitOutput(4900, 0),
+  checksPages: readonly Reply[] = [],
 ): GhRunner & { calls: (readonly string[])[] } => {
   const calls: (readonly string[])[] = [];
+  let pages = 0;
+  const replyTo = (
+    args: readonly string[],
+  ): Reply | ((signal: AbortSignal) => Promise<GhResult>) => {
+    if (args[1] === "rate_limit") {
+      return rateLimit;
+    }
+    if (args[3] === `query=${checksPageQuery}`) {
+      const page = checksPages[pages];
+      pages += 1;
+      return page ?? new Error("No more pages of checks");
+    }
+    return pullRequest;
+  };
   const run = async (args: readonly string[], signal: AbortSignal): Promise<GhResult> => {
     calls.push(args);
-    const reply = args[1] === "rate_limit" ? rateLimit : pullRequest;
+    const reply = replyTo(args);
     if (typeof reply === "function") {
       return reply(signal);
     }
@@ -217,6 +293,25 @@ describe("pullRequestArgs", () => {
   });
 });
 
+describe("checksPageArgs", () => {
+  it("passes the query and each variable as one argument", () => {
+    expect(checksPageArgs(target, headSha, "Mg")).toEqual([
+      "api",
+      "graphql",
+      "-f",
+      `query=${checksPageQuery}`,
+      "-f",
+      "owner=acme",
+      "-f",
+      "name=widgets",
+      "-f",
+      `oid=${headSha}`,
+      "-f",
+      "after=Mg",
+    ]);
+  });
+});
+
 describe("createGhSource", () => {
   it("runs gh with the arguments of the pull request", async () => {
     const run = runnerOf(ok(mergedOutput));
@@ -235,6 +330,7 @@ describe("createGhSource", () => {
       Object.assign(pullRequest, { closedAt: null, mergedAt: null, state: "OPEN" });
       headOf(pullRequest)["statusCheckRollup"] = {
         contexts: {
+          pageInfo: lastPage,
           nodes: [
             {
               __typename: "CheckRun",
@@ -369,6 +465,66 @@ describe("createGhSource", () => {
     expect(snapshot.reviews).toHaveLength(4);
   });
 
+  describe("more checks than a page", () => {
+    it("reads the rest of the checks of the head commit after the first page", async () => {
+      const run = runnerOf(ok(firstPageOutput), undefined, [
+        checksPageOutput(["second"], { endCursor: "Mw", hasNextPage: true }),
+        checksPageOutput(["third"], { endCursor: "NA", hasNextPage: false }),
+      ]);
+
+      const snapshot = await read(run);
+
+      expect(snapshot.checks).toEqual(
+        ["first", "second", "third"].map((name) => checkRunPair(name).check),
+      );
+      expect(run.calls).toEqual([
+        pullRequestArgs(target),
+        checksPageArgs(target, headSha, "Mg"),
+        checksPageArgs(target, headSha, "Mw"),
+      ]);
+    });
+
+    it("does not read more pages when the first page is the last", async () => {
+      const run = runnerOf(ok(mergedOutput), undefined, [new Error("Not expected")]);
+
+      await read(run);
+
+      expect(run.calls).toEqual([pullRequestArgs(target)]);
+    });
+
+    it("returns no checks when the commit has gone while the pages are read", async () => {
+      const gone = ok(JSON.stringify({ data: { repository: { object: null } } }));
+
+      const snapshot = await read(runnerOf(ok(firstPageOutput), undefined, [gone]));
+
+      expect(snapshot.checks).toEqual([]);
+    });
+
+    it("tells errors of gh while it reads a page", async () => {
+      const error = await readError(
+        runnerOf(ok(firstPageOutput), rateLimitOutput(0, 1_794_736_711), [
+          graphqlRateLimitedResult(),
+        ]),
+      );
+
+      expect(error.kind).toBe("rateLimited");
+      expect(error.resetAt).toEqual(new Date(1_794_736_711_000));
+    });
+
+    it("fails with unknown errors of GraphQL in a page", async () => {
+      const unknown = ok(
+        JSON.stringify({ data: { repository: { object: null } }, errors: [{ message: "Oops" }] }),
+      );
+
+      const error = await readError(runnerOf(ok(firstPageOutput), undefined, [unknown]));
+
+      expect(error).toMatchObject({
+        kind: "fatal",
+        message: "Could not read the output of gh: GitHub returned Oops",
+      });
+    });
+  });
+
   describe("outputs that cannot be read", () => {
     it.each([
       ["is not JSON", "Not Found", /^Could not read the output of gh: .+/u],
@@ -390,7 +546,7 @@ describe("createGhSource", () => {
         "has an unknown kind of check",
         changedOutput((pullRequest) => {
           headOf(pullRequest)["statusCheckRollup"] = {
-            contexts: { nodes: [{ __typename: "Unknown" }] },
+            contexts: { nodes: [{ __typename: "Unknown" }], pageInfo: lastPage },
           };
         }),
         /^Could not read the output of gh: .+/u,

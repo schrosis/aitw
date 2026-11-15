@@ -214,7 +214,18 @@ export const createGhRunner =
 /** Runs gh in the environment of the Worker. */
 export const runGh: GhRunner = createGhRunner();
 
-/** The query that reads a pull request at each check. */
+/** Fields of a check run and of a commit status that a query reads. */
+const checkFields = `__typename
+                  ... on CheckRun { name status conclusion completedAt }
+                  ... on StatusContext { context state createdAt }`;
+
+/** Number of checks that a query reads at a time, the most that GitHub returns. */
+const checksPerPage = 100;
+
+/**
+ * The query that reads a pull request at each check. When the head commit has more checks than
+ * a page, {@link checksPageQuery} reads the rest.
+ */
 export const pullRequestQuery = `query ($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
@@ -239,13 +250,30 @@ export const pullRequestQuery = `query ($owner: String!, $name: String!, $number
           commit {
             oid
             statusCheckRollup {
-              contexts(first: 100) {
+              contexts(first: ${checksPerPage}) {
+                pageInfo { hasNextPage endCursor }
                 nodes {
-                  __typename
-                  ... on CheckRun { name status conclusion completedAt }
-                  ... on StatusContext { context state createdAt }
+                  ${checkFields}
                 }
               }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+/** The query that reads the checks of a commit after a page that {@link pullRequestQuery} read. */
+export const checksPageQuery = `query ($owner: String!, $name: String!, $oid: GitObjectID!, $after: String!) {
+  repository(owner: $owner, name: $name) {
+    object(oid: $oid) {
+      ... on Commit {
+        statusCheckRollup {
+          contexts(first: ${checksPerPage}, after: $after) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              ${checkFields}
             }
           }
         }
@@ -266,6 +294,22 @@ export const pullRequestArgs = (target: PullRequestTarget): string[] => [
   `name=${target.name}`,
   "-F",
   `number=${target.number}`,
+];
+
+/** Returns the arguments of gh that read the checks of a commit after a cursor. */
+export const checksPageArgs = (target: PullRequestTarget, oid: string, after: string): string[] => [
+  "api",
+  "graphql",
+  "-f",
+  `query=${checksPageQuery}`,
+  "-f",
+  `owner=${target.owner}`,
+  "-f",
+  `name=${target.name}`,
+  "-f",
+  `oid=${oid}`,
+  "-f",
+  `after=${after}`,
 ];
 
 /** Arguments of gh that read the rate limits. Reading them does not count against them. */
@@ -355,6 +399,21 @@ const checkSchema = z.union([
     })),
 ]);
 
+/** A page of checks, with the cursor of the next page when there is one. */
+const contextsSchema = z
+  .object({
+    nodes: z.array(checkSchema.nullable()),
+    pageInfo: z.object({ endCursor: z.string().nullable(), hasNextPage: z.boolean() }),
+  })
+  .transform(({ nodes, pageInfo }) => ({
+    checks: nodes.filter((check): check is Check => check !== null),
+    nextCursor: pageInfo.hasNextPage ? pageInfo.endCursor : null,
+  }));
+
+type ChecksPage = z.output<typeof contextsSchema>;
+
+const noChecks: ChecksPage = { checks: [], nextCursor: null };
+
 const pullRequestStates = { CLOSED: "closed", MERGED: "merged", OPEN: "open" } as const;
 
 const pullRequestSchema = z
@@ -364,7 +423,7 @@ const pullRequestSchema = z
       z.object({
         commit: z.object({
           oid: z.string(),
-          statusCheckRollup: z.object({ contexts: nodesOf(checkSchema) }).nullable(),
+          statusCheckRollup: z.object({ contexts: contextsSchema }).nullable(),
         }),
       }),
     ),
@@ -375,23 +434,26 @@ const pullRequestSchema = z
     state: z.enum(["OPEN", "CLOSED", "MERGED"]),
     url: z.string(),
   })
-  .transform((pullRequest): PullRequestSnapshot => {
+  .transform((pullRequest): { snapshot: PullRequestSnapshot; nextChecksCursor: string | null } => {
     const [head] = pullRequest.commits;
     // A push between the reads of the head and of its commit gives checks of another commit.
     // They are left out until the next check reads them again.
-    const checks =
+    const { checks, nextCursor } =
       head?.commit.oid === pullRequest.headRefOid
-        ? (head.commit.statusCheckRollup?.contexts ?? [])
-        : [];
+        ? (head.commit.statusCheckRollup?.contexts ?? noChecks)
+        : noChecks;
     return {
-      checks,
-      closedAt: pullRequest.closedAt,
-      headSha: pullRequest.headRefOid,
-      mergedAt: pullRequest.mergedAt,
-      number: pullRequest.number,
-      reviews: pullRequest.reviews,
-      state: pullRequestStates[pullRequest.state],
-      url: pullRequest.url,
+      nextChecksCursor: nextCursor,
+      snapshot: {
+        checks,
+        closedAt: pullRequest.closedAt,
+        headSha: pullRequest.headRefOid,
+        mergedAt: pullRequest.mergedAt,
+        number: pullRequest.number,
+        reviews: pullRequest.reviews,
+        state: pullRequestStates[pullRequest.state],
+        url: pullRequest.url,
+      },
     };
   });
 
@@ -403,6 +465,23 @@ const outputSchema = z.object({
   data: z
     .object({
       repository: z.object({ pullRequest: pullRequestSchema.nullable() }).nullable(),
+    })
+    .nullable()
+    .optional(),
+  errors: graphqlErrorsSchema.optional(),
+});
+
+const checksPageOutputSchema = z.object({
+  data: z
+    .object({
+      repository: z
+        .object({
+          // The object is null when the commit does not exist, such as after a force push.
+          object: z
+            .object({ statusCheckRollup: z.object({ contexts: contextsSchema }).nullish() })
+            .nullable(),
+        })
+        .nullable(),
     })
     .nullable()
     .optional(),
@@ -584,34 +663,101 @@ export interface GhSourceOptions {
  *
  * gh uses its own login, such as of `gh auth login` by the user who runs the Worker.
  */
-export const createGhSource = ({ run = runGh }: GhSourceOptions = {}): PullRequestSource => ({
-  read: async (target, signal) => {
-    const result = await run(pullRequestArgs(target), signal);
+export const createGhSource = ({ run = runGh }: GhSourceOptions = {}): PullRequestSource => {
+  /**
+   * Runs a query with gh and reads its output with a schema.
+   *
+   * @throws GithubSourceError when gh fails or the output has another shape.
+   */
+  const query = async <T extends z.ZodType>(
+    target: PullRequestTarget,
+    args: readonly string[],
+    schema: T,
+    signal: AbortSignal,
+  ): Promise<{ output: z.output<T>; result: GhResult }> => {
+    const result = await run(args, signal);
     if (result.exitCode !== 0) {
       throw await failureError(classifyFailure(target, result), run, signal);
     }
-
     const json = parseJson(result.stdout);
     if (!json.ok) {
       throw unreadableOutput(json.error.message, json.error);
     }
-    const output = outputSchema.safeParse(json.value);
+    const output = schema.safeParse(json.value);
     if (!output.success) {
       throw unreadableOutput(describeIssues(output.error), output.error);
     }
-    const pullRequest = output.data.data?.repository?.pullRequest;
-    if (pullRequest !== null && pullRequest !== undefined) {
-      return pullRequest;
-    }
-    // gh exits with 1 for errors of GraphQL, so they are not expected here. They are told in the
-    // same way as when gh fails, unless they are of an unknown kind.
-    const errors = output.data.errors ?? [];
+    return { output: output.data, result };
+  };
+
+  /**
+   * Tells errors of GraphQL in an output that gh exited with 0 for. gh exits with 1 for errors of
+   * GraphQL, so they are not expected. They are told in the same way as when gh fails, unless
+   * they are of an unknown kind. Without errors, `undefined` is returned.
+   */
+  const errorsError = async (
+    target: PullRequestTarget,
+    result: GhResult,
+    errors: readonly GraphqlError[],
+    signal: AbortSignal,
+  ): Promise<GithubSourceError | undefined> => {
     if (errors.some(isKnownError)) {
-      throw await failureError(classifyFailure(target, result), run, signal);
+      return failureError(classifyFailure(target, result), run, signal);
     }
     const messages = errors.map((error) => error.message ?? error.type ?? "").join("; ");
-    throw unreadableOutput(
-      messages === "" ? "data.repository.pullRequest is missing" : `GitHub returned ${messages}`,
-    );
-  },
-});
+    return messages === "" ? undefined : unreadableOutput(`GitHub returned ${messages}`);
+  };
+
+  /**
+   * Reads the checks of a commit after the first page.
+   *
+   * @returns The checks, or `undefined` when the commit has gone, such as after a force push.
+   */
+  const readRestOfChecks = async (
+    target: PullRequestTarget,
+    oid: string,
+    firstCursor: string,
+    signal: AbortSignal,
+  ): Promise<Check[] | undefined> => {
+    const checks: Check[] = [];
+    let cursor: string | null = firstCursor;
+    while (cursor !== null) {
+      const args: string[] = checksPageArgs(target, oid, cursor);
+      const { output, result } = await query(target, args, checksPageOutputSchema, signal);
+      const object = output.data?.repository?.object;
+      if (object === null || object === undefined) {
+        const error = await errorsError(target, result, output.errors ?? [], signal);
+        if (error !== undefined) {
+          throw error;
+        }
+        return undefined;
+      }
+      const page: ChecksPage = object.statusCheckRollup?.contexts ?? noChecks;
+      checks.push(...page.checks);
+      cursor = page.nextCursor;
+    }
+    return checks;
+  };
+
+  return {
+    read: async (target, signal) => {
+      const { output, result } = await query(target, pullRequestArgs(target), outputSchema, signal);
+      const pullRequest = output.data?.repository?.pullRequest;
+      if (pullRequest === null || pullRequest === undefined) {
+        throw (
+          (await errorsError(target, result, output.errors ?? [], signal)) ??
+          unreadableOutput("data.repository.pullRequest is missing")
+        );
+      }
+
+      const { nextChecksCursor, snapshot } = pullRequest;
+      if (nextChecksCursor === null) {
+        return snapshot;
+      }
+      const rest = await readRestOfChecks(target, snapshot.headSha, nextChecksCursor, signal);
+      // A commit that has gone was replaced by a push, and its checks are left out as when the
+      // head moves while it is read.
+      return { ...snapshot, checks: rest === undefined ? [] : [...snapshot.checks, ...rest] };
+    },
+  };
+};

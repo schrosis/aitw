@@ -1,0 +1,5 @@
+$schema: ./schemas/config.schema.json
+
+plugins:
+  "@ugoke/adapter-ai-claude-code":
+  "@ugoke/adapter-wait-github":

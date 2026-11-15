@@ -1,0 +1,847 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "JSON Schema of the file for editors, such as ../schemas/workflow.schema.json",
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "const": "v0.1"
+    },
+    "inputs": {
+      "description": "Values that the workflow receives when it starts",
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "string"
+              },
+              "description": {
+                "description": "Description of the value",
+                "type": "string"
+              },
+              "required": {
+                "default": false,
+                "description": "Whether the value must be given. It cannot be combined with default",
+                "type": "boolean"
+              },
+              "default": {
+                "type": "string"
+              },
+              "multiline": {
+                "description": "Whether the value can span lines. The terminal wait method asks for it in an editor",
+                "type": "boolean"
+              }
+            },
+            "required": ["type"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "number"
+              },
+              "description": {
+                "description": "Description of the value",
+                "type": "string"
+              },
+              "required": {
+                "default": false,
+                "description": "Whether the value must be given. It cannot be combined with default",
+                "type": "boolean"
+              },
+              "default": {
+                "type": "number"
+              }
+            },
+            "required": ["type"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "boolean"
+              },
+              "description": {
+                "description": "Description of the value",
+                "type": "string"
+              },
+              "required": {
+                "default": false,
+                "description": "Whether the value must be given. It cannot be combined with default",
+                "type": "boolean"
+              },
+              "default": {
+                "type": "boolean"
+              }
+            },
+            "required": ["type"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "choice"
+              },
+              "description": {
+                "description": "Description of the value",
+                "type": "string"
+              },
+              "required": {
+                "default": false,
+                "description": "Whether the value must be given. It cannot be combined with default",
+                "type": "boolean"
+              },
+              "options": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "default": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "options"],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "env": {
+      "description": "Environment variables of every script and AI step. Values can reference workflow.inputs",
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": ["string", "number", "boolean"]
+      }
+    },
+    "dotenv": {
+      "description": "Path of a dotenv file, relative to the project root, that script and AI steps read",
+      "type": "string",
+      "minLength": 1
+    },
+    "start": {
+      "type": "string",
+      "pattern": "^(?!(?:end|start)$)[A-Za-z][A-Za-z0-9_]*$"
+    },
+    "steps": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^(?!(?:end|start)$)[A-Za-z][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "script"
+              },
+              "run": {
+                "type": "string",
+                "minLength": 1
+              },
+              "next": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "if": {
+                          "description": "Condition, such as ${{ outputs.ok == true }}",
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "to": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+                          "description": "Step to go to, or end"
+                        }
+                      },
+                      "required": ["to"],
+                      "additionalProperties": false
+                    }
+                  }
+                ]
+              },
+              "maxVisits": {
+                "description": "Times that the step can run in a run. It has no limit by default",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "continueOnError": {
+                "description": "Whether the workflow goes on when the step fails, with result.ok set to false. It stops by default",
+                "type": "boolean"
+              },
+              "timeout": {
+                "default": "30m",
+                "description": "Maximum duration of the step",
+                "type": "string",
+                "pattern": "^[1-9][0-9]*(?:s|m|h)$"
+              },
+              "inputs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "outputs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "env": {
+                "description": "Environment variables of the script. Values may contain expressions",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": ["string", "number", "boolean"]
+                }
+              }
+            },
+            "required": ["type", "run", "next"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "wait"
+              },
+              "method": {
+                "type": "string",
+                "minLength": 1,
+                "description": "How the step waits, such as terminal",
+                "enum": ["terminal", "github_pr"]
+              },
+              "with": {
+                "description": "Options of the method. Strings may contain expressions",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/definitions/__schema0"
+                }
+              },
+              "next": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "if": {
+                          "description": "Condition, such as ${{ outputs.ok == true }}",
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "to": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+                          "description": "Step to go to, or end"
+                        }
+                      },
+                      "required": ["to"],
+                      "additionalProperties": false
+                    }
+                  }
+                ]
+              },
+              "maxVisits": {
+                "description": "Times that the step can run in a run. It has no limit by default",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "inputs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "outputs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["type", "method", "next"],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "method": {
+                      "const": "terminal"
+                    }
+                  },
+                  "required": ["method"]
+                },
+                "then": {
+                  "properties": {
+                    "with": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Message that the terminal shows before asking"
+                        },
+                        "schema": {
+                          "default": {},
+                          "description": "Values to ask for. Without it, the step waits until Enter is pressed",
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                          },
+                          "additionalProperties": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "string"
+                                  },
+                                  "description": {
+                                    "description": "Description of the value",
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "default": false,
+                                    "description": "Whether the value must be given. It cannot be combined with default",
+                                    "type": "boolean"
+                                  },
+                                  "default": {
+                                    "type": "string"
+                                  },
+                                  "multiline": {
+                                    "description": "Whether the value can span lines. The terminal wait method asks for it in an editor",
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["type"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "number"
+                                  },
+                                  "description": {
+                                    "description": "Description of the value",
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "default": false,
+                                    "description": "Whether the value must be given. It cannot be combined with default",
+                                    "type": "boolean"
+                                  },
+                                  "default": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": ["type"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "boolean"
+                                  },
+                                  "description": {
+                                    "description": "Description of the value",
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "default": false,
+                                    "description": "Whether the value must be given. It cannot be combined with default",
+                                    "type": "boolean"
+                                  },
+                                  "default": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["type"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "choice"
+                                  },
+                                  "description": {
+                                    "description": "Description of the value",
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "default": false,
+                                    "description": "Whether the value must be given. It cannot be combined with default",
+                                    "type": "boolean"
+                                  },
+                                  "options": {
+                                    "minItems": 1,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    }
+                                  },
+                                  "default": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["type", "options"],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": ["message"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["with"]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "method": {
+                      "const": "github_pr"
+                    }
+                  },
+                  "required": ["method"]
+                },
+                "then": {
+                  "properties": {
+                    "with": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "description": "Message that the progress of the run shows",
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "pr": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          ],
+                          "description": "URL of the pull request, such as https://github.com/owner/repo/pull/1, or its number"
+                        },
+                        "repo": {
+                          "description": "owner/repo. Required when pr is a number",
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "events": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["merged", "closed", "checks", "review"]
+                          },
+                          "description": "Events to wait for"
+                        },
+                        "review": {
+                          "description": "Which reviews count. Used only when events includes review",
+                          "type": "object",
+                          "properties": {
+                            "authors": {
+                              "description": "Logins of the people whose reviews count. Anyone counts when it is omitted",
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "states": {
+                              "description": "States of the reviews that count. Every state counts when it is omitted",
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["APPROVED", "COMMENTED", "CHANGES_REQUESTED"]
+                              }
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "checks": {
+                          "description": "Which checks to wait for. Required when events includes checks",
+                          "type": "object",
+                          "properties": {
+                            "names": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "description": "Names of the check runs or the contexts of the commit statuses to wait for"
+                            }
+                          },
+                          "required": ["names"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["pr", "events"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["with"]
+                }
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "ai"
+              },
+              "provider": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Provider that runs the step, such as claude-code",
+                "enum": ["claude-code"]
+              },
+              "model": {
+                "description": "Model to use. The provider chooses one by default",
+                "type": "string",
+                "minLength": 1
+              },
+              "prompt": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Instructions of the step. It may contain expressions"
+              },
+              "schema": {
+                "description": "JSON Schema of the result, which is text without it",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/definitions/__schema1"
+                }
+              },
+              "session": {
+                "default": "reuse",
+                "description": "Whether a step that runs again continues its previous session",
+                "type": "string",
+                "enum": ["reuse", "new"]
+              },
+              "with": {
+                "description": "Options of the provider. Strings may contain expressions",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/definitions/__schema2"
+                }
+              },
+              "next": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "if": {
+                          "description": "Condition, such as ${{ outputs.ok == true }}",
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "to": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+                          "description": "Step to go to, or end"
+                        }
+                      },
+                      "required": ["to"],
+                      "additionalProperties": false
+                    }
+                  }
+                ]
+              },
+              "maxVisits": {
+                "description": "Times that the step can run in a run. It has no limit by default",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "continueOnError": {
+                "description": "Whether the workflow goes on when the step fails, with result.ok set to false. It stops by default",
+                "type": "boolean"
+              },
+              "timeout": {
+                "default": "30m",
+                "description": "Maximum duration of the step",
+                "type": "string",
+                "pattern": "^[1-9][0-9]*(?:s|m|h)$"
+              },
+              "inputs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "outputs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "env": {
+                "description": "Environment variables of the step. Values may contain expressions",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": ["string", "number", "boolean"]
+                }
+              }
+            },
+            "required": ["type", "provider", "prompt", "next"],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "provider": {
+                      "const": "claude-code"
+                    }
+                  },
+                  "required": ["provider"]
+                },
+                "then": {
+                  "properties": {
+                    "with": {
+                      "type": "object",
+                      "properties": {
+                        "agent": {
+                          "description": "Name of the Claude Code agent that runs the main thread of the step. The model of the agent takes precedence over the model of the step. The tools of the agent still need allowedTools.",
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "allowedTools": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "maxBudgetUsd": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "required": ["version", "start", "steps"],
+  "additionalProperties": false,
+  "definitions": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/__schema0"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/__schema0"
+          }
+        }
+      ]
+    },
+    "__schema1": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/__schema1"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/__schema1"
+          }
+        }
+      ]
+    },
+    "__schema2": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/__schema2"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/__schema2"
+          }
+        }
+      ]
+    }
+  }
+}

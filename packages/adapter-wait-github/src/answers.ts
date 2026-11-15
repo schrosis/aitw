@@ -1,10 +1,12 @@
 import type { InputDeclaration } from "@ugoke/core";
 
+import { pullRequestEvents, reviewStates } from "./options.js";
+
 /** Values that a `github_pr` step receives, whatever its options are. */
 export const githubPrAnswers = {
   event: {
     description: "Event that ended the wait",
-    options: ["review", "merged", "closed", "checks"],
+    options: [...pullRequestEvents],
     required: false,
     type: "choice",
   },
@@ -22,7 +24,7 @@ export const githubPrAnswers = {
   },
   reviewState: {
     description: "State of the review, for the review event",
-    options: ["APPROVED", "COMMENTED", "CHANGES_REQUESTED"],
+    options: [...reviewStates],
     required: false,
     type: "choice",
   },

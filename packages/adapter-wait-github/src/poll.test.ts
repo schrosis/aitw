@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { GithubPrOptions, PullRequestTarget } from "./options.ts";
 import type { PollOptions } from "./poll.ts";
-import { maxBackoffMs, pollPullRequest } from "./poll.ts";
+import { maxBackoffMs, maxRateLimitWaitMs, pollPullRequest } from "./poll.ts";
 import type { PullRequestSnapshot, PullRequestSource } from "./source.ts";
 import { GithubSourceError } from "./source.ts";
 
@@ -220,6 +220,34 @@ describe("pollPullRequest", () => {
       expect(sleeps).toEqual([60_000, (15 * 60 + 56) * 1000 - 60_000, 120_000, pollIntervalMs]);
       expect(logs.at(-1)).toBe(
         "Checked pull request acme/widgets#12 again after 2 failures in a row",
+      );
+    });
+
+    it("waits until a reset an hour later", async () => {
+      const { sleeps } = await poll([
+        rateLimited(new Date(Date.parse("2026-11-14T03:04:05Z") + maxRateLimitWaitMs)),
+        mergedSnapshot,
+      ]);
+
+      expect(sleeps).toEqual([maxRateLimitWaitMs + 1000]);
+    });
+
+    it("waits as for transient errors when the reset is more than an hour later", async () => {
+      // A source that read the reset in milliseconds as seconds.
+      const farReset = new Date(Date.parse("2026-11-14T03:04:05Z") * 1000);
+      const { logs, result, sleeps } = await poll([
+        rateLimited(farReset),
+        // 1 second over an hour after the first back-off of 1 minute.
+        rateLimited(
+          new Date(Date.parse("2026-11-14T03:04:05Z") + 60_000 + maxRateLimitWaitMs + 1000),
+        ),
+        mergedSnapshot,
+      ]);
+
+      expect(result).toEqual({ answer: mergedAnswer, ok: true });
+      expect(sleeps).toEqual([60_000, 120_000]);
+      expect(logs[0]).toBe(
+        `Failed to check pull request acme/widgets#12 (1 in a row), checking again in 1m: API rate limit exceeded (the rate limit is said to reset at ${farReset.toISOString()}, which is too far)`,
       );
     });
 

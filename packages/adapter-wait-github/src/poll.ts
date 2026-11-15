@@ -30,6 +30,12 @@ export const maxBackoffMs = 5 * 60_000;
 /** Time after the reset of the rate limit before checking again, for differences of clocks. */
 const rateLimitMarginMs = 1000;
 
+/**
+ * Longest wait for the reset of the rate limit. GitHub resets rate limits within an hour, so a
+ * later reset is waited for as a transient error.
+ */
+export const maxRateLimitWaitMs = 60 * 60_000;
+
 const defaultSleep = async (ms: number, signal: AbortSignal): Promise<void> => {
   await setTimeout(ms, undefined, { signal });
 };
@@ -105,16 +111,28 @@ export const pollPullRequest = async (options: PollOptions): Promise<GithubPrAns
       if (!(error instanceof GithubSourceError) || error.kind === "fatal") {
         throw error;
       }
-      if (error.kind === "rateLimited" && error.resetAt !== undefined) {
-        const ms = Math.max(error.resetAt.getTime() + rateLimitMarginMs - now(), pollIntervalMs);
+      const resetAt = error.kind === "rateLimited" ? error.resetAt : undefined;
+      const untilResetMs = resetAt === undefined ? undefined : resetAt.getTime() - now();
+      if (
+        resetAt !== undefined &&
+        untilResetMs !== undefined &&
+        untilResetMs <= maxRateLimitWaitMs
+      ) {
+        const ms = Math.max(untilResetMs + rateLimitMarginMs, pollIntervalMs);
         log(
-          `The rate limit of GitHub is reached while checking pull request ${pullRequest}, checking again after it resets at ${error.resetAt.toISOString()}: ${error.message}`,
+          `The rate limit of GitHub is reached while checking pull request ${pullRequest}, checking again after it resets at ${resetAt.toISOString()}: ${error.message}`,
         );
         await wait(ms);
-      } else {
+      } else if (resetAt === undefined) {
         // A rate limit without the time of the reset, such as a secondary rate limit, is waited
         // for as a transient error.
         await backOff(error.message);
+      } else {
+        // GitHub resets rate limits within an hour, so a later reset is a misreading of the
+        // source. Waiting for it could exceed what setTimeout can wait.
+        await backOff(
+          `${error.message} (the rate limit is said to reset at ${resetAt.toISOString()}, which is too far)`,
+        );
       }
       continue;
     }

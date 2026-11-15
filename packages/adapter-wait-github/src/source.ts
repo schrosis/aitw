@@ -43,7 +43,14 @@ export interface PullRequestSnapshot {
   headSha: string;
   /** Reviews in the order that they were created. */
   reviews: readonly Review[];
-  /** Checks on the head commit. */
+  /**
+   * Checks on the head commit, with only the latest result of each check, as the
+   * `statusCheckRollup` of the GraphQL API tells them.
+   *
+   * A check run that a rerun replaced and an older status of the same context are not included.
+   * Checks can still share a name when they are different jobs, such as jobs of the same name in
+   * different workflows.
+   */
   checks: readonly Check[];
 }
 

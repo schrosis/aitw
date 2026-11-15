@@ -1,5 +1,7 @@
 export { githubPrAnswers } from "./answers.js";
 export type { GithubPrAnswer } from "./answers.js";
+export { createGhSource } from "./gh.js";
+export type { GhResult, GhRunner, GhSourceOptions } from "./gh.js";
 export {
   githubConfigSchema,
   githubPrOptionsSchema,

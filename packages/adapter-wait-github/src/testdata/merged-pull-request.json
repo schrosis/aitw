@@ -1,0 +1,112 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "url": "https://github.com/acme/widgets/pull/12",
+        "number": 12,
+        "state": "MERGED",
+        "mergedAt": "2026-11-15T09:02:43Z",
+        "closedAt": "2026-11-15T09:02:43Z",
+        "headRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "reviews": {
+          "nodes": [
+            {
+              "author": {
+                "__typename": "Bot",
+                "login": "claude"
+              },
+              "state": "COMMENTED",
+              "body": "",
+              "submittedAt": "2026-11-15T08:50:54Z",
+              "url": "https://github.com/acme/widgets/pull/12#pullrequestreview-1001",
+              "commit": {
+                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            {
+              "author": {
+                "__typename": "Bot",
+                "login": "github-actions"
+              },
+              "state": "APPROVED",
+              "body": "Review body 2.",
+              "submittedAt": "2026-11-15T08:51:13Z",
+              "url": "https://github.com/acme/widgets/pull/12#pullrequestreview-1002",
+              "commit": {
+                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            {
+              "author": {
+                "__typename": "User",
+                "login": "octocat"
+              },
+              "state": "COMMENTED",
+              "body": "",
+              "submittedAt": "2026-11-15T08:58:07Z",
+              "url": "https://github.com/acme/widgets/pull/12#pullrequestreview-1003",
+              "commit": {
+                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            {
+              "author": {
+                "__typename": "Bot",
+                "login": "github-actions"
+              },
+              "state": "APPROVED",
+              "body": "Review body 4.",
+              "submittedAt": "2026-11-15T08:59:23Z",
+              "url": "https://github.com/acme/widgets/pull/12#pullrequestreview-1004",
+              "commit": {
+                "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              }
+            }
+          ]
+        },
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "statusCheckRollup": {
+                  "contexts": {
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "name": "check",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "completedAt": "2026-11-15T08:58:37Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "review",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "completedAt": "2026-11-15T08:59:17Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "report",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "completedAt": "2026-11-15T08:59:25Z"
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "Claude Review",
+                        "state": "SUCCESS",
+                        "createdAt": "2026-11-15T08:59:23Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

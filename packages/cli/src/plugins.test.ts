@@ -8,7 +8,7 @@ import { createOutput } from "./testing.ts";
 
 import { validate } from "./commands/validate.ts";
 import { PluginLoadError } from "./plugin-loader.ts";
-import { createRegistry, loadProjectPlugins } from "./plugins.ts";
+import { createRegistry, loadProjectPlugins, missingHint } from "./plugins.ts";
 
 /**
  * Source of a plugin module whose settings need a channel, and whose wait method answers with it.
@@ -260,5 +260,29 @@ describe("loadProjectPlugins", () => {
         ".ugoke/config.yaml:5:5 plugins.ugoke-plain: The plugin takes no settings",
       ].join("\n"),
     );
+  });
+});
+
+describe("missingHint", () => {
+  it("tells the packages of the official AI providers", () => {
+    expect(missingHint("aiProvider", "claude-code")).toBe(
+      "Install @ugoke/adapter-ai-claude-code and add it to plugins in .ugoke/config.yaml",
+    );
+  });
+
+  it("tells the packages of the official wait methods", () => {
+    expect(missingHint("waitMethod", "github_pr")).toBe(
+      "Install @ugoke/adapter-wait-github and add it to plugins in .ugoke/config.yaml",
+    );
+  });
+
+  it("tells nothing for names that no official plugin provides", () => {
+    expect(missingHint("aiProvider", "codex")).toBeUndefined();
+    expect(missingHint("waitMethod", "slack")).toBeUndefined();
+    // Each kind has its own names.
+    expect(missingHint("aiProvider", "github_pr")).toBeUndefined();
+    expect(missingHint("waitMethod", "claude-code")).toBeUndefined();
+    // Names that objects inherit are not official extensions.
+    expect(missingHint("waitMethod", "toString")).toBeUndefined();
   });
 });

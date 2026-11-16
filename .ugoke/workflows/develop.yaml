@@ -121,14 +121,19 @@ steps:
       ${{ steps.decide.outputs.answer }}
 
       ## 最後に受けた PR のレビュー（空ならなし）
-      PR: ${{ steps.publish.outputs.url }}
       レビューした人: ${{ steps.wait_review.outputs.author }}
       状態: ${{ steps.wait_review.outputs.state }}
 
       ${{ steps.wait_review.outputs.body }}
 
-      PR のレビューを受けたときは、gh で PR の未解決のレビューのスレッドも読んで、指摘に対応して
-      ください。スレッドへの返信と push は、あとのステップが行います。
+      ## PR のレビューへの対応
+      まず `gh pr view ${{ steps.branch.outputs.name }} --json url,state,reviews` で、このタスクのブランチの
+      PR を確かめてください。前の develop が途中で止まった続きのときは、PR がすでにあることがあります。
+      開いている PR があれば、次のものをすべて読んで、指摘に対応してください。
+      - 最後に push した後に出されたレビューの本文。上の「最後に受けた PR のレビュー」は、その中の
+        1 件だけのことがある
+      - 未解決のレビューのスレッド
+      スレッドへの返信と push は、あとのステップが行います。
 
       上の指摘や回答のうち、まだ対応していないものに対応してください。
       これまでのまとめで対応済みのものに、もう一度対応する必要はありません。
@@ -313,9 +318,6 @@ steps:
       ## ブランチ
       ${{ steps.branch.outputs.name }}
 
-      ## PR（空なら、まだ作っていない）
-      ${{ steps.publish.outputs.url }}
-
       ## 実装のまとめ
       ${{ steps.implement.outputs.summary }}
 
@@ -324,6 +326,11 @@ steps:
       状態: ${{ steps.wait_review.outputs.state }}
 
       ${{ steps.wait_review.outputs.body }}
+
+      ## PR があるかを確かめる
+      まず `gh pr view ${{ steps.branch.outputs.name }} --json url,state` で、このブランチの PR を確かめて
+      ください。前の develop が途中で止まった続きのときは、この実行より前に作った PR があることがあります。
+      開いている PR があれば「PR がすでにあるとき」、なければ「PR がまだないとき」に従ってください。
 
       ## コミットと push
       - このタスクのために変えたファイルだけを、名前を指定して git add してください。
@@ -342,6 +349,8 @@ steps:
       - 確認した内容には、実際に確かめたことだけを書いてください
 
       ## PR がすでにあるとき
+      - 前に push した後に出されたレビューの本文も、`gh pr view --json reviews` で読んで、返信に
+        含めてください
       - push した後、未解決のレビューのスレッドすべてに、対応したコミットと内容を返信してください。
         対応しない指摘には、その理由を返信してください。スレッドは解決しないでください
       - コードを変えずに返信だけした場合は、PR に `@claude` とコメントして、再レビューを頼んで
@@ -365,6 +374,10 @@ steps:
 
   # 8. PR のレビューかマージを待つ
   # Approve されたら、マージを待ち続ける。claude[bot] のインラインのコメントのレビューは数えない。
+  # github_pr は、待ち始めた後に出された最も早いレビューの 1 件だけを答える。ほかのレビューの本文は、
+  # implement と publish が gh で読む。同じ間に Claude Review の Approve と reviewer の Request changes
+  # が出て、Approve のほうが早いと、マージを待ち続けてしまう。そのときは、reviewer がもう一度レビュー
+  # を出すと進む。
   wait_review:
     type: wait
     method: github_pr

@@ -390,6 +390,10 @@ importers:
         version: 4.6.7
 
   packages/dotenv:
+    dependencies:
+      '@ugoke/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

@@ -205,6 +205,13 @@ export const parseDotenv = (text: string): ParseDotenvResult => {
     : { errors, ok: false };
 };
 
+/**
+ * Number of malformed lines that {@link readDotenv} reports. The message becomes a part of the
+ * failure of a step, which the workflow history keeps, so a large file that is not a dotenv file
+ * does not fill it.
+ */
+const reportedErrors = 10;
+
 /** Result of {@link readDotenv}. */
 export type DotenvResult =
   | { ok: true; values: NodeJS.Dict<string> }
@@ -214,8 +221,9 @@ export type DotenvResult =
  * Reads a dotenv file, relative to the working directory.
  *
  * The file is read in the format of {@link parseDotenv}, and is not read at all when any line is
- * malformed. It is read each time a step runs, so its values never enter the workflow history. A
- * file that a symbolic link puts outside of the working directory is not read.
+ * malformed. The first malformed lines are reported, and the rest are only counted. It is read
+ * each time a step runs, so its values never enter the workflow history. A file that a symbolic
+ * link puts outside of the working directory is not read.
  */
 export const readDotenv = (cwd: string, path: string): DotenvResult => {
   const failure = (reason: string): DotenvResult => ({
@@ -233,9 +241,11 @@ export const readDotenv = (cwd: string, path: string): DotenvResult => {
     }
     const parsed = parseDotenv(readFileSync(file, "utf8"));
     if (!parsed.ok) {
-      return failure(
-        parsed.errors.map(({ line, message }) => `line ${line}: ${message}`).join("; "),
-      );
+      const reasons = parsed.errors
+        .slice(0, reportedErrors)
+        .map(({ line, message }) => `line ${line}: ${message}`);
+      const more = parsed.errors.length - reasons.length;
+      return failure([...reasons, ...(more > 0 ? [`and ${more} more`] : [])].join("; "));
     }
     return { ok: true, values: parsed.values };
   } catch (error) {

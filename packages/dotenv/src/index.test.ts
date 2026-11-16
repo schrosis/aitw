@@ -283,6 +283,28 @@ describe("readDotenv", () => {
     });
   });
 
+  it("reports the first ten malformed lines and counts the rest", () => {
+    writeFileSync(join(cwd, ".env"), "TOKEN\n".repeat(12));
+    const reasons = Array.from(
+      { length: 10 },
+      (_, index) => `line ${index + 1}: Expected NAME=value`,
+    );
+
+    expect(readDotenv(cwd, ".env")).toEqual({
+      message: `Failed to read the dotenv file .env: ${reasons.join("; ")}; and 2 more`,
+      ok: false,
+    });
+  });
+
+  it("reports ten malformed lines without a count", () => {
+    writeFileSync(join(cwd, ".env"), "TOKEN\n".repeat(10));
+
+    expect(readDotenv(cwd, ".env")).toMatchObject({
+      message: expect.stringMatching(/line 10: Expected NAME=value$/u) as unknown,
+      ok: false,
+    });
+  });
+
   it("reads a file in the root whose name starts with two dots", () => {
     writeFileSync(join(cwd, "..env"), "NAME=value\n");
 

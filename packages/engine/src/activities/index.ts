@@ -415,6 +415,40 @@ const runAi = async (
   });
 };
 
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Returns the data of an AI result with `null` for each property that the schema declares in
+ * `properties` but the data does not have, so that a reference that passed validation does not
+ * fail only because an optional property was not answered.
+ *
+ * Only `properties` are followed, as validation does. Other keywords, such as `$ref` or `oneOf`,
+ * are not, and neither are the items of arrays. Properties that the data has but the schema does
+ * not declare, and properties whose value is `null`, are kept as they are.
+ *
+ * The data is not changed. A new object is returned, whose prototype is not changed even by a
+ * property named `__proto__`.
+ */
+const fillDeclaredProperties = (
+  data: unknown,
+  schema: Readonly<Record<string, unknown>> | undefined,
+): unknown => {
+  if (schema === undefined || !isRecord(data) || !isRecord(schema.properties)) {
+    return data;
+  }
+  const declared = schema.properties;
+  const filled = Object.entries(data).map(([name, value]): [string, unknown] => {
+    const property = Object.hasOwn(declared, name) ? declared[name] : undefined;
+    return [name, isRecord(property) ? fillDeclaredProperties(value, property) : value];
+  });
+  const missing = Object.keys(declared)
+    .filter((name) => !Object.hasOwn(data, name))
+    .map((name): [string, unknown] => [name, null]);
+  // `Object.fromEntries` defines own properties, so that `__proto__` does not set the prototype.
+  return Object.fromEntries([...filled, ...missing]);
+};
+
 /** Creates the activities that a Worker registers. */
 export const createActivities = ({
   aiRunner,
@@ -707,10 +741,13 @@ export const createActivities = ({
           }
           ran = { failure: continuableFailure(error, signal), result: { data: null } };
         }
+        // A step that failed and continues has no data to fill.
+        const data =
+          ran.failure === null ? fillDeclaredProperties(ran.result.data, schema) : ran.result.data;
         const { error, outputs, result } = evaluateStepOutput(
           outputExpressions,
           values,
-          { data: ran.result.data },
+          { data },
           ran.failure,
           continueOnError,
         );

@@ -339,6 +339,20 @@ describe("executeScriptStep", () => {
   });
 });
 
+/** Returns `outputs.data` of the result of a step, which the tests set to `result.data`. */
+const outputData = (result: unknown): object => {
+  if (typeof result === "object" && result !== null && "outputs" in result) {
+    const { outputs } = result;
+    if (typeof outputs === "object" && outputs !== null && "data" in outputs) {
+      const { data } = outputs;
+      if (typeof data === "object" && data !== null) {
+        return data;
+      }
+    }
+  }
+  throw new Error("Expected outputs.data to be an object");
+};
+
 describe("executeAiStep", () => {
   const unusedScriptRunner: ScriptRunner = {
     run: async () => ({ exitCode: 0, signal: null, stderr: "", stdout: "" }),
@@ -438,6 +452,139 @@ describe("executeAiStep", () => {
   it("publishes text as result.data", async () => {
     await expect(runAi({ outputs: { text: "${{ result.data }}" } })).resolves.toEqual({
       outputs: { text: "done" },
+    });
+  });
+
+  describe("properties that the schema declares but the data does not have", () => {
+    const schema = {
+      properties: {
+        author: { properties: { name: { type: "string" } }, type: "object" },
+        verdict: { type: "string" },
+      },
+      type: "object",
+    };
+
+    it("reads a missing property as null in outputs and branches", async () => {
+      await expect(
+        runAi(
+          {
+            branches: [
+              { if: "${{ result.data.verdict == null }}", to: { step: "ask", type: "step" } },
+              { to: { type: "end" } },
+            ],
+            outputs: { verdict: "${{ result.data.verdict }}" },
+            schema,
+          },
+          { data: { author: { name: "Ada" } } },
+        ),
+      ).resolves.toEqual({ next: "ask", outputs: { verdict: null } });
+    });
+
+    it("fills nested objects and keeps what the data has", async () => {
+      await expect(
+        runAi(
+          {
+            outputs: { data: "${{ result.data }}", name: "${{ result.data.author.name }}" },
+            schema: {
+              properties: { ...schema.properties, note: { type: ["string", "null"] } },
+              type: "object",
+            },
+          },
+          { data: { author: { role: "reviewer" }, extra: 1, note: null, verdict: "approve" } },
+        ),
+      ).resolves.toEqual({
+        outputs: {
+          data: {
+            author: { name: null, role: "reviewer" },
+            extra: 1,
+            note: null,
+            verdict: "approve",
+          },
+          name: null,
+        },
+      });
+    });
+
+    it("does not change the data that the AI runner returned", async () => {
+      const data = { author: {} };
+      await runAi({ outputs: { data: "${{ result.data }}" }, schema }, { data });
+
+      expect(data).toEqual({ author: {} });
+    });
+
+    it("does not change the prototype for a property named __proto__", async () => {
+      const filled = outputData(
+        await runAi(
+          {
+            outputs: { data: "${{ result.data }}" },
+            schema: {
+              properties: {
+                ["__proto__"]: { properties: { polluted: { type: "string" } }, type: "object" },
+              },
+              type: "object",
+            },
+          },
+          { data: JSON.parse('{"__proto__": {}}') as unknown },
+        ),
+      );
+
+      expect(Object.getPrototypeOf(filled)).toBe(Object.prototype);
+      expect(Object.getOwnPropertyDescriptor(filled, "__proto__")?.value).toEqual({
+        polluted: null,
+      });
+    });
+
+    it("adds a missing property named __proto__ as an own property", async () => {
+      const filled = outputData(
+        await runAi(
+          {
+            outputs: { data: "${{ result.data }}" },
+            schema: { properties: JSON.parse('{"__proto__": {}}') as unknown, type: "object" },
+          },
+          { data: {} },
+        ),
+      );
+
+      expect(Object.getPrototypeOf(filled)).toBe(Object.prototype);
+      expect(Object.hasOwn(filled, "__proto__")).toBe(true);
+    });
+
+    it("still fails on a property that the schema does not declare", async () => {
+      await expect(
+        runAi(
+          {
+            branches: [
+              { if: "${{ result.data.verdcit == 'changes' }}", to: { step: "ask", type: "step" } },
+              { to: { type: "end" } },
+            ],
+            schema: { ...schema, additionalProperties: true },
+          },
+          { data: { verdict: "changes" } },
+        ),
+      ).rejects.toMatchObject({
+        message: "next[0].if: Unknown reference: result.data.verdcit",
+        type: "InvalidCondition",
+      });
+    });
+
+    it("does not follow the items of arrays", async () => {
+      await expect(
+        runAi(
+          {
+            outputs: { data: "${{ result.data }}" },
+            schema: {
+              properties: {
+                comments: {
+                  items: { properties: { line: { type: "number" } }, type: "object" },
+                  type: "array",
+                },
+              },
+              type: "object",
+            },
+          },
+          { data: { comments: [{ body: "Typo" }] } },
+        ),
+      ).resolves.toEqual({ outputs: { data: { comments: [{ body: "Typo" }] } } });
     });
   });
 
@@ -935,6 +1082,23 @@ describe("continueOnError", () => {
       message: "outputs.data: trim expects a string but got null: ${{ trim(result.data) }}",
       nonRetryable: true,
       type: "InvalidExpression",
+    });
+  });
+
+  it("keeps result.data of a failed AI step null when it has a schema", async () => {
+    await expect(
+      runAiContinuing(
+        {
+          run: async () => {
+            throw new AiTimeoutError(1000);
+          },
+        },
+        [],
+        { schema: { properties: { verdict: { type: "string" } }, type: "object" } },
+      ),
+    ).resolves.toEqual({
+      next: "yes",
+      outputs: { data: null, error: "AI step timed out after 1000 ms", ok: false },
     });
   });
 

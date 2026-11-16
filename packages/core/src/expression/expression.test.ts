@@ -278,6 +278,76 @@ describe("evaluateExpression", () => {
   });
 });
 
+describe("evaluateExpression with white space around a single expression", () => {
+  const values = {
+    result: { exitCode: 0 },
+    workflow: { inputs: { dryRun: true } },
+  };
+
+  it.each([
+    ["${{ result.exitCode }}", 0],
+    ["${{ result.exitCode }}\n", 0],
+    ["  ${{ workflow.inputs.dryRun }}  ", true],
+    ["code: ${{ result.exitCode }}", "code: 0"],
+    ["${{ result.exitCode }} ${{ workflow.inputs.dryRun }}", "0 true"],
+  ])("evaluates %j to %j", (text, value) => {
+    expect(evaluateExpression(text, values)).toEqual({ ok: true, value });
+  });
+
+  it.each([
+    ["a space", " "],
+    ["a tab", "\t"],
+    ["LF", "\n"],
+    ["CRLF", "\r\n"],
+    ["U+00A0", "\u00a0"],
+    ["U+3000", "\u3000"],
+  ])("drops %s around the expression", (_name, space) => {
+    expect(evaluateExpression(`${space}\${{ result.exitCode }}${space}`, values)).toEqual({
+      ok: true,
+      value: 0,
+    });
+  });
+
+  it("keeps the type of a value that is not a string, number, or boolean", () => {
+    expect(evaluateExpression("\n${{ steps.fetch.outputs.items }}\n", context)).toEqual({
+      ok: true,
+      value: ["a"],
+    });
+    expect(evaluateExpression(" ${{ inputs.absent }} ", context)).toEqual({
+      ok: true,
+      value: null,
+    });
+  });
+
+  it.each([
+    ["a character that is not white space", "${{ result.exitCode }}\n.", "0\n."],
+    ["a zero width space, which trim keeps", "${{ result.exitCode }}\u200b", "0\u200b"],
+    ["a second expression", "${{ result.exitCode }}\n${{ result.exitCode }}\n", "0\n0\n"],
+  ])("embeds the value into a string with %s", (_name, text, value) => {
+    expect(evaluateExpression(text, values)).toEqual({ ok: true, value });
+  });
+
+  it("applies the same rule to calls", () => {
+    const strings = { inputs: { title: " hello " } };
+
+    expect(evaluateExpression("\n  ${{ trim(inputs.title) }}\r\n", strings)).toEqual({
+      ok: true,
+      value: "hello",
+    });
+    expect(evaluateExpression("[${{ trim(inputs.title) }}]\n", strings)).toEqual({
+      ok: true,
+      value: "[hello]\n",
+    });
+    expect(
+      evaluateExpression("${{ trim(inputs.title) }} ${{ trim(inputs.title) }}", strings),
+    ).toEqual({ ok: true, value: "hello hello" });
+  });
+
+  it("keeps text without expressions as it is", () => {
+    expect(evaluateExpression("  \n", values)).toEqual({ ok: true, value: "  \n" });
+  });
+});
+
 describe("evaluateExpression calls", () => {
   const values = {
     inputs: { count: 3, title: "  hello \n" },

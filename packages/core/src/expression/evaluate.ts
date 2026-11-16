@@ -142,10 +142,34 @@ export const embedValue = (value: unknown): string => {
 };
 
 /**
+ * Returns the index of the expression of a template that is one expression with only white space
+ * around it, such as `${{ result.exitCode }}` followed by a line break of a YAML block scalar, or
+ * `undefined`.
+ *
+ * White space is what `String.prototype.trim` removes.
+ */
+const onlyExpressionIndex = (template: Template): number | undefined => {
+  let index: number | undefined;
+  for (const [position, part] of template.entries()) {
+    if (part.type === "text") {
+      if (part.value.trim() !== "") {
+        return undefined;
+      }
+    } else if (index === undefined) {
+      index = position;
+    } else {
+      return undefined;
+    }
+  }
+  return index;
+};
+
+/**
  * Evaluates a parsed template against the values that its references may read.
  *
- * A template that consists of a single expression, a reference or a call, keeps the type of the
- * value. Otherwise the values are embedded into a string.
+ * A template that consists of a single expression, a reference or a call, with only white space
+ * around it keeps the type of the value, and the white space is dropped. White space is what
+ * `String.prototype.trim` removes. Otherwise the values are embedded into a string.
  *
  * A reference to a step that is not in the context reads as `null`, because a step on another
  * branch may not have run. Any other reference that cannot be read is an error. The same rules
@@ -183,9 +207,9 @@ export const evaluateTemplate = (
     }
   }
 
-  const [only] = template;
-  if (template.length === 1 && only?.type === "expression") {
-    return { ok: true, value: values[0] };
+  const only = onlyExpressionIndex(template);
+  if (only !== undefined) {
+    return { ok: true, value: values[only] };
   }
   try {
     return { ok: true, value: values.map(embedValue).join("") };

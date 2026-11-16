@@ -257,6 +257,28 @@ describe("executeScriptStep", () => {
     expect(output).toEqual({ name: "pre-result!" });
   });
 
+  it("drops the line breaks around a single expression in run and the environment", async () => {
+    const requests: ScriptRequest[] = [];
+    await runStep(
+      {
+        inputs: { command: "./report.sh", count: 3 },
+        run: "${{ inputs.command }}\n",
+        stepEnv: { COUNT: "\n${{ inputs.count }}\r\n", TITLE: "${{ inputs.command }} \n" },
+      },
+      {},
+      requests,
+    );
+
+    expect(requests).toEqual([
+      {
+        env: { COUNT: "3", TITLE: "./report.sh" },
+        inputs: { command: "./report.sh", count: 3 },
+        run: "./report.sh",
+        timeoutMs: 1000,
+      },
+    ]);
+  });
+
   it("keeps the step input when references contain an input entry", async () => {
     const requests: ScriptRequest[] = [];
     await runStep(

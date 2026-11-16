@@ -251,6 +251,45 @@ const scenarios: Record<
       version: intermediateVersion,
     },
   },
+  whitespace: {
+    drive: async (handle) => {
+      await waitForStep(handle);
+      await handle.executeUpdate(answerUpdateName, {
+        args: [{ step: "ask", values: { count: 2 } }],
+      });
+    },
+    inputs: { count: 1 },
+    intermediate: {
+      // The workflow evaluates env, the inputs of a step, and the with and outputs of a wait step.
+      env: { COUNT: "${{ workflow.inputs.count }}\n" },
+      inputs: { count: { required: true, type: "number" } },
+      start: "fetch",
+      steps: {
+        fetch: script("echo ${{ inputs.count }}", "ask", {
+          inputs: { count: "  ${{ workflow.inputs.count }}\n" },
+          outputs: { code: "${{ result.exitCode }}\n" },
+        }),
+        ask: {
+          answers: { count: { required: true, type: "number" } },
+          inputs: {},
+          method: "terminal",
+          // The branch is chosen by a local activity whose input differs on replay.
+          next: {
+            branches: [
+              { if: "${{ outputs.count == 2 }}", to: { step: "report", type: "step" } },
+              { to: { type: "end" } },
+            ],
+            type: "branch",
+          },
+          outputs: { count: "\n${{ result.count }}\n" },
+          type: "wait",
+          with: { message: "${{ steps.fetch.outputs.code }}\n" },
+        },
+        report: script('echo "${{ steps.ask.outputs.count }}"', null),
+      },
+      version: intermediateVersion,
+    },
+  },
 };
 
 const waitForStep = async (handle: WorkflowHandle): Promise<void> => {

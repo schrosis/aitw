@@ -299,8 +299,8 @@ describe("evaluateExpression with white space around a single expression", () =>
     ["a tab", "\t"],
     ["LF", "\n"],
     ["CRLF", "\r\n"],
-    ["U+00A0", " "],
-    ["U+3000", "　"],
+    ["U+00A0", "\u00a0"],
+    ["U+3000", "\u3000"],
   ])("drops %s around the expression", (_name, space) => {
     expect(evaluateExpression(`${space}\${{ result.exitCode }}${space}`, values)).toEqual({
       ok: true,
@@ -321,7 +321,7 @@ describe("evaluateExpression with white space around a single expression", () =>
 
   it.each([
     ["a character that is not white space", "${{ result.exitCode }}\n.", "0\n."],
-    ["a zero width space, which trim keeps", "${{ result.exitCode }}​", "0​"],
+    ["a zero width space, which trim keeps", "${{ result.exitCode }}\u200b", "0\u200b"],
     ["a second expression", "${{ result.exitCode }}\n${{ result.exitCode }}\n", "0\n0\n"],
   ])("embeds the value into a string with %s", (_name, text, value) => {
     expect(evaluateExpression(text, values)).toEqual({ ok: true, value });

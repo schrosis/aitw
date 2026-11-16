@@ -21,5 +21,6 @@ export {
   resolveWorkflowInput,
 } from "./input.js";
 export type { ResolveInputResult, WorkflowInput } from "./input.js";
+export { checkConditionTypes } from "./conditions.js";
 export { validateIntermediate } from "./validate.js";
 export type { ValidationError, ValidationResult } from "./validate.js";

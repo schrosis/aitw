@@ -128,6 +128,107 @@ export const conditionValues = (condition: Condition): ValueExpression[] => {
   }
 };
 
+/** A value whose result must be `true` or `false`, returned by {@link booleanOperands}. */
+export interface BooleanOperand {
+  value: ValueExpression;
+  /**
+   * Whether the value is a reference that an earlier operand shows is not `null` when this one is
+   * evaluated, such as the second `x` of `x != null && x` or of `x == null || x`.
+   */
+  checkedNotNull: boolean;
+}
+
+/** Returns a key of a reference, to compare it with others. */
+const referenceKey = (path: readonly string[]): string => JSON.stringify(path);
+
+/** Returns the reference that a comparison with `null` compares, such as `x` of `x == null`. */
+const comparedWithNull = (left: Condition, right: Condition): string | undefined => {
+  const isNull = (side: Condition): boolean => side.type === "literal" && side.value === null;
+  if (left.type === "reference" && isNull(right)) {
+    return referenceKey(left.path);
+  }
+  if (right.type === "reference" && isNull(left)) {
+    return referenceKey(right.path);
+  }
+  return undefined;
+};
+
+/**
+ * Returns the references that are not `null` when a condition has a result, such as `x` of
+ * `x != null` when it is `true`.
+ */
+const notNullWhen = (condition: Condition, result: boolean): ReadonlySet<string> => {
+  switch (condition.type) {
+    case "equal":
+    case "notEqual": {
+      const key = comparedWithNull(condition.left, condition.right);
+      // x == null is false, or x != null is true.
+      return key !== undefined && (condition.type === "notEqual") === result
+        ? new Set([key])
+        : new Set();
+    }
+    case "not": {
+      return notNullWhen(condition.operand, !result);
+    }
+    case "and":
+    case "or": {
+      // Both operands have the result when `&&` is true or `||` is false.
+      return (condition.type === "and") === result
+        ? new Set([...notNullWhen(condition.left, result), ...notNullWhen(condition.right, result)])
+        : new Set();
+    }
+    default: {
+      return new Set();
+    }
+  }
+};
+
+/**
+ * Returns the values whose result must be `true` or `false`: the condition itself and the
+ * operands of `!`, `&&`, and `||`, but not the operands of `==` and `!=`, from left to right.
+ *
+ * `&&` and `||` evaluate their right operand only when the left one is `true` and `false`, so a
+ * comparison with `null` on the left, such as `x != null && x`, shows that a reference on the
+ * right is not `null`.
+ *
+ * It is not public. Validation uses it to check the types of conditions.
+ */
+export const booleanOperands = (condition: Condition): BooleanOperand[] => {
+  const collect = (current: Condition, notNull: ReadonlySet<string>): BooleanOperand[] => {
+    switch (current.type) {
+      case "literal":
+      case "call": {
+        return [{ checkedNotNull: false, value: current }];
+      }
+      case "reference": {
+        return [{ checkedNotNull: notNull.has(referenceKey(current.path)), value: current }];
+      }
+      case "not": {
+        return collect(current.operand, notNull);
+      }
+      case "and":
+      case "or": {
+        const leftResult = current.type === "and";
+        return [
+          ...collect(current.left, notNull),
+          ...collect(
+            current.right,
+            new Set([...notNull, ...notNullWhen(current.left, leftResult)]),
+          ),
+        ];
+      }
+      case "equal":
+      case "notEqual": {
+        return [];
+      }
+      default: {
+        return current satisfies never;
+      }
+    }
+  };
+  return collect(condition, new Set());
+};
+
 /** Returns the paths of the references of a condition, including those in arguments, in order. */
 export const conditionReferences = (condition: Condition): string[][] =>
   conditionValues(condition).flatMap(expressionReferences);

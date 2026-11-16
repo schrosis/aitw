@@ -98,6 +98,61 @@ const findNumberNotationErrors = (
   });
 };
 
+/**
+ * Finds values of `env` that YAML reads as a number or a boolean whose text differs from how
+ * they are written, such as `1.10`, `00123`, or `True`.
+ *
+ * The values become strings, and the parsed value no longer shows how they were written.
+ */
+const findEnvNotationErrors = (
+  document: DefinitionDocument,
+  lineCounter: LineCounter,
+): DefinitionError[] => {
+  const findIn = (env: unknown, base: (number | string)[]): DefinitionError[] => {
+    if (!isMap(env)) {
+      return [];
+    }
+    return env.items.flatMap(({ key, value }): DefinitionError[] => {
+      if (
+        !isScalar(key) ||
+        !isScalar(value) ||
+        (typeof value.value !== "number" && typeof value.value !== "boolean") ||
+        value.source === undefined
+      ) {
+        return [];
+      }
+      const { source } = value;
+      const text = String(value.value);
+      if (source === text) {
+        return [];
+      }
+      return [
+        createError(
+          lineCounter,
+          value.range?.[0] ?? 0,
+          [...base, String(key.value)],
+          `YAML reads ${source} as ${text}. Quote it to keep it as written, such as "${source}"`,
+        ),
+      ];
+    });
+  };
+
+  if (!isMap(document.contents)) {
+    return [];
+  }
+  const steps = document.contents.get("steps");
+  return [
+    ...findIn(document.contents.get("env"), ["env"]),
+    ...(isMap(steps)
+      ? steps.items.flatMap(({ key, value }) =>
+          isScalar(key) && isMap(value)
+            ? findIn(value.get("env"), ["steps", String(key.value), "env"])
+            : [],
+        )
+      : []),
+  ];
+};
+
 /** Finds the source offset of a path, falling back to its closest existing parent. */
 const findOffset = (
   document: DefinitionDocument,
@@ -240,8 +295,12 @@ export const parseYaml = <Schema extends z.ZodType>(
  * Invalid definitions are reported in the result instead of being thrown.
  */
 export const parseDefinition = (source: string): ParseResult => {
-  // A number notation error explains why its value fails the schema.
-  const result = parseYaml(source, definitionSchema, findNumberNotationErrors);
+  // A notation error explains why its value fails the schema, or why it is rejected although the
+  // schema accepts it.
+  const result = parseYaml(source, definitionSchema, (document, lineCounter) => [
+    ...findNumberNotationErrors(document, lineCounter),
+    ...findEnvNotationErrors(document, lineCounter),
+  ]);
   return result.ok
     ? { definition: result.value, locate: result.locate, ok: true }
     : { errors: result.errors, ok: false };

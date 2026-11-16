@@ -207,6 +207,98 @@ steps:
   });
 });
 
+const withWorkflowEnv = (value: string): string =>
+  validSource.replace("start: fetch", `env:\n  VALUE: ${value}\nstart: fetch`);
+
+const withStepEnv = (value: string): string =>
+  validSource.replace("next: end", `next: end\n    env:\n      VALUE: ${value}`);
+
+describe("parseDefinition env notation", () => {
+  it("reads numbers and booleans written as YAML reads them as text", () => {
+    const source = validSource
+      .replace("start: fetch", "env:\n  PORT: 3000\n  RATE: 0.5\n  DEBUG: true\nstart: fetch")
+      .replace("next: end", "next: end\n    env:\n      OFFSET: -1\n      QUIET: false");
+
+    expect(parseDefinition(source)).toMatchObject({
+      definition: {
+        env: { DEBUG: "true", PORT: "3000", RATE: "0.5" },
+        steps: { fetch: { env: { OFFSET: "-1", QUIET: "false" } } },
+      },
+      ok: true,
+    });
+  });
+
+  it.each([
+    ["1.10", "1.1"],
+    ["1.0", "1"],
+    ["00123", "123"],
+    ["0x1F", "31"],
+    ["0o17", "15"],
+    ["1e3", "1000"],
+    ["+1", "1"],
+    ["-0", "0"],
+    [".5", "0.5"],
+    [".inf", "Infinity"],
+    [".nan", "NaN"],
+    ["12345678901234567890", "12345678901234567000"],
+    ["True", "true"],
+    ["TRUE", "true"],
+    ["False", "false"],
+  ])("rejects %s, which YAML reads as %s", (source, read) => {
+    const message = `YAML reads ${source} as ${read}. Quote it to keep it as written, such as "${source}"`;
+
+    expect(parseDefinition(withWorkflowEnv(source))).toEqual({
+      errors: [{ column: 10, line: 3, message, path: ["env", "VALUE"] }],
+      ok: false,
+    });
+    expect(parseDefinition(withStepEnv(source))).toEqual({
+      errors: [{ column: 14, line: 9, message, path: ["steps", "fetch", "env", "VALUE"] }],
+      ok: false,
+    });
+  });
+
+  it.each([
+    ['"1.10"', "1.10"],
+    ["'00123'", "00123"],
+    ['"True"', "True"],
+    ["|-\n    1.10", "1.10"],
+    ["${{ workflow.inputs.version }}", "${{ workflow.inputs.version }}"],
+  ])("keeps %s as written", (source, value) => {
+    expect(parseDefinition(withWorkflowEnv(source))).toMatchObject({
+      definition: { env: { VALUE: value } },
+      ok: true,
+    });
+  });
+
+  it("does not repeat a schema error of the same path", () => {
+    const source = validSource.replace("start: fetch", "env:\n  1BAD: 1.10\nstart: fetch");
+
+    expect(parseDefinition(source)).toEqual({
+      errors: [
+        {
+          column: 9,
+          line: 3,
+          message: 'YAML reads 1.10 as 1.1. Quote it to keep it as written, such as "1.10"',
+          path: ["env", "1BAD"],
+        },
+      ],
+      ok: false,
+    });
+  });
+
+  it("reports the notation with the schema errors of other paths", () => {
+    const source = withWorkflowEnv("00123").replace("next: end", "next: end\n    retry: 3");
+
+    expect(parseDefinition(source)).toMatchObject({
+      errors: [
+        { path: ["env", "VALUE"] },
+        { message: "Unknown field: retry", path: ["steps", "fetch", "retry"] },
+      ],
+      ok: false,
+    });
+  });
+});
+
 describe("parseDefinition invalid keys", () => {
   it("explains why a name is invalid", () => {
     const source = validSource.replace("start: fetch", "env:\n  1BAD: x\nstart: fetch");

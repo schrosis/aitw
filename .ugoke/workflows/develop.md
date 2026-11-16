@@ -4,6 +4,7 @@
 flowchart TD
   start_(("start"))
   s_pick["pick"]
+  s_branch["branch"]
   s_implement(["implement"])
   d_implement_0{"result.data.status == 'needs_decision'"}
   s_decide{{"decide"}}
@@ -12,13 +13,21 @@ flowchart TD
   d_check_0{"!result.ok"}
   s_review(["review"])
   d_review_0{"result.data.verdict == 'changes'"}
+  s_publish(["publish"])
+  s_wait_review{{"wait_review"}}
+  d_wait_review_0{"result.event == 'merged'"}
+  d_wait_review_1{"result.event == 'closed'"}
+  d_wait_review_2{"result.reviewState == 'APPROVED'"}
+  s_closed["closed"]
   s_mark_done["mark_done"]
   d_mark_done_0{"steps.implement.outputs.reflect"}
   s_reflect(["reflect"])
-  s_reported{{"reported"}}
+  d_reflect_0{"steps.mark_done.outputs.line == null"}
+  s_finish["finish"]
   end_(("end"))
   start_ --> s_pick
-  s_pick --> s_implement
+  s_pick --> s_branch
+  s_branch --> s_implement
   s_implement --> d_implement_0
   d_implement_0 -->|"yes"| s_decide
   d_implement_0 -->|"no"| s_check
@@ -30,10 +39,21 @@ flowchart TD
   d_check_0 -->|"no"| s_review
   s_review --> d_review_0
   d_review_0 -->|"yes"| s_implement
-  d_review_0 -->|"no"| s_mark_done
+  d_review_0 -->|"no"| s_publish
+  s_publish --> s_wait_review
+  s_wait_review --> d_wait_review_0
+  d_wait_review_0 -->|"yes"| s_mark_done
+  d_wait_review_0 -->|"no"| d_wait_review_1
+  d_wait_review_1 -->|"yes"| s_closed
+  d_wait_review_1 -->|"no"| d_wait_review_2
+  d_wait_review_2 -->|"yes"| s_wait_review
+  d_wait_review_2 -->|"no"| s_implement
+  s_closed --> end_
   s_mark_done --> d_mark_done_0
   d_mark_done_0 -->|"yes"| s_reflect
-  d_mark_done_0 -->|"no"| end_
-  s_reflect --> s_reported
-  s_reported --> end_
+  d_mark_done_0 -->|"no"| s_finish
+  s_reflect --> d_reflect_0
+  d_reflect_0 -->|"yes"| end_
+  d_reflect_0 -->|"no"| s_finish
+  s_finish --> end_
 ```

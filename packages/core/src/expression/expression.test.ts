@@ -266,6 +266,25 @@ describe("evaluateExpression", () => {
     },
   );
 
+  it("names the whole expression in the message as conditions do not", () => {
+    expect(
+      evaluateExpression("verdict: ${{ trim(result.data.verdcit) }}", {
+        result: { data: { verdict: "ok" } },
+      }),
+    ).toEqual({ message: "Unknown reference: ${{ trim(result.data.verdcit) }}", ok: false });
+  });
+
+  it("cannot read env, which a template has no context for", () => {
+    expect(evaluateExpression("${{ env.CI }}", context)).toEqual({
+      message: "Unknown reference: ${{ env.CI }}",
+      ok: false,
+    });
+    expect(evaluateExpression("[${{ env.CI }}]", context)).toEqual({
+      message: "Unknown reference: ${{ env.CI }}",
+      ok: false,
+    });
+  });
+
   it("does not read prototype members", () => {
     expect(evaluateExpression("${{ inputs.constructor }}", context)).toMatchObject({ ok: false });
     expect(evaluateExpression("${{ inputs.__proto__ }}", context)).toMatchObject({ ok: false });

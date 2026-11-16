@@ -92,7 +92,7 @@ describe("evaluateCondition", () => {
     ["${{ !trim(padded) }}", "Expected true or false but found string"],
     ["${{ trim(count) == 'ok' }}", "trim expects a string but got number"],
     ["${{ trim(steps.missing.outputs.value) == 'ok' }}", "trim expects a string but got null"],
-    ["${{ trim(outputs.constructor) == 'ok' }}", "trim expects a string but got null"],
+    ["${{ trim(outputs.constructor) == 'ok' }}", "Unknown reference: outputs.constructor"],
   ])("fails on %s", (text, message) => {
     expect(evaluate(text)).toEqual({ message, ok: false });
   });
@@ -102,7 +102,72 @@ describe("evaluateCondition", () => {
   });
 
   it("does not read inherited members", () => {
-    expect(evaluate("${{ outputs.constructor == null }}")).toEqual({ ok: true, value: true });
+    expect(evaluate("${{ outputs.constructor == null }}")).toEqual({
+      message: "Unknown reference: outputs.constructor",
+      ok: false,
+    });
+  });
+});
+
+describe("evaluateCondition with references that cannot be read", () => {
+  const runContext = {
+    env: { DEPLOY_ENV: "prod" },
+    result: { data: { items: ["a"], verdict: "ok" }, ok: true },
+    steps: { review: { visits: [{ outputs: { approved: true } }] } },
+  };
+
+  const evaluateIn = (text: string, values: Readonly<Record<string, unknown>> = runContext) => {
+    const parsed = parseCondition(text);
+    if (!parsed.ok) {
+      throw new Error(parsed.message);
+    }
+    return evaluateCondition(parsed.condition, values);
+  };
+
+  it.each([
+    // A path that goes through null.
+    ["${{ result.data.verdict == null }}", { result: { data: null, ok: false } }],
+    // A step that has not run, and a visit that has not happened.
+    ["${{ steps.deploy.outputs.version == null }}", runContext],
+    ["${{ steps.review.visits[1].outputs.approved == null }}", runContext],
+    // A variable that is not set.
+    ["${{ env.DEPLOY_ENVV == null }}", runContext],
+  ])("reads %s as null", (text, values) => {
+    expect(evaluateIn(text, values)).toEqual({ ok: true, value: true });
+  });
+
+  it("compares an unset variable as unequal to a value", () => {
+    expect(evaluateIn("${{ env.DEPLOY_ENVV == 'prod' }}")).toEqual({ ok: true, value: false });
+    expect(evaluateIn("${{ env.DEPLOY_ENV == 'prod' }}")).toEqual({ ok: true, value: true });
+  });
+
+  it.each([
+    ["${{ result.data.verdcit == 'ok' }}", "Unknown reference: result.data.verdcit"],
+    ["${{ result.data.items[1] == null }}", "Unknown reference: result.data.items[1]"],
+    ["${{ result.stdout == null }}", "Unknown reference: result.stdout"],
+    // Only a name directly under env reads as null.
+    ["${{ env.DEPLOY_ENV.name == null }}", "Unknown reference: env.DEPLOY_ENV.name"],
+    ["${{ env.DEPLOY_ENVV.name == null }}", "Unknown reference: env.DEPLOY_ENVV.name"],
+  ])("fails on %s", (text, message) => {
+    expect(evaluateIn(text)).toEqual({ message, ok: false });
+  });
+
+  it("fails on env when the context has no env", () => {
+    expect(evaluateIn("${{ env.CI == null }}", { result: runContext.result })).toEqual({
+      message: "Unknown reference: env.CI",
+      ok: false,
+    });
+  });
+
+  it("reads the references in the arguments of a call in the same way", () => {
+    expect(evaluateIn("${{ trim(result.data.verdcit) == 'ok' }}")).toEqual({
+      message: "Unknown reference: result.data.verdcit",
+      ok: false,
+    });
+    expect(evaluateIn("${{ trim(env.DEPLOY_ENVV) == 'prod' }}")).toEqual({
+      message: "trim expects a string but got null",
+      ok: false,
+    });
   });
 });
 

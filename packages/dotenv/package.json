@@ -19,6 +19,9 @@
     "test": "vitest run --root ../.. --passWithNoTests packages/dotenv/",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json"
   },
+  "dependencies": {
+    "@ugoke/core": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "catalog:"
   },

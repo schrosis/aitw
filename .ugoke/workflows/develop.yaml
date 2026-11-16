@@ -7,6 +7,10 @@ inputs:
     type: string
     required: true
     description: plan で作った作業の名前。docs/work/<name>/tasks.md の、まだ終わっていない最初のタスクを実装する
+  reviewer:
+    type: string
+    default: schrosis
+    description: PR のレビューを待つ人の GitHub のログイン名。Claude Review（github-actions[bot]）のレビューも待つ
 
 env:
   WORK_NAME: ${{ workflow.inputs.name }}
@@ -25,6 +29,7 @@ steps:
           exit 1
           ;;
       esac
+
       dir="docs/work/$WORK_NAME"
       for file in requirements.md design.md tasks.md; do
         if [ ! -f "$dir/$file" ]; then
@@ -32,6 +37,7 @@ steps:
           exit 1
         fi
       done
+
       task=$(awk '
         /^- \[ \] / { if (found) exit; found = 1; print; next }
         found && /^- / { exit }
@@ -45,9 +51,39 @@ steps:
       printf '%s\n' "$task"
     outputs:
       task: ${{ trim(result.stdout) }}
+    next: branch
+
+  # 2. main を最新にして、タスクのブランチを切る
+  # 今すでにタスクのブランチにいるなら、前の develop が途中で止めた続きなので、そのまま使う。
+  branch:
+    type: script
+    env:
+      TASK: ${{ steps.pick.outputs.task }}
+    run: |
+      branch=$(printf '%s\n' "$TASK" | sed -n 's/^  - ブランチ: `\([^`]*\)`.*$/\1/p' | head -n 1)
+      case "$branch" in
+        '' | /* | */ | *//* | *[!a-z0-9/-]*)
+          echo "The task needs a line such as \"  - ブランチ: \`feat/short-name\`\": $branch" >&2
+          exit 1
+          ;;
+      esac
+
+      if [ "$(git branch --show-current)" != "$branch" ]; then
+        git fetch origin main
+        git switch main
+        git merge --ff-only origin/main
+        if git show-ref --verify --quiet "refs/heads/$branch"; then
+          git switch "$branch"
+        else
+          git switch -c "$branch"
+        fi
+      fi
+      printf '%s\n' "$branch"
+    outputs:
+      name: ${{ trim(result.stdout) }}
     next: implement
 
-  # 2. 実装
+  # 3. 実装
   implement:
     type: ai
     provider: claude-code
@@ -78,11 +114,21 @@ steps:
       ## 前回の pnpm check の結果（空なら未実行）
       ${{ steps.check.outputs.log }}
 
-      ## 最後に受けたレビューの指摘（空ならなし）
+      ## 最後に受けたローカルのレビューの指摘（空ならなし）
       ${{ steps.review.outputs.findings }}
 
       ## 最後に受けた判断の回答（空ならなし）
       ${{ steps.decide.outputs.answer }}
+
+      ## 最後に受けた PR のレビュー（空ならなし）
+      PR: ${{ steps.publish.outputs.url }}
+      レビューした人: ${{ steps.wait_review.outputs.author }}
+      状態: ${{ steps.wait_review.outputs.state }}
+
+      ${{ steps.wait_review.outputs.body }}
+
+      PR のレビューを受けたときは、gh で PR の未解決のレビューのスレッドも読んで、指摘に対応して
+      ください。スレッドへの返信と push は、あとのステップが行います。
 
       上の指摘や回答のうち、まだ対応していないものに対応してください。
       これまでのまとめで対応済みのものに、もう一度対応する必要はありません。
@@ -101,7 +147,7 @@ steps:
       作業を終えたら status を done にし、question は空にしてください。
 
       ## 要件、設計、タスクの一覧への反映
-      タスクを終えると、ワークフローが tasks.md のこのタスクに完了の印を付けます。
+      PR がマージされると、ワークフローが tasks.md のこのタスクに完了の印を付けます。
       次のどれかに当たるときだけ、reflect を true にしてください。別のステップが文書を直します。
       - 実装が要件や設計から外れた。または、実装の中で要件や設計にないことを決めた
       - 後のタスクの内容を直す必要がある気づきがある
@@ -139,7 +185,7 @@ steps:
         to: decide
       - to: check
 
-  # 3. 実装中に人間の判断を仰ぐ
+  # 4. 実装中に人間の判断を仰ぐ
   decide:
     type: wait
     method: terminal
@@ -174,7 +220,7 @@ steps:
         to: reflect
       - to: implement
 
-  # 4. リンター、フォーマット、テストなどのチェック
+  # 5. リンター、フォーマット、テストなどのチェック
   check:
     type: script
     continueOnError: true
@@ -199,7 +245,7 @@ steps:
         to: implement
       - to: review
 
-  # 5. レビュー
+  # 6. ローカルのレビュー
   review:
     type: ai
     provider: claude-code
@@ -207,7 +253,8 @@ steps:
     prompt: |
       ugoke リポジトリの、まだコミットしていない変更をレビューしてください。コードは変更しないでください。
       git diff と git status で変更を確かめ、.claude/review.md の観点に従ってください。
-      作業ツリーには、前のタスクの変更が残っていることがあります。このタスクの変更を中心に見てください。
+      このタスクのブランチ（${{ steps.branch.outputs.name }}）で、main からの変更を見てください。
+      PR のレビューに対応した後なら、コミット済みの変更（git diff main...HEAD）も合わせて見てください。
 
       ## タスク
       ${{ steps.pick.outputs.task }}
@@ -248,10 +295,113 @@ steps:
     next:
       - if: ${{ result.data.verdict == 'changes' }}
         to: implement
-      - to: mark_done
+      - to: publish
 
-  # 6. タスクに完了の印を付ける
-  # 変更は人間が PR でレビューする。拾ったタスクが今も先頭の未完了のタスクであることを確かめてから付ける。
+  # 7. コミット、push し、PR を作るか、PR のレビューに返信する
+  publish:
+    type: ai
+    provider: claude-code
+    model: claude-opus-5-5
+    prompt: |
+      ugoke リポジトリで、このタスクの変更をコミットして push し、PR を作ってください。
+      PR がすでにあるときは、PR のレビューへの返信もしてください。
+      コードとファイルは変更しないでください。
+
+      ## タスク
+      ${{ steps.pick.outputs.task }}
+
+      ## ブランチ
+      ${{ steps.branch.outputs.name }}
+
+      ## PR（空なら、まだ作っていない）
+      ${{ steps.publish.outputs.url }}
+
+      ## 実装のまとめ
+      ${{ steps.implement.outputs.summary }}
+
+      ## 最後に受けた PR のレビュー（空ならなし）
+      レビューした人: ${{ steps.wait_review.outputs.author }}
+      状態: ${{ steps.wait_review.outputs.state }}
+
+      ${{ steps.wait_review.outputs.body }}
+
+      ## コミットと push
+      - このタスクのために変えたファイルだけを、名前を指定して git add してください。
+        git add -A や git add . は使わないでください。README.md など、タスクと関係のない変更は
+        含めないでください
+      - コミットのメッセージは、英語で Conventional Commits に従って書いてください。本文には、
+        何をなぜ変えたかを書いてください
+      - 変更がなければ、コミットしないでください
+      - ブランチを origin に push してください。force push はしないでください
+
+      ## PR がまだないとき
+      - gh pr create --base main で作ってください。タイトルはコミットの要約と同じ形にしてください
+      - 本文は、.github/pull_request_template.md に沿って日本語で書いてください
+      - docs/work/ はリポジトリに入っていないため、本文で参照しないでください。レビューに要る背景は、
+        本文に直接書いてください
+      - 確認した内容には、実際に確かめたことだけを書いてください
+
+      ## PR がすでにあるとき
+      - push した後、未解決のレビューのスレッドすべてに、対応したコミットと内容を返信してください。
+        対応しない指摘には、その理由を返信してください。スレッドは解決しないでください
+      - コードを変えずに返信だけした場合は、PR に `@claude` とコメントして、再レビューを頼んで
+        ください。push した場合は、再レビューが自動で始まります
+    schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: PR の URL（https://github.com/<owner>/<repo>/pull/<number>）
+        summary:
+          type: string
+          description: コミット、push、PR の作成、返信のうち、したこと。Markdown で簡潔に書く
+      required: [url, summary]
+    with:
+      allowedTools: [Read, Grep, Glob, "Bash(git:*)", "Bash(gh:*)"]
+    outputs:
+      url: ${{ result.data.url }}
+      summary: ${{ result.data.summary }}
+    next: wait_review
+
+  # 8. PR のレビューかマージを待つ
+  # Approve されたら、マージを待ち続ける。claude[bot] のインラインのコメントのレビューは数えない。
+  wait_review:
+    type: wait
+    method: github_pr
+    with:
+      message: PR のレビューかマージを待っています
+      pr: ${{ steps.publish.outputs.url }}
+      events: [review, merged, closed]
+      review:
+        authors:
+          - github-actions[bot]
+          - ${{ workflow.inputs.reviewer }}
+    outputs:
+      event: ${{ result.event }}
+      author: ${{ result.reviewAuthor }}
+      state: ${{ result.reviewState }}
+      body: ${{ result.reviewBody }}
+    next:
+      - if: ${{ result.event == 'merged' }}
+        to: mark_done
+      - if: ${{ result.event == 'closed' }}
+        to: closed
+      - if: ${{ result.reviewState == 'APPROVED' }}
+        to: wait_review
+      - to: implement
+
+  # マージされずに閉じられたら、失敗にする
+  closed:
+    type: script
+    env:
+      URL: ${{ steps.publish.outputs.url }}
+    run: |
+      echo "The pull request was closed without merging: $URL" >&2
+      exit 1
+    next: end
+
+  # 9. タスクに完了の印を付ける
+  # 拾ったタスクが今も先頭の未完了のタスクであることを確かめてから付ける。
   mark_done:
     type: script
     env:
@@ -273,9 +423,9 @@ steps:
     next:
       - if: ${{ steps.implement.outputs.reflect }}
         to: reflect
-      - to: end
+      - to: finish
 
-  # 7. 要件、設計、タスクに反映する
+  # 10. 要件、設計、タスクに反映する
   # 実装が要件や設計から外れたときと、実装の途中で止めたときだけ動く。直すところだけを Edit で直す。
   reflect:
     type: ai
@@ -311,7 +461,8 @@ steps:
       完了の印が空なら、実装の途中で判断を受けて止めています。タスクは完了していません。
       - 回答に沿って、requirements.md、design.md、tasks.md を直す
       - このタスクは `- [ ] ` のままにする。内容を直す、分ける、前に新しいタスクを足すのはよい
-      - 作業ツリーに残った途中の変更は、次の develop が引き継ぐ。そのことを踏まえてタスクを書く
+      - 作業ツリーに残った途中の変更は、次の develop が同じブランチで引き継ぐ。そのことを踏まえて
+        タスクを書く。タスクのブランチの行は変えない
 
       tasks.md の形は変えないでください。develop は、先頭の `- [ ] ` の行から、次のタスクの行の前
       までを 1 つのタスクとして読みます。
@@ -332,21 +483,16 @@ steps:
         - Bash(git status:*)
     outputs:
       changes: ${{ result.data.changes }}
-    next: reported
+    next:
+      # 途中で止めたときは、次の develop が続きをやれるよう、タスクのブランチに残る。
+      - if: ${{ steps.mark_done.outputs.line == null }}
+        to: end
+      - to: finish
 
-  reported:
-    type: wait
-    method: terminal
-    with:
-      message: |
-        docs/work/${{ workflow.inputs.name }}/ に反映したよ。
-
-        ${{ steps.reflect.outputs.changes }}
-      schema:
-        acknowledged:
-          type: choice
-          options: [確認した]
-          required: true
-    outputs:
-      acknowledged: ${{ result.acknowledged }}
+  # 11. main を最新にして終える
+  finish:
+    type: script
+    run: |
+      git switch main
+      git pull --ff-only
     next: end

@@ -134,6 +134,7 @@
         "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
       },
       "additionalProperties": {
+        "description": "Value of the variable. A number or a boolean becomes text as written, such as 3000 or true. Quote a value that YAML reads differently, such as \"1.10\" or \"00123\"",
         "type": ["string", "number", "boolean"]
       }
     },
@@ -240,6 +241,7 @@
                   "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                 },
                 "additionalProperties": {
+                  "description": "Value of the variable. A number or a boolean becomes text as written, such as 3000 or true. Quote a value that YAML reads differently, such as \"1.10\" or \"00123\"",
                   "type": ["string", "number", "boolean"]
                 }
               }
@@ -698,6 +700,7 @@
                   "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                 },
                 "additionalProperties": {
+                  "description": "Value of the variable. A number or a boolean becomes text as written, such as 3000 or true. Quote a value that YAML reads differently, such as \"1.10\" or \"00123\"",
                   "type": ["string", "number", "boolean"]
                 }
               }

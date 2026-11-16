@@ -98,6 +98,61 @@ const findNumberNotationErrors = (
   });
 };
 
+/**
+ * Finds values of `env` that YAML reads as a number or a boolean whose text differs from how
+ * they are written, such as `1.10`, `00123`, or `True`.
+ *
+ * The values become strings, and the parsed value no longer shows how they were written.
+ */
+const findEnvNotationErrors = (
+  document: DefinitionDocument,
+  lineCounter: LineCounter,
+): DefinitionError[] => {
+  const findIn = (env: unknown, base: (number | string)[]): DefinitionError[] => {
+    if (!isMap(env)) {
+      return [];
+    }
+    return env.items.flatMap(({ key, value }): DefinitionError[] => {
+      if (
+        !isScalar(key) ||
+        !isScalar(value) ||
+        (typeof value.value !== "number" && typeof value.value !== "boolean") ||
+        value.source === undefined
+      ) {
+        return [];
+      }
+      const { source } = value;
+      const text = String(value.value);
+      if (source === text) {
+        return [];
+      }
+      return [
+        createError(
+          lineCounter,
+          value.range?.[0] ?? 0,
+          [...base, String(key.value)],
+          `YAML reads ${source} as ${text}. Quote it to keep it as written, such as "${source}"`,
+        ),
+      ];
+    });
+  };
+
+  if (!isMap(document.contents)) {
+    return [];
+  }
+  const steps = document.contents.get("steps");
+  return [
+    ...findIn(document.contents.get("env"), ["env"]),
+    ...(isMap(steps)
+      ? steps.items.flatMap(({ key, value }) =>
+          isScalar(key) && isMap(value)
+            ? findIn(value.get("env"), ["steps", String(key.value), "env"])
+            : [],
+        )
+      : []),
+  ];
+};
+
 /** Finds the source offset of a path, falling back to its closest existing parent. */
 const findOffset = (
   document: DefinitionDocument,
@@ -133,11 +188,17 @@ const toPath = (path: readonly PropertyKey[]): (number | string)[] => {
   return path.filter((segment) => typeof segment !== "symbol");
 };
 
+/** A problem found by a schema, and whether it is about a key rather than a value. */
+interface SchemaError {
+  error: DefinitionError;
+  key: boolean;
+}
+
 const convertIssue = (
   issue: z.core.$ZodIssue,
   document: DefinitionDocument,
   lineCounter: LineCounter,
-): DefinitionError[] => {
+): SchemaError[] => {
   const path = toPath(issue.path);
 
   // A value that has the type of one option of a union is reported with the problems of that
@@ -156,21 +217,25 @@ const convertIssue = (
   if (issue.code === "unrecognized_keys") {
     return issue.keys.map((key) => {
       const keyPath = [...path, key];
-      return createError(
-        lineCounter,
-        findOffset(document, keyPath, true),
-        keyPath,
-        `Unknown field: ${key}`,
-      );
+      return {
+        error: createError(
+          lineCounter,
+          findOffset(document, keyPath, true),
+          keyPath,
+          `Unknown field: ${key}`,
+        ),
+        key: true,
+      };
     });
   }
 
-  const offset = findOffset(document, path, issue.code === "invalid_key");
+  const key = issue.code === "invalid_key";
+  const offset = findOffset(document, path, key);
   // An invalid key of a record explains itself in its first nested issue, such as the pattern
   // that a name must match.
   const message =
     issue.code === "invalid_key" ? (issue.issues[0]?.message ?? issue.message) : issue.message;
-  return [createError(lineCounter, offset, path, message)];
+  return [{ error: createError(lineCounter, offset, path, message), key }];
 };
 
 /** Result of {@link parseYaml}. */
@@ -186,7 +251,8 @@ export type YamlParseResult<Value> =
  * be unclear. An empty document is `null`.
  *
  * @param check Finds problems that the parsed value no longer shows, such as how a number was
- *   written. A value whose path it reports is not reported by the schema again.
+ *   written. The schema does not report the value of a path that it reports again, but still
+ *   reports the key of the path, such as a name that is not allowed.
  */
 export const parseYaml = <Schema extends z.ZodType>(
   source: string,
@@ -216,9 +282,12 @@ export const parseYaml = <Schema extends z.ZodType>(
         ...checkErrors,
         ...(
           result.error?.issues.flatMap((issue) => convertIssue(issue, document, lineCounter)) ?? []
-        ).filter(
-          ({ path }) => !checkErrors.some((error) => error.path.join(".") === path.join(".")),
-        ),
+        )
+          .filter(
+            ({ error: { path }, key }) =>
+              key || !checkErrors.some((error) => error.path.join(".") === path.join(".")),
+          )
+          .map(({ error }) => error),
       ],
       ok: false,
     };
@@ -240,8 +309,12 @@ export const parseYaml = <Schema extends z.ZodType>(
  * Invalid definitions are reported in the result instead of being thrown.
  */
 export const parseDefinition = (source: string): ParseResult => {
-  // A number notation error explains why its value fails the schema.
-  const result = parseYaml(source, definitionSchema, findNumberNotationErrors);
+  // A notation error explains why its value fails the schema, or why it is rejected although the
+  // schema accepts it.
+  const result = parseYaml(source, definitionSchema, (document, lineCounter) => [
+    ...findNumberNotationErrors(document, lineCounter),
+    ...findEnvNotationErrors(document, lineCounter),
+  ]);
   return result.ok
     ? { definition: result.value, locate: result.locate, ok: true }
     : { errors: result.errors, ok: false };

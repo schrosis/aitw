@@ -92,6 +92,20 @@ describe("definitionSchema", () => {
   ])("rejects %s", (_name, definition) => {
     expect(definitionSchema.safeParse(definition).success).toBe(false);
   });
+
+  it("writes numbers and booleans of env with String()", () => {
+    const definition = definitionSchema.parse({
+      ...validDefinition,
+      env: { PORT: 3000, LARGE: 1e21, DEBUG: true },
+      steps: {
+        ...validDefinition.steps,
+        fetch: { ...validDefinition.steps.fetch, env: { RATE: 1.1, QUIET: false } },
+      },
+    });
+
+    expect(definition.env).toEqual({ DEBUG: "true", LARGE: "1e+21", PORT: "3000" });
+    expect(definition.steps.fetch).toMatchObject({ env: { QUIET: "false", RATE: "1.1" } });
+  });
 });
 
 describe("createDefinitionJsonSchema", () => {
@@ -113,6 +127,27 @@ describe("createDefinitionJsonSchema", () => {
               { required: ["type", "method", "next"] },
               { required: ["type", "provider", "prompt", "next"] },
             ],
+          },
+        },
+      },
+    });
+  });
+
+  it("describes how values of env become text", () => {
+    const envValue = {
+      additionalProperties: {
+        description:
+          'Value of the variable. A number or a boolean becomes text as written, such as 3000 or true. Quote a value that YAML reads differently, such as "1.10" or "00123"',
+        type: ["string", "number", "boolean"],
+      },
+    };
+
+    expect(createDefinitionJsonSchema()).toMatchObject({
+      properties: {
+        env: envValue,
+        steps: {
+          additionalProperties: {
+            oneOf: [{ properties: { env: envValue } }, {}, { properties: { env: envValue } }],
           },
         },
       },

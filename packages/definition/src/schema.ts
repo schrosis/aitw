@@ -65,13 +65,22 @@ const continueOnErrorSchema = z
 const expressionMapSchema = z.record(identifierSchema, z.string().min(1));
 
 /**
- * Environment variables to set, keyed by name. Numbers and booleans are written as text, as
- * YAML reads `PORT: 3000` as a number.
+ * Environment variables to set, keyed by name. Numbers and booleans become text with `String()`,
+ * as YAML reads `PORT: 3000` as a number.
+ *
+ * When a definition is read from YAML, `parseDefinition` first rejects a number or a boolean
+ * whose text differs from how it is written, such as `1.10` or `00123`, because the parsed value no
+ * longer shows how it was written.
  */
 const envSchema = z
   .record(
     z.string().regex(envNamePattern, envNameMessage),
-    z.union([z.string(), z.number(), z.boolean()]).transform(String),
+    z
+      .union([z.string(), z.number(), z.boolean()])
+      .describe(
+        'Value of the variable. A number or a boolean becomes text as written, such as 3000 or true. Quote a value that YAML reads differently, such as "1.10" or "00123"',
+      )
+      .transform(String),
   )
   .optional();
 

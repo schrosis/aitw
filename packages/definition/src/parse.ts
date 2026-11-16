@@ -188,11 +188,17 @@ const toPath = (path: readonly PropertyKey[]): (number | string)[] => {
   return path.filter((segment) => typeof segment !== "symbol");
 };
 
+/** A problem found by a schema, and whether it is about a key rather than a value. */
+interface SchemaError {
+  error: DefinitionError;
+  key: boolean;
+}
+
 const convertIssue = (
   issue: z.core.$ZodIssue,
   document: DefinitionDocument,
   lineCounter: LineCounter,
-): DefinitionError[] => {
+): SchemaError[] => {
   const path = toPath(issue.path);
 
   // A value that has the type of one option of a union is reported with the problems of that
@@ -211,21 +217,25 @@ const convertIssue = (
   if (issue.code === "unrecognized_keys") {
     return issue.keys.map((key) => {
       const keyPath = [...path, key];
-      return createError(
-        lineCounter,
-        findOffset(document, keyPath, true),
-        keyPath,
-        `Unknown field: ${key}`,
-      );
+      return {
+        error: createError(
+          lineCounter,
+          findOffset(document, keyPath, true),
+          keyPath,
+          `Unknown field: ${key}`,
+        ),
+        key: true,
+      };
     });
   }
 
-  const offset = findOffset(document, path, issue.code === "invalid_key");
+  const key = issue.code === "invalid_key";
+  const offset = findOffset(document, path, key);
   // An invalid key of a record explains itself in its first nested issue, such as the pattern
   // that a name must match.
   const message =
     issue.code === "invalid_key" ? (issue.issues[0]?.message ?? issue.message) : issue.message;
-  return [createError(lineCounter, offset, path, message)];
+  return [{ error: createError(lineCounter, offset, path, message), key }];
 };
 
 /** Result of {@link parseYaml}. */
@@ -241,7 +251,8 @@ export type YamlParseResult<Value> =
  * be unclear. An empty document is `null`.
  *
  * @param check Finds problems that the parsed value no longer shows, such as how a number was
- *   written. A value whose path it reports is not reported by the schema again.
+ *   written. The schema does not report the value of a path that it reports again, but still
+ *   reports the key of the path, such as a name that is not allowed.
  */
 export const parseYaml = <Schema extends z.ZodType>(
   source: string,
@@ -271,9 +282,12 @@ export const parseYaml = <Schema extends z.ZodType>(
         ...checkErrors,
         ...(
           result.error?.issues.flatMap((issue) => convertIssue(issue, document, lineCounter)) ?? []
-        ).filter(
-          ({ path }) => !checkErrors.some((error) => error.path.join(".") === path.join(".")),
-        ),
+        )
+          .filter(
+            ({ error: { path }, key }) =>
+              key || !checkErrors.some((error) => error.path.join(".") === path.join(".")),
+          )
+          .map(({ error }) => error),
       ],
       ok: false,
     };

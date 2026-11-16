@@ -270,7 +270,7 @@ describe("parseDefinition env notation", () => {
     });
   });
 
-  it("does not repeat a schema error of the same path", () => {
+  it("reports the notation once and keeps an error of the name of the same path", () => {
     const source = validSource.replace("start: fetch", "env:\n  1BAD: 1.10\nstart: fetch");
 
     expect(parseDefinition(source)).toEqual({
@@ -279,6 +279,12 @@ describe("parseDefinition env notation", () => {
           column: 9,
           line: 3,
           message: 'YAML reads 1.10 as 1.1. Quote it to keep it as written, such as "1.10"',
+          path: ["env", "1BAD"],
+        },
+        {
+          column: 3,
+          line: 3,
+          message: "Must start with a letter or _ and contain only letters, digits, or _",
           path: ["env", "1BAD"],
         },
       ],

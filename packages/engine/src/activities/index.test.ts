@@ -635,6 +635,32 @@ describe("branches", () => {
     });
   });
 
+  it("fails when a condition reads a reference that cannot be read", async () => {
+    await expect(
+      new MockActivityEnvironment().run(
+        createActivities({
+          aiRunner: { run: async () => ({ data: { verdict: "changes" } }) },
+          scriptRunner,
+        }).executeAiStep,
+        {
+          branches: branches("${{ result.data.verdcit == 'changes' }}"),
+          inputs: {},
+          options: {},
+          outputs: {},
+          prompt: "Review",
+          provider: "claude-code",
+          references: {},
+          step: "review",
+          timeoutMs: 1000,
+        },
+      ),
+    ).rejects.toMatchObject({
+      message: "next[0].if: Unknown reference: result.data.verdcit",
+      nonRetryable: true,
+      type: "InvalidCondition",
+    });
+  });
+
   it("chooses a branch for a step without an activity", async () => {
     await expect(
       new MockActivityEnvironment().run(createActivities({ scriptRunner }).chooseBranch, {

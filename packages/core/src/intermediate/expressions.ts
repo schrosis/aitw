@@ -1,6 +1,6 @@
 import { conditionReferences, conditionValues, parseCondition } from "../expression/condition.js";
 import { parseTemplate } from "../expression/template.js";
-import { checkCalls, expressionReferences } from "../expression/value.js";
+import { checkCalls, expressionReferences, formatReference } from "../expression/value.js";
 import { earlierSteps, reachableSteps } from "./order.js";
 import type { Intermediate } from "./schema.js";
 import type { ValidationError } from "./validate.js";
@@ -95,18 +95,6 @@ const stringLeaves = (
   }
   return [];
 };
-
-/** Writes the path of a reference as in a definition, such as `steps.a.visits[0].outputs.v`. */
-const formatReference = (reference: readonly string[]): string =>
-  reference
-    .map((segment, index) => {
-      // Names cannot be only digits, so such a segment is an index.
-      if (index > 0 && /^\d+$/u.test(segment)) {
-        return `[${segment}]`;
-      }
-      return index === 0 ? segment : `.${segment}`;
-    })
-    .join("");
 
 /** Returns the problems of references that a check does not allow, with their paths. */
 const checkReferences = (

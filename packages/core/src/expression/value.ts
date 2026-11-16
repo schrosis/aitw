@@ -97,6 +97,22 @@ export const parseValue = (reader: TokenReader): ValueExpression => {
   }
 };
 
+/**
+ * Writes the path of a reference as in a definition, such as `steps.a.visits[0].outputs.v`.
+ *
+ * It is not public. Validation and the evaluation of conditions use it in their messages.
+ */
+export const formatReference = (reference: readonly string[]): string =>
+  reference
+    .map((segment, index) => {
+      // Names cannot be only digits, so such a segment is an index.
+      if (index > 0 && /^\d+$/u.test(segment)) {
+        return `[${segment}]`;
+      }
+      return index === 0 ? segment : `.${segment}`;
+    })
+    .join("");
+
 /** Returns the paths of the references of an expression, including those in arguments, in order. */
 export const expressionReferences = (expression: ValueExpression): string[][] => {
   switch (expression.type) {

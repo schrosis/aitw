@@ -1,6 +1,13 @@
+import { readReference } from "./evaluate.js";
 import { ExpressionError, tokenize } from "./lexer.js";
 import type { Token } from "./lexer.js";
-import { createTokenReader, evaluateValue, expressionReferences, parseValue } from "./value.js";
+import {
+  createTokenReader,
+  evaluateValue,
+  expressionReferences,
+  formatReference,
+  parseValue,
+} from "./value.js";
 import type { ValueExpression } from "./value.js";
 
 /** A condition of a transition, as a tree. */
@@ -125,24 +132,13 @@ export const conditionValues = (condition: Condition): ValueExpression[] => {
 export const conditionReferences = (condition: Condition): string[][] =>
   conditionValues(condition).flatMap(expressionReferences);
 
-/** Reads a path of own data properties. A value that is not there is `null`. */
-const readReference = (
-  context: Readonly<Record<string, unknown>>,
-  path: readonly string[],
-): unknown => {
-  let value: unknown = context;
-  for (const segment of path) {
-    const descriptor =
-      typeof value === "object" && value !== null
-        ? Object.getOwnPropertyDescriptor(value, segment)
-        : undefined;
-    if (descriptor === undefined || !("value" in descriptor)) {
-      return null;
-    }
-    const next: unknown = descriptor.value;
-    value = next;
+/** Reads a reference as templates do, and names the path when it cannot be read. */
+const read = (context: Readonly<Record<string, unknown>>, path: readonly string[]): unknown => {
+  const result = readReference(context, path);
+  if (!result.ok) {
+    throw new ExpressionError(`Unknown reference: ${formatReference(path)}`);
   }
-  return value ?? null;
+  return result.value;
 };
 
 const expectBoolean = (value: unknown): boolean => {
@@ -159,7 +155,7 @@ const evaluate = (condition: Condition, context: Readonly<Record<string, unknown
     case "literal":
     case "reference":
     case "call": {
-      return evaluateValue(condition, (path) => readReference(context, path));
+      return evaluateValue(condition, (path) => read(context, path));
     }
     case "not": {
       return !expectBoolean(evaluate(condition.operand, context));
@@ -191,10 +187,13 @@ const evaluate = (condition: Condition, context: Readonly<Record<string, unknown
 /**
  * Evaluates a condition.
  *
- * Values are compared without converting their types, and a reference to a value that is not
- * there, such as of a step that has not run, is `null`, also in the arguments of a call. `!`,
- * `&&`, `||`, and the condition itself need `true` or `false`. A call that fails, such as
- * `trim(null)`, makes the result fail with its message.
+ * Values are compared without converting their types. References are read as in templates, also
+ * in the arguments of a call: a path that goes through `null`, a path under `steps` that cannot
+ * be read, such as of a step that has not run, and `env.<name>` of a variable that is not set
+ * are `null`. Any other reference that cannot be read, such as a misspelled field of
+ * `result.data`, makes the result fail with `Unknown reference` and the path. `!`, `&&`, `||`,
+ * and the condition itself need `true` or `false`. A call that fails, such as `trim(null)`,
+ * makes the result fail with its message.
  */
 export const evaluateCondition = (
   condition: Condition,

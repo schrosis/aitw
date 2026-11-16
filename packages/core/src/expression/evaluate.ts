@@ -10,7 +10,10 @@ export type EvaluateResult = { ok: true; value: unknown } | { ok: false; message
  * A value that a path reads. When the path goes through `null` before its end, the value is
  * `null`, and `nullAt` is the length of the part of the path that reads the `null`.
  */
-type Resolved = { ok: true; value: unknown; nullAt?: number } | { ok: false };
+type Resolved =
+  | { ok: true; value: unknown; nullAt?: number }
+  /** `missingAt` is the index of the segment that cannot be read. */
+  | { ok: false; missingAt: number };
 
 /**
  * Reads a path of own data properties.
@@ -31,12 +34,48 @@ const resolve = (context: Readonly<Record<string, unknown>>, path: readonly stri
         ? Object.getOwnPropertyDescriptor(value, segment)
         : undefined;
     if (descriptor === undefined || !("value" in descriptor)) {
-      return { ok: false };
+      return { missingAt: index, ok: false };
     }
     const next: unknown = descriptor.value;
     value = next;
   }
   return { ok: true, value };
+};
+
+/** Result of {@link readReference}. */
+export type ReadReferenceResult = { ok: true; value: unknown } | { ok: false };
+
+/**
+ * Reads a reference of a template or a condition.
+ *
+ * - A path that goes through `null` reads as `null`.
+ * - A path under `steps` that cannot be read is `null`, because the step or the visit may not
+ *   have run. Validation checks that the step and the output exist.
+ * - `env.<name>` is `null` when the context has `env` but not the name, because a variable may
+ *   not be set.
+ * - Any other path that cannot be read fails.
+ *
+ * An own property whose value is `undefined` reads as `null`.
+ *
+ * It is not public. Templates and conditions use it to read references in the same way.
+ */
+export const readReference = (
+  context: Readonly<Record<string, unknown>>,
+  path: readonly string[],
+): ReadReferenceResult => {
+  const resolved = resolve(context, path);
+  if (resolved.ok) {
+    return { ok: true, value: resolved.value ?? null };
+  }
+  if (path[0] === "steps") {
+    return { ok: true, value: null };
+  }
+  // Only a missing name is null. A context without env, such as that of a template, cannot
+  // read env at all.
+  if (path[0] === "env" && resolved.missingAt === 1 && path.length === 2) {
+    return { ok: true, value: null };
+  }
+  return { ok: false };
 };
 
 type Tree = Record<string, unknown>;
@@ -171,9 +210,8 @@ const onlyExpressionIndex = (template: Template): number | undefined => {
  * around it keeps the type of the value, and the white space is dropped. White space is what
  * `String.prototype.trim` removes. Otherwise the values are embedded into a string.
  *
- * A reference to a step that is not in the context reads as `null`, because a step on another
- * branch may not have run. Any other reference that cannot be read is an error. The same rules
- * apply to the references in the arguments of a call.
+ * References are read by {@link readReference}, also in the arguments of a call. A reference that
+ * it cannot read is an error.
  */
 export const evaluateTemplate = (
   template: Template,
@@ -186,15 +224,11 @@ export const evaluateTemplate = (
       continue;
     }
     const read = (path: readonly string[]): unknown => {
-      const resolved = resolve(context, path);
-      if (resolved.ok) {
-        return resolved.value;
+      const result = readReference(context, path);
+      if (!result.ok) {
+        throw new ExpressionError("Unknown reference");
       }
-      // A step on another branch may not have run. Validation checks that the step exists.
-      if (path[0] === "steps") {
-        return null;
-      }
-      throw new ExpressionError("Unknown reference");
+      return result.value;
     };
     try {
       values.push(evaluateValue(part.expression, read));

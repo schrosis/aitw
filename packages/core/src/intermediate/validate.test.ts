@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { checkConditionTypes } from "./conditions.ts";
 import { intermediateVersion } from "./schema.ts";
 import type { Intermediate, IntermediateStep } from "./schema.ts";
 import { validateIntermediate } from "./validate.ts";
@@ -114,5 +115,28 @@ describe("validateIntermediate", () => {
         path: ["inputs", "threshold", "default"],
       },
     ]);
+  });
+
+  // Runs that already started validate their intermediate representation again on replay.
+  it("does not check the types of conditions", () => {
+    const input: Intermediate = {
+      ...intermediate("a", {}),
+      inputs: { target: { required: false, type: "string" } },
+      steps: {
+        a: {
+          ...step(null),
+          next: {
+            branches: [
+              { if: "${{ workflow.inputs.target }}", to: { type: "end" } },
+              { to: { type: "end" } },
+            ],
+            type: "branch",
+          },
+        },
+      },
+    };
+
+    expect(checkConditionTypes(input)).not.toEqual([]);
+    expect(validateIntermediate(input)).toMatchObject({ ok: true });
   });
 });

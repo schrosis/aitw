@@ -128,6 +128,36 @@ export const conditionValues = (condition: Condition): ValueExpression[] => {
   }
 };
 
+/**
+ * Returns the values whose result must be `true` or `false`: the condition itself and the
+ * operands of `!`, `&&`, and `||`, but not the operands of `==` and `!=`.
+ *
+ * It is not public. Validation uses it to check the types of conditions.
+ */
+export const booleanOperands = (condition: Condition): ValueExpression[] => {
+  switch (condition.type) {
+    case "literal":
+    case "reference":
+    case "call": {
+      return [condition];
+    }
+    case "not": {
+      return booleanOperands(condition.operand);
+    }
+    case "and":
+    case "or": {
+      return [...booleanOperands(condition.left), ...booleanOperands(condition.right)];
+    }
+    case "equal":
+    case "notEqual": {
+      return [];
+    }
+    default: {
+      return condition satisfies never;
+    }
+  }
+};
+
 /** Returns the paths of the references of a condition, including those in arguments, in order. */
 export const conditionReferences = (condition: Condition): string[][] =>
   conditionValues(condition).flatMap(expressionReferences);

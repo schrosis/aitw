@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { conditionReferences, evaluateCondition, parseCondition } from "./condition.ts";
+import {
+  booleanOperands,
+  conditionReferences,
+  evaluateCondition,
+  parseCondition,
+} from "./condition.ts";
 
 const context = {
   count: 3,
@@ -226,6 +231,33 @@ describe("parseCondition", () => {
       ["a", "b"],
       ["c"],
       ["d", "e"],
+    ]);
+  });
+});
+
+const operandsOf = (text: string) => {
+  const parsed = parseCondition(text);
+  return parsed.ok ? booleanOperands(parsed.condition) : parsed.message;
+};
+
+describe("booleanOperands", () => {
+  it("returns a condition that is one value", () => {
+    expect(operandsOf("${{ trim(a) }}")).toEqual([
+      { arguments: [{ path: ["a"], type: "reference" }], name: "trim", type: "call" },
+    ]);
+  });
+
+  it("returns the operands of !, &&, and || from left to right", () => {
+    expect(operandsOf("${{ !a && (b || !!'c') }}")).toEqual([
+      { path: ["a"], type: "reference" },
+      { path: ["b"], type: "reference" },
+      { type: "literal", value: "c" },
+    ]);
+  });
+
+  it("does not return the operands of comparisons", () => {
+    expect(operandsOf("${{ a == 1 && !(b != null) || c }}")).toEqual([
+      { path: ["c"], type: "reference" },
     ]);
   });
 });

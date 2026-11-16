@@ -273,7 +273,8 @@ const scenarios: Record<
           answers: { count: { required: true, type: "number" } },
           inputs: {},
           method: "terminal",
-          // The branch is chosen by a local activity whose input differs on replay.
+          // The branch is chosen by a local activity, whose input would differ on replay if the
+          // evaluation of the templates changed.
           next: {
             branches: [
               { if: "${{ outputs.count == 2 }}", to: { step: "report", type: "step" } },

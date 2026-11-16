@@ -479,6 +479,95 @@ describe("compileDefinition for branches", () => {
   });
 });
 
+/** A definition whose notify step may run before review. */
+const conditionSource = (condition: string) => `version: v0.1
+start: check
+steps:
+  check:
+    type: script
+    run: ./check.sh
+    next:
+      - if: \${{ result.stdout == 'review' }}
+        to: review
+      - to: notify
+  review:
+    type: script
+    run: ./review.sh
+    outputs:
+      approved: \${{ result.stdout }}
+    next: notify
+  notify:
+    type: script
+    run: ./notify.sh
+    next:
+      - if: \${{ ${condition} }}
+        to: deploy
+      - to: end
+  deploy:
+    type: script
+    run: ./deploy.sh
+    next: end
+`;
+
+describe("compileDefinition for the types of conditions", () => {
+  it("locates a value of a condition that can be null", () => {
+    expect(compileDefinition(conditionSource("steps.review.outputs.approved"))).toEqual({
+      errors: [
+        {
+          column: 13,
+          line: 21,
+          message:
+            "steps.review.outputs.approved is null when review has not run before notify. Compare it, such as steps.review.outputs.approved == true",
+          path: ["steps", "notify", "next", 0, "if"],
+        },
+      ],
+      ok: false,
+    });
+  });
+
+  it("accepts a value of a condition that is compared", () => {
+    expect(
+      compileDefinition(conditionSource("steps.review.outputs.approved == true")),
+    ).toMatchObject({ ok: true });
+  });
+
+  it("does not check the types when the intermediate representation is invalid", () => {
+    const source = `${conditionSource("steps.review.outputs.approved")}  orphan:
+    type: script
+    run: ./orphan.sh
+    next: end
+`;
+
+    expect(compileDefinition(source)).toEqual({
+      errors: [
+        {
+          column: 3,
+          line: 28,
+          message: "Step is not reachable from start",
+          path: ["steps", "orphan"],
+        },
+      ],
+      ok: false,
+    });
+  });
+
+  it("puts the errors of the types after the other errors", () => {
+    const plugins = createPluginRegistry();
+    const source = conditionSource("steps.review.outputs.approved").replace(
+      "  deploy:\n    type: script\n    run: ./deploy.sh\n",
+      "  deploy:\n    type: wait\n    method: missing\n",
+    );
+
+    expect(compileDefinition(source, { plugins })).toMatchObject({
+      errors: [
+        { path: ["steps", "deploy", "method"] },
+        { path: ["steps", "notify", "next", 0, "if"] },
+      ],
+      ok: false,
+    });
+  });
+});
+
 describe("compileDefinition for loops", () => {
   it("does not let a step be named start", () => {
     expect(

@@ -1,6 +1,6 @@
 import { booleanOperands, parseCondition } from "../expression/condition.js";
+import type { BooleanOperand } from "../expression/condition.js";
 import { formatReference } from "../expression/value.js";
-import type { ValueExpression } from "../expression/value.js";
 import type { InputDeclaration } from "./declarations.js";
 import { alwaysEarlierSteps, reachableSteps } from "./order.js";
 import type { Intermediate } from "./schema.js";
@@ -26,10 +26,15 @@ const checkLiteral = (value: boolean | number | string | null): string | undefin
   return `${formatLiteral(value)} is a ${typeof value}, but ${needsBoolean}`;
 };
 
-/** Returns a message when a workflow input is not a boolean, or can be absent. */
+/**
+ * Returns a message when a workflow input is not a boolean, or can be absent.
+ *
+ * @param checkedNotNull Whether the condition shows that the input is given.
+ */
 const checkWorkflowInput = (
   reference: string,
   declaration: InputDeclaration | undefined,
+  checkedNotNull: boolean,
 ): string | undefined => {
   if (declaration === undefined) {
     return undefined;
@@ -39,7 +44,7 @@ const checkWorkflowInput = (
     const type = declaration.type === "number" ? "a number" : "a string";
     return `${reference} is ${type}, but ${needsBoolean}`;
   }
-  if (!declaration.required && declaration.default === undefined) {
+  if (!checkedNotNull && !declaration.required && declaration.default === undefined) {
     return `${reference} is null when it is not given. ${compareIt(reference)}, or give it a default`;
   }
   return undefined;
@@ -50,14 +55,16 @@ const checkWorkflowInput = (
  * may not have run the times of a visit.
  *
  * @param path The reference after `steps`, such as `["review", "outputs", "approved"]`.
+ * @param checkedNotNull Whether the condition shows that the output is not `null`.
  */
 const checkStepOutput = (
   reference: string,
   id: string,
   [source, section, index]: readonly string[],
   alwaysEarlier: ReadonlySet<string>,
+  checkedNotNull: boolean,
 ): string | undefined => {
-  if (source === undefined) {
+  if (source === undefined || checkedNotNull) {
     return undefined;
   }
   // The latest output and the first visit have a value once the step has run.
@@ -74,12 +81,14 @@ const checkStepOutput = (
  * Returns a message when a value in a true-or-false position of a condition of a step is not
  * `true` or `false`, or can be `null`, as the definition shows.
  *
- * Calls and references to `outputs`, `result`, and `env` are left to the run.
+ * Calls and references to `outputs`, `result`, and `env` are left to the run. A reference that
+ * the condition compares with `null` before, such as in `x != null && x`, is not reported for
+ * being `null`, but is for its type.
  */
 const checkOperand = (
   intermediate: Intermediate,
   id: string,
-  operand: ValueExpression,
+  { checkedNotNull, value: operand }: BooleanOperand,
   alwaysEarlier: ReadonlySet<string>,
 ): string | undefined => {
   if (operand.type === "literal") {
@@ -94,10 +103,11 @@ const checkOperand = (
     return checkWorkflowInput(
       reference,
       Object.hasOwn(intermediate.inputs, second) ? intermediate.inputs[second] : undefined,
+      checkedNotNull,
     );
   }
   if (root === "steps") {
-    return checkStepOutput(reference, id, operand.path.slice(1), alwaysEarlier);
+    return checkStepOutput(reference, id, operand.path.slice(1), alwaysEarlier, checkedNotNull);
   }
   return undefined;
 };
@@ -107,6 +117,10 @@ const checkOperand = (
  * never be `true` or `false`, or can be `null`: outputs of a step that does not always run
  * before, visits other than the first of such a step, workflow inputs that are not booleans or can
  * be absent, and literals other than `true` and `false`.
+ *
+ * `&&` and `||` evaluate their right operand only when the left one is `true` and `false`. A
+ * reference on the right that the left compares with `null`, such as in `x != null && x` or
+ * `x == null || x`, is not reported for being `null`, but is for its type.
  *
  * It expects an intermediate representation that passed `validateIntermediate`. It is not part of
  * `validateIntermediate`, because the workflow code runs that again for runs that already

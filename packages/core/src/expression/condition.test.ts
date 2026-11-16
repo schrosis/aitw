@@ -240,24 +240,84 @@ const operandsOf = (text: string) => {
   return parsed.ok ? booleanOperands(parsed.condition) : parsed.message;
 };
 
+/** Returns the references among the operands, and whether each is checked not to be `null`. */
+const checkedOf = (text: string) => {
+  const operands = operandsOf(text);
+  return typeof operands === "string"
+    ? operands
+    : operands.flatMap(({ checkedNotNull, value }) =>
+        value.type === "reference" ? [[value.path.join("."), checkedNotNull]] : [],
+      );
+};
+
 describe("booleanOperands", () => {
   it("returns a condition that is one value", () => {
     expect(operandsOf("${{ trim(a) }}")).toEqual([
-      { arguments: [{ path: ["a"], type: "reference" }], name: "trim", type: "call" },
+      {
+        checkedNotNull: false,
+        value: { arguments: [{ path: ["a"], type: "reference" }], name: "trim", type: "call" },
+      },
     ]);
   });
 
   it("returns the operands of !, &&, and || from left to right", () => {
     expect(operandsOf("${{ !a && (b || !!'c') }}")).toEqual([
-      { path: ["a"], type: "reference" },
-      { path: ["b"], type: "reference" },
-      { type: "literal", value: "c" },
+      { checkedNotNull: false, value: { path: ["a"], type: "reference" } },
+      { checkedNotNull: false, value: { path: ["b"], type: "reference" } },
+      { checkedNotNull: false, value: { type: "literal", value: "c" } },
     ]);
   });
 
   it("does not return the operands of comparisons", () => {
     expect(operandsOf("${{ a == 1 && !(b != null) || c }}")).toEqual([
-      { path: ["c"], type: "reference" },
+      { checkedNotNull: false, value: { path: ["c"], type: "reference" } },
     ]);
+  });
+
+  it.each([
+    ["${{ a != null && a }}", [["a", true]]],
+    ["${{ null != a && a }}", [["a", true]]],
+    ["${{ a == null || a }}", [["a", true]]],
+    ["${{ null == a || a }}", [["a", true]]],
+    ["${{ !(a == null) && a }}", [["a", true]]],
+    ["${{ !(a != null) || a }}", [["a", true]]],
+    [
+      "${{ a != null && b != null && (c || !a) && b }}",
+      [
+        ["c", false],
+        ["a", true],
+        ["b", true],
+      ],
+    ],
+    ["${{ a == null || b == null || a }}", [["a", true]]],
+  ])("checks that a reference is not null in %s", (condition, expected) => {
+    expect(checkedOf(condition)).toEqual(expected);
+  });
+
+  it.each([
+    ["the left operand", "${{ a && a != null }}", [["a", false]]],
+    ["the other operator", "${{ a == null && a }}", [["a", false]]],
+    ["the other operator of ||", "${{ a != null || a }}", [["a", false]]],
+    ["another reference", "${{ a != null && b }}", [["b", false]]],
+    ["a field of the reference", "${{ a != null && a.b }}", [["a.b", false]]],
+    ["a comparison with another value", "${{ a != false && a }}", [["a", false]]],
+    [
+      "either operand of ||",
+      "${{ (a != null || b) && a }}",
+      [
+        ["b", false],
+        ["a", false],
+      ],
+    ],
+    [
+      "either operand of && on the left of ||",
+      "${{ (a == null && b) || a }}",
+      [
+        ["b", false],
+        ["a", false],
+      ],
+    ],
+  ])("does not check %s", (_, condition, expected) => {
+    expect(checkedOf(condition)).toEqual(expected);
   });
 });

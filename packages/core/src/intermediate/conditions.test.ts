@@ -137,6 +137,41 @@ describe("checkConditionTypes", () => {
     ]);
   });
 
+  it.each([
+    "${{ steps.review.outputs.approved != null && steps.review.outputs.approved }}",
+    "${{ steps.review.outputs.approved == null || steps.review.outputs.approved }}",
+    "${{ steps.review.visits[1].outputs.approved != null && steps.review.visits[1].outputs.approved }}",
+    "${{ workflow.inputs.dryRun != null && workflow.inputs.dryRun }}",
+    "${{ workflow.inputs.dryRun == null || !workflow.inputs.dryRun }}",
+  ])("accepts a reference that the condition checks not to be null: %s", (condition) => {
+    expect(errorsOf(workflow(condition))).toEqual([]);
+  });
+
+  it("reports a reference that is checked not to be null for its type", () => {
+    expect(
+      errorsOf(workflow("${{ workflow.inputs.target != null && workflow.inputs.target }}")),
+    ).toEqual([
+      {
+        message: "workflow.inputs.target is a string, but a condition needs true or false",
+        path: notifyPath(0),
+      },
+    ]);
+  });
+
+  it("reports a reference that the condition checks only after it", () => {
+    expect(
+      errorsOf(
+        workflow("${{ steps.review.outputs.approved && steps.review.outputs.approved != null }}"),
+      ),
+    ).toEqual([
+      {
+        message:
+          "steps.review.outputs.approved is null when review has not run before notify. Compare it, such as steps.review.outputs.approved == true",
+        path: notifyPath(0),
+      },
+    ]);
+  });
+
   it("reports every value of a condition and every branch, in order", () => {
     expect(
       errorsOf(

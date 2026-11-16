@@ -1,4 +1,9 @@
-import { createPluginRegistry, validateIntermediate, validateWithSchema } from "@ugoke/core";
+import {
+  checkConditionTypes,
+  createPluginRegistry,
+  validateIntermediate,
+  validateWithSchema,
+} from "@ugoke/core";
 import type { Intermediate, PluginRegistry, ValidationError } from "@ugoke/core";
 
 import { buildIntermediate, toDefinitionPath } from "./build.js";
@@ -122,7 +127,9 @@ const checkAiSteps = (
 /**
  * Parses, builds, and validates a YAML workflow definition.
  *
- * Errors in the intermediate representation are reported at their YAML locations.
+ * Errors in the intermediate representation are reported at their YAML locations. When the
+ * intermediate representation is otherwise valid, values of conditions that the definition shows
+ * can never be `true` or `false`, or can be `null`, are reported too.
  */
 export const compileDefinition = (
   source: string,
@@ -135,12 +142,15 @@ export const compileDefinition = (
 
   const { errors: waitErrors, waits } = resolveWaitSteps(parsed.definition, plugins, missingHint);
   const validation = validateIntermediate(buildIntermediate(parsed.definition, waits));
+  // The types of conditions are checked only in a valid intermediate representation. The check is
+  // not part of validateIntermediate, so that runs that already started do not fail on replay.
+  const intermediateErrors = validation.ok
+    ? checkConditionTypes(validation.intermediate)
+    : validation.errors;
   const errors = [
     ...waitErrors,
     ...checkAiSteps(parsed.definition, plugins, missingHint),
-    ...(validation.ok
-      ? []
-      : validation.errors.map(({ message, path }) => ({ message, path: toDefinitionPath(path) }))),
+    ...intermediateErrors.map(({ message, path }) => ({ message, path: toDefinitionPath(path) })),
   ];
   if (errors.length > 0 || !validation.ok) {
     return {

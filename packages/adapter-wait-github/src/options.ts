@@ -13,6 +13,49 @@ export const reviewStates = ["APPROVED", "COMMENTED", "CHANGES_REQUESTED"] as co
 /** A state of a review that a step can count. */
 export type ReviewState = (typeof reviewStates)[number];
 
+/** Associations of the author of a review with the repository, as GitHub names them. */
+export const authorAssociations = [
+  "OWNER",
+  "MEMBER",
+  "COLLABORATOR",
+  "CONTRIBUTOR",
+  "FIRST_TIME_CONTRIBUTOR",
+  "FIRST_TIMER",
+  "MANNEQUIN",
+  "NONE",
+] as const;
+
+/** An association of the author of a review with the repository. */
+export type AuthorAssociation = (typeof authorAssociations)[number];
+
+/** Associations whose reviews count when both authors and authorAssociations are omitted. */
+export const defaultAuthorAssociations: readonly AuthorAssociation[] = [
+  "OWNER",
+  "MEMBER",
+  "COLLABORATOR",
+];
+
+/** A name of `review.authors`, split into the login and whether it names a bot. */
+export interface AuthorName {
+  /** The login without `[bot]`, as it is written. */
+  login: string;
+  /** Whether the name ends with `[bot]`, in any case. */
+  isBot: boolean;
+}
+
+const botSuffixPattern = /\[bot\]$/iu;
+
+/**
+ * Splits a name such as `claude[bot]` into `claude` and that it names a bot.
+ *
+ * Only one `[bot]` at the end is removed, in any case, so `claude[bot][bot]` names the bot
+ * `claude[bot]`.
+ */
+export const parseAuthorName = (name: string): AuthorName => {
+  const login = name.replace(botSuffixPattern, "");
+  return { isBot: login !== name, login };
+};
+
 const pullRequestUrlPattern =
   /^https:\/\/github\.com\/(?<owner>[A-Za-z0-9-]+)\/(?<name>[A-Za-z0-9._-]+)\/pull\/(?<number>[1-9][0-9]*)\/?$/u;
 const pullRequestNumberPattern = /^[1-9][0-9]*$/u;
@@ -93,7 +136,16 @@ const optionsObjectSchema = z.strictObject({
         .array(z.string().min(1))
         .min(1)
         .optional()
-        .describe("Logins of the people whose reviews count. Anyone counts when it is omitted"),
+        .describe(
+          "Logins of the people whose reviews count. A login that ends with [bot] matches only a bot, and any other login matches only an account that is not a bot. When both authors and authorAssociations are omitted, only reviews by OWNER, MEMBER, or COLLABORATOR count",
+        ),
+      authorAssociations: z
+        .array(z.enum(authorAssociations))
+        .min(1)
+        .optional()
+        .describe(
+          "Associations with the repository of the people whose reviews count, such as OWNER. When authors is also omitted, OWNER, MEMBER, and COLLABORATOR. When authors is written without it, reviews by its logins count whatever their association is",
+        ),
       states: z
         .array(z.enum(reviewStates))
         .min(1)
@@ -143,6 +195,23 @@ const checkCombinations = (
   if (options.review?.states !== undefined) {
     checkDuplicates(context, options.review.states, ["review", "states"], "state");
   }
+  if (options.review?.authorAssociations !== undefined) {
+    checkDuplicates(
+      context,
+      options.review.authorAssociations,
+      ["review", "authorAssociations"],
+      "association",
+    );
+  }
+  options.review?.authors?.forEach((name, index) => {
+    if (!hasExpression(name) && parseAuthorName(name).login === "") {
+      context.addIssue({
+        code: "custom",
+        message: "Must have a login before [bot]",
+        path: ["review", "authors", index],
+      });
+    }
+  });
   if (options.review !== undefined && !options.events.includes("review")) {
     context.addIssue({
       code: "custom",

@@ -14,6 +14,7 @@ export type { GithubPrAnswer } from "./answers.js";
 export { createGhSource } from "./gh.js";
 export type { GhResult, GhRunner, GhSourceOptions } from "./gh.js";
 export {
+  authorAssociations,
   githubConfigSchema,
   githubPrOptionsSchema,
   minPollIntervalMs,
@@ -22,6 +23,7 @@ export {
   reviewStates,
 } from "./options.js";
 export type {
+  AuthorAssociation,
   GithubConfig,
   GithubPrOptions,
   PullRequestEvent,
@@ -36,6 +38,7 @@ export type {
   PullRequestSnapshot,
   PullRequestSource,
   Review,
+  ReviewAuthor,
 } from "./source.js";
 
 /** Options of {@link createGithubPlugin}. */

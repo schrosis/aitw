@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { judge } from "./judge.ts";
+import { authorAssociations } from "./options.ts";
 import type { GithubPrOptions } from "./options.ts";
-import type { Check, PullRequestSnapshot, Review } from "./source.ts";
+import type { Check, PullRequestSnapshot, Review, ReviewAuthor } from "./source.ts";
 
 const url = "https://github.com/acme/widgets/pull/12";
 const headSha = "0123456789abcdef0123456789abcdef01234567";
@@ -29,7 +30,8 @@ const optionsOf = (options: Partial<GithubPrOptions>): GithubPrOptions => ({
 });
 
 const reviewOf = (review: Partial<Review> = {}): Review => ({
-  author: "octocat",
+  author: { isBot: false, login: "octocat" },
+  authorAssociation: "OWNER",
   body: "Looks good",
   commit: "fedcba9876543210fedcba9876543210fedcba98",
   state: "COMMENTED",
@@ -49,6 +51,12 @@ const checkRunOf = (
   name,
   status: conclusion === null ? "pending" : "completed",
 });
+
+const associated = (authorAssociation: string): Review => reviewOf({ authorAssociation });
+
+const userOf = (login: string): ReviewAuthor => ({ isBot: false, login });
+
+const botOf = (login: string): ReviewAuthor => ({ isBot: true, login });
 
 const statusOf = (
   name: string,
@@ -392,8 +400,8 @@ describe("judge", () => {
 
     it("counts only the authors of review.authors", () => {
       const reviews = [
-        reviewOf({ author: "octocat", submittedAt: "2026-11-14T03:10:00Z" }),
-        reviewOf({ author: "hubot", submittedAt: "2026-11-14T03:20:00Z" }),
+        reviewOf({ author: userOf("octocat"), submittedAt: "2026-11-14T03:10:00Z" }),
+        reviewOf({ author: userOf("hubot"), submittedAt: "2026-11-14T03:20:00Z" }),
       ];
 
       expect(judgeReviews(reviews, { authors: ["monalisa", "hubot"] })).toMatchObject({
@@ -404,26 +412,171 @@ describe("judge", () => {
     });
 
     it.each([
-      ["github-actions", "github-actions[bot]"],
-      ["github-actions[bot]", "github-actions[bot]"],
-      ["github-actions[bot]", "github-actions"],
-    ])("treats the author %s and the review of %s as the same person", (author, login) => {
-      expect(judgeReviews([reviewOf({ author: login })], { authors: [author] })).toMatchObject({
+      ["claude[bot]", botOf("claude"), "claude[bot]"],
+      ["Claude[BOT]", botOf("claude"), "claude[bot]"],
+      ["claude[Bot]", botOf("claude"), "claude[bot]"],
+      ["CLAUDE[bot]", botOf("Claude"), "Claude[bot]"],
+      ["github-actions", userOf("github-actions"), "github-actions"],
+      ["OCTOCAT", userOf("octocat"), "octocat"],
+    ])("matches the author %s with the review of %o", (name, author, reviewAuthor) => {
+      expect(judgeReviews([reviewOf({ author })], { authors: [name] })).toMatchObject({
         type: "answer",
-        values: { reviewAuthor: login },
+        values: { reviewAuthor },
       });
+    });
+
+    it.each([
+      ["claude[bot]", userOf("claude")],
+      ["Claude[BOT]", userOf("claude")],
+      ["github-actions", botOf("github-actions")],
+      ["github-actions[bot]", userOf("github-actions[bot]")],
+    ])("does not match the author %s with the review of %o", (name, author) => {
+      expect(judgeReviews([reviewOf({ author })], { authors: [name] })).toEqual({ type: "wait" });
     });
 
     it("does not treat a login that only starts with the author as the same person", () => {
       expect(
-        judgeReviews([reviewOf({ author: "github-actions-bot" })], { authors: ["github-actions"] }),
+        judgeReviews([reviewOf({ author: userOf("github-actions-bot") })], {
+          authors: ["github-actions"],
+        }),
       ).toEqual({ type: "wait" });
     });
 
-    it("compares authors without case", () => {
+    it("compares authors without case, but not a bot with a name without [bot]", () => {
       expect(
-        judgeReviews([reviewOf({ author: "Claude[bot]" })], { authors: ["CLAUDE"] }),
-      ).toMatchObject({ type: "answer", values: { reviewAuthor: "Claude[bot]" } });
+        judgeReviews([reviewOf({ author: botOf("Claude") })], { authors: ["CLAUDE"] }),
+      ).toEqual({ type: "wait" });
+    });
+
+    it("does not match a deleted account with any name, even ghost", () => {
+      const reviews = [reviewOf({ author: null })];
+
+      expect(judgeReviews(reviews, { authors: ["ghost"] })).toEqual({ type: "wait" });
+      expect(judgeReviews(reviews, { authors: ["ghost[bot]"] })).toEqual({ type: "wait" });
+    });
+
+    it("matches ghost with an account whose login is ghost", () => {
+      expect(
+        judgeReviews([reviewOf({ author: userOf("ghost") })], { authors: ["ghost"] }),
+      ).toMatchObject({ type: "answer", values: { reviewAuthor: "ghost" } });
+    });
+
+    it.each([
+      ["a user", userOf("octocat"), "octocat"],
+      ["a bot", botOf("github-actions"), "github-actions[bot]"],
+      ["a deleted account", null, "ghost"],
+    ])("answers the login of %s as the web shows it", (_label, author, reviewAuthor) => {
+      expect(judgeReviews([reviewOf({ author })])).toMatchObject({
+        type: "answer",
+        values: { reviewAuthor },
+      });
+    });
+
+    describe("associations", () => {
+      it.each(["OWNER", "MEMBER", "COLLABORATOR"])(
+        "counts a review by %s when authors and authorAssociations are omitted",
+        (authorAssociation) => {
+          expect(judgeReviews([associated(authorAssociation)])).toMatchObject({ type: "answer" });
+        },
+      );
+
+      it.each(["CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "MANNEQUIN", "NONE"])(
+        "waits for a review by %s when authors and authorAssociations are omitted",
+        (authorAssociation) => {
+          expect(judgeReviews([associated(authorAssociation)])).toEqual({ type: "wait" });
+        },
+      );
+
+      it("counts only the associations of review.authorAssociations", () => {
+        const reviews = [
+          reviewOf({ authorAssociation: "OWNER", submittedAt: "2026-11-14T03:10:00Z" }),
+          reviewOf({
+            author: userOf("hubot"),
+            authorAssociation: "CONTRIBUTOR",
+            submittedAt: "2026-11-14T03:20:00Z",
+          }),
+        ];
+
+        expect(judgeReviews(reviews, { authorAssociations: ["CONTRIBUTOR"] })).toMatchObject({
+          type: "answer",
+          values: { occurredAt: "2026-11-14T03:20:00Z", reviewAuthor: "hubot" },
+        });
+        expect(judgeReviews(reviews, { authorAssociations: ["MEMBER"] })).toEqual({
+          type: "wait",
+        });
+      });
+
+      it.each([
+        ["authors and authorAssociations are omitted", undefined],
+        ["authorAssociations is written", { authorAssociations: [...authorAssociations] }],
+        ["both are written", { authorAssociations: [...authorAssociations], authors: ["octocat"] }],
+      ])("waits for an association that ugoke does not know when %s", (_label, review) => {
+        expect(judgeReviews([associated("SPONSOR")], review)).toEqual({ type: "wait" });
+      });
+
+      it("counts only reviews that satisfy both the association and review.states", () => {
+        const reviews = [
+          reviewOf({
+            authorAssociation: "NONE",
+            state: "APPROVED",
+            submittedAt: "2026-11-14T03:10:00Z",
+          }),
+          reviewOf({
+            authorAssociation: "MEMBER",
+            state: "COMMENTED",
+            submittedAt: "2026-11-14T03:20:00Z",
+          }),
+          reviewOf({
+            authorAssociation: "MEMBER",
+            state: "APPROVED",
+            submittedAt: "2026-11-14T03:30:00Z",
+          }),
+        ];
+
+        expect(judgeReviews(reviews, { states: ["APPROVED"] })).toMatchObject({
+          type: "answer",
+          values: { occurredAt: "2026-11-14T03:30:00Z", reviewState: "APPROVED" },
+        });
+        expect(judgeReviews(reviews.slice(0, 2), { states: ["APPROVED"] })).toEqual({
+          type: "wait",
+        });
+      });
+
+      it("waits while only reviews that do not count are submitted", () => {
+        const reviews = [
+          associated("NONE"),
+          associated("CONTRIBUTOR"),
+          associated("FIRST_TIMER"),
+          associated("SPONSOR"),
+        ];
+
+        expect(judgeReviews(reviews)).toEqual({ type: "wait" });
+      });
+
+      it.each(["NONE", "CONTRIBUTOR", "SPONSOR"])(
+        "counts a review by %s of an author when only authors is written",
+        (authorAssociation) => {
+          const review = reviewOf({ author: botOf("github-actions"), authorAssociation });
+
+          expect(judgeReviews([review], { authors: ["github-actions[bot]"] })).toMatchObject({
+            type: "answer",
+            values: { reviewAuthor: "github-actions[bot]" },
+          });
+        },
+      );
+
+      it("counts only reviews that satisfy both the author and the association", () => {
+        const review = { authorAssociations: ["MEMBER" as const], authors: ["octocat"] };
+
+        expect(judgeReviews([associated("MEMBER")], review)).toMatchObject({ type: "answer" });
+        expect(judgeReviews([associated("OWNER")], review)).toEqual({ type: "wait" });
+        expect(
+          judgeReviews(
+            [reviewOf({ author: userOf("hubot"), authorAssociation: "MEMBER" })],
+            review,
+          ),
+        ).toEqual({ type: "wait" });
+      });
     });
 
     it("answers the earliest of the new reviews", () => {

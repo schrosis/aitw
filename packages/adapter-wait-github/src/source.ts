@@ -1,9 +1,22 @@
 import type { PullRequestTarget } from "./options.js";
 
+/** The account that wrote a review. */
+export interface ReviewAuthor {
+  /** Login without `[bot]`, such as `github-actions`. */
+  login: string;
+  /** Whether GitHub tells that the account is a bot. */
+  isBot: boolean;
+}
+
 /** A review of a pull request. */
 export interface Review {
-  /** Login of the author as the REST API and the web show it, such as `github-actions[bot]`. */
-  author: string;
+  /** The author, or `null` when the account was deleted. */
+  author: ReviewAuthor | null;
+  /**
+   * Association of the author with the repository, such as `OWNER`, as GitHub tells it. A value
+   * that ugoke does not know is kept as it is.
+   */
+  authorAssociation: string;
   state: "APPROVED" | "COMMENTED" | "CHANGES_REQUESTED" | "DISMISSED" | "PENDING";
   body: string;
   /** ISO 8601, or `null` for a pending review. */

@@ -18,7 +18,8 @@ import { GithubSourceError } from "./source.ts";
 
 // Outputs of gh 2.103.3 for a pull request of the repository of ugoke, with the owner, the
 // repository, the number, logins of people, bodies, IDs, and commits replaced. The pageInfo of
-// the checks was added later in the same shape that gh returned for it.
+// the checks and the authorAssociation of the reviews were added later in the same shape that gh
+// returned for them.
 const mergedOutput = readFileSync(
   new URL("testdata/merged-pull-request.json", import.meta.url),
   "utf8",
@@ -60,7 +61,8 @@ const mergedSnapshot: PullRequestSnapshot = {
   number: 12,
   reviews: [
     {
-      author: "claude[bot]",
+      author: { isBot: true, login: "claude" },
+      authorAssociation: "NONE",
       body: "",
       commit: earlierSha,
       state: "COMMENTED",
@@ -68,7 +70,8 @@ const mergedSnapshot: PullRequestSnapshot = {
       url: `${url}#pullrequestreview-1001`,
     },
     {
-      author: "github-actions[bot]",
+      author: { isBot: true, login: "github-actions" },
+      authorAssociation: "NONE",
       body: "Review body 2.",
       commit: earlierSha,
       state: "APPROVED",
@@ -76,7 +79,8 @@ const mergedSnapshot: PullRequestSnapshot = {
       url: `${url}#pullrequestreview-1002`,
     },
     {
-      author: "octocat",
+      author: { isBot: false, login: "octocat" },
+      authorAssociation: "OWNER",
       body: "",
       commit: earlierSha,
       state: "COMMENTED",
@@ -84,7 +88,8 @@ const mergedSnapshot: PullRequestSnapshot = {
       url: `${url}#pullrequestreview-1003`,
     },
     {
-      author: "github-actions[bot]",
+      author: { isBot: true, login: "github-actions" },
+      authorAssociation: "NONE",
       body: "Review body 4.",
       commit: headSha,
       state: "APPROVED",
@@ -284,6 +289,10 @@ describe("pullRequestArgs", () => {
     ]);
   });
 
+  it("asks for the association of the author of each review", () => {
+    expect(pullRequestQuery).toMatch(/author \{ __typename login \}\s+authorAssociation\s/u);
+  });
+
   it("keeps values with spaces and characters of shells in one argument", () => {
     const args = pullRequestArgs({ name: "widgets -F x=$(id); `id`", number: 3, owner: "a b" });
 
@@ -405,14 +414,37 @@ describe("createGhSource", () => {
     });
   });
 
-  it("names the author of a deleted account ghost", async () => {
+  it("reads a deleted account as no author", async () => {
     const stdout = changedOutput((pullRequest) => {
       reviewOf(pullRequest, 2)["author"] = null;
     });
 
     const snapshot = await read(runnerOf(ok(stdout)));
 
-    expect(snapshot.reviews[2]?.author).toBe("ghost");
+    expect(snapshot.reviews[2]?.author).toBeNull();
+  });
+
+  it.each([["Mannequin"], ["Organization"], ["EnterpriseUserAccount"]])(
+    "reads an author of the type %s as an account that is not a bot",
+    async (type) => {
+      const stdout = changedOutput((pullRequest) => {
+        reviewOf(pullRequest, 2)["author"] = { __typename: type, login: "someone" };
+      });
+
+      const snapshot = await read(runnerOf(ok(stdout)));
+
+      expect(snapshot.reviews[2]?.author).toEqual({ isBot: false, login: "someone" });
+    },
+  );
+
+  it("keeps an association that ugoke does not know", async () => {
+    const stdout = changedOutput((pullRequest) => {
+      reviewOf(pullRequest, 2)["authorAssociation"] = "SPONSOR";
+    });
+
+    const snapshot = await read(runnerOf(ok(stdout)));
+
+    expect(snapshot.reviews[2]?.authorAssociation).toBe("SPONSOR");
   });
 
   it("reads a pending review and a review without a commit", async () => {
@@ -550,6 +582,13 @@ describe("createGhSource", () => {
           };
         }),
         /^Could not read the output of gh: .+/u,
+      ],
+      [
+        "has a review without an association",
+        changedOutput((pullRequest) => {
+          delete reviewOf(pullRequest, 0)["authorAssociation"];
+        }),
+        /^Could not read the output of gh: data\.repository\.pullRequest\.reviews\.nodes\.0\.authorAssociation: .+/u,
       ],
       [
         "has no pull request",

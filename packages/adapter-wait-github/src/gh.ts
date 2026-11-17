@@ -4,7 +4,13 @@ import { constants } from "node:os";
 import { z } from "zod";
 
 import type { PullRequestTarget } from "./options.js";
-import type { Check, PullRequestSnapshot, PullRequestSource, Review } from "./source.js";
+import type {
+  Check,
+  PullRequestSnapshot,
+  PullRequestSource,
+  Review,
+  ReviewAuthor,
+} from "./source.js";
 import { GithubSourceError } from "./source.js";
 
 /** Result of a run of gh. */
@@ -238,6 +244,7 @@ export const pullRequestQuery = `query ($owner: String!, $name: String!, $number
       reviews(last: 100) {
         nodes {
           author { __typename login }
+          authorAssociation
           state
           body
           submittedAt
@@ -329,21 +336,20 @@ const nodesOf = <T extends z.ZodType>(node: T) =>
 /** The key of GraphQL that tells the type of an object. */
 const typename = "__typename";
 
-/** Login of the author as the REST API and the web show it. */
+/** The author of a review, or `null` when the account was deleted. */
 const authorSchema = z
   .object({ [typename]: z.string(), login: z.string() })
   .nullable()
-  .transform((author) => {
-    if (author === null) {
-      // The account was deleted, and the web shows it as ghost.
-      return "ghost";
-    }
-    return author[typename] === "Bot" ? `${author.login}[bot]` : author.login;
-  });
+  .transform((author): ReviewAuthor | null =>
+    // Only a bot is a bot. Users, mannequins, and other kinds of accounts are not.
+    author === null ? null : { isBot: author[typename] === "Bot", login: author.login },
+  );
 
 const reviewSchema = z
   .object({
     author: authorSchema,
+    // A string rather than an enum, so that a value that GitHub adds does not fail the read.
+    authorAssociation: z.string(),
     body: z.string(),
     commit: z.object({ oid: z.string() }).nullable(),
     state: z.enum(["APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED", "PENDING"]),
@@ -352,6 +358,7 @@ const reviewSchema = z
   })
   .transform((review): Review => ({
     author: review.author,
+    authorAssociation: review.authorAssociation,
     body: review.body,
     commit: review.commit?.oid ?? null,
     state: review.state,

@@ -1,7 +1,12 @@
 import { toJsonSchema, validateWithSchema } from "@ugoke/core";
 import { describe, expect, it } from "vitest";
 
-import { githubConfigSchema, githubPrOptionsSchema, resolveTarget } from "./options.ts";
+import {
+  githubConfigSchema,
+  githubPrOptionsSchema,
+  parseAuthorName,
+  resolveTarget,
+} from "./options.ts";
 import type { GithubPrOptions } from "./options.ts";
 
 const url = "https://github.com/acme/widgets/pull/12";
@@ -30,7 +35,11 @@ describe("githubPrOptionsSchema", () => {
       events: ["review", "merged", "closed", "checks"],
       message: "Waiting for the review",
       pr: url,
-      review: { authors: ["claude[bot]"], states: ["APPROVED", "CHANGES_REQUESTED"] },
+      review: {
+        authorAssociations: ["OWNER", "CONTRIBUTOR"],
+        authors: ["claude[bot]"],
+        states: ["APPROVED", "CHANGES_REQUESTED"],
+      },
     };
 
     expect(validate(options)).toEqual({ ok: true, value: options });
@@ -104,6 +113,70 @@ describe("githubPrOptionsSchema", () => {
 
     expect(errorsOf(options)).toEqual([
       { message: "Duplicate state: APPROVED", path: ["review", "states", 2] },
+    ]);
+  });
+
+  it("accepts every association", () => {
+    const authorAssociations = [
+      "OWNER",
+      "MEMBER",
+      "COLLABORATOR",
+      "CONTRIBUTOR",
+      "FIRST_TIME_CONTRIBUTOR",
+      "FIRST_TIMER",
+      "MANNEQUIN",
+      "NONE",
+    ];
+    const options = { events: ["review"], pr: url, review: { authorAssociations } };
+
+    expect(validate(options)).toEqual({ ok: true, value: options });
+  });
+
+  it.each([
+    ["an unknown association", ["OWNER", "SPONSOR"], [["review", "authorAssociations", 1]]],
+    ["an association in lowercase", ["owner"], [["review", "authorAssociations", 0]]],
+    ["no associations", [], [["review", "authorAssociations"]]],
+  ])("rejects %s", (_label, authorAssociations, paths) => {
+    const errors = errorsOf({ events: ["review"], pr: url, review: { authorAssociations } });
+
+    expect(errors.map(({ path }) => path)).toEqual(paths);
+  });
+
+  it("rejects duplicate associations", () => {
+    const options = {
+      events: ["review"],
+      pr: url,
+      review: { authorAssociations: ["OWNER", "MEMBER", "OWNER"] },
+    };
+
+    expect(errorsOf(options)).toEqual([
+      { message: "Duplicate association: OWNER", path: ["review", "authorAssociations", 2] },
+    ]);
+  });
+
+  it.each([["[bot]"], ["[BOT]"]])("rejects an author of only %s", (name) => {
+    const options = { events: ["review"], pr: url, review: { authors: ["octocat", name] } };
+
+    expect(errorsOf(options)).toEqual([
+      { message: "Must have a login before [bot]", path: ["review", "authors", 1] },
+    ]);
+  });
+
+  it.each([["claude[bot]"], ["${{ inputs.reviewer }}"], ["${{ inputs.reviewer }}[bot]"]])(
+    "accepts an author of %s",
+    (name) => {
+      const options = { events: ["review"], pr: url, review: { authors: [name] } };
+
+      expect(validate(options)).toEqual({ ok: true, value: options });
+    },
+  );
+
+  it("rejects an author that is only [bot] after the expressions are evaluated", () => {
+    // The worker validates the options again with the values of the expressions.
+    const evaluated = { events: ["review"], pr: url, review: { authors: ["[bot]"] } };
+
+    expect(errorsOf(evaluated)).toEqual([
+      { message: "Must have a login before [bot]", path: ["review", "authors", 0] },
     ]);
   });
 
@@ -208,6 +281,54 @@ describe("githubPrOptionsSchema", () => {
       required: ["pr", "events"],
       type: "object",
     });
+  });
+
+  it("describes how review.authors and review.authorAssociations choose the reviews", () => {
+    const schema = toJsonSchema(githubPrOptionsSchema);
+
+    expect(schema).toMatchObject({
+      properties: {
+        review: {
+          properties: {
+            authorAssociations: {
+              description:
+                "Associations with the repository of the people whose reviews count, such as OWNER. When authors is also omitted, OWNER, MEMBER, and COLLABORATOR. When authors is written without it, reviews by its logins count whatever their association is",
+              items: {
+                enum: [
+                  "OWNER",
+                  "MEMBER",
+                  "COLLABORATOR",
+                  "CONTRIBUTOR",
+                  "FIRST_TIME_CONTRIBUTOR",
+                  "FIRST_TIMER",
+                  "MANNEQUIN",
+                  "NONE",
+                ],
+              },
+              type: "array",
+            },
+            authors: {
+              description:
+                "Logins of the people whose reviews count. A login that ends with [bot] matches only a bot, and any other login matches only an account that is not a bot. When both authors and authorAssociations are omitted, only reviews by OWNER, MEMBER, or COLLABORATOR count",
+            },
+          },
+        },
+      },
+    });
+  });
+});
+
+describe("parseAuthorName", () => {
+  it.each([
+    ["Claude[BOT]", { isBot: true, login: "Claude" }],
+    ["claude[Bot]", { isBot: true, login: "claude" }],
+    ["claude[bot]", { isBot: true, login: "claude" }],
+    ["claude", { isBot: false, login: "claude" }],
+    ["[bot]", { isBot: true, login: "" }],
+    ["claude[bot][bot]", { isBot: true, login: "claude[bot]" }],
+    ["[bot]claude", { isBot: false, login: "[bot]claude" }],
+  ])("splits %s", (name, authorName) => {
+    expect(parseAuthorName(name)).toEqual(authorName);
   });
 });
 

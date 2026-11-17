@@ -1,7 +1,7 @@
 import type { GithubPrAnswer } from "./answers.js";
-import type { GithubPrOptions, PullRequestEvent, ReviewState } from "./options.js";
-import { reviewStates } from "./options.js";
-import type { Check, PullRequestSnapshot, Review } from "./source.js";
+import type { AuthorName, GithubPrOptions, PullRequestEvent, ReviewState } from "./options.js";
+import { defaultAuthorAssociations, parseAuthorName, reviewStates } from "./options.js";
+import type { Check, PullRequestSnapshot, Review, ReviewAuthor } from "./source.js";
 
 /** What a check of a pull request decided. */
 export type Judgement =
@@ -85,8 +85,36 @@ const judgeChecks = (snapshot: PullRequestSnapshot, names: readonly string[]): J
   });
 };
 
-/** Makes logins comparable, so that `github-actions` and `GitHub-Actions[bot]` are the same. */
-const normalizeLogin = (login: string): string => login.toLowerCase().replace(/\[bot\]$/u, "");
+/**
+ * Whether the author is one of the names of `review.authors`. A name matches only an account of
+ * the same kind, a bot or not, and logins are compared without case. A deleted account matches no
+ * name.
+ */
+const matchesAuthor = (author: ReviewAuthor | null, names: readonly AuthorName[]): boolean =>
+  author !== null &&
+  names.some(
+    (name) =>
+      name.isBot === author.isBot && name.login.toLowerCase() === author.login.toLowerCase(),
+  );
+
+/** Associations whose reviews count, or `undefined` when the association does not matter. */
+const countedAssociationsOf = (
+  review: GithubPrOptions["review"],
+): ReadonlySet<string> | undefined => {
+  if (review?.authorAssociations !== undefined) {
+    return new Set(review.authorAssociations);
+  }
+  return review?.authors === undefined ? new Set(defaultAuthorAssociations) : undefined;
+};
+
+/** Login of the author as the REST API and the web show it, such as `github-actions[bot]`. */
+const reviewAuthorOf = (author: ReviewAuthor | null): string => {
+  if (author === null) {
+    // The web shows a deleted account as ghost.
+    return "ghost";
+  }
+  return author.isBot ? `${author.login}[bot]` : author.login;
+};
 
 /** A review that counts, with the time that it was submitted. */
 type CountedReview = Review & { state: ReviewState; submittedAt: string };
@@ -102,14 +130,17 @@ const judgeReviews = (
   // GitHub tells times in seconds, so a review of the same second as the start of the wait counts.
   const since = Math.floor(startedAt.getTime() / 1000) * 1000;
   const states = options.review?.states;
-  const authors = options.review?.authors?.map(normalizeLogin);
+  const names = options.review?.authors?.map(parseAuthorName);
+  const associations = countedAssociationsOf(options.review);
   const newReviews = snapshot.reviews.filter(
     (candidate): candidate is CountedReview =>
       isCountedState(candidate) &&
       candidate.submittedAt !== null &&
       Date.parse(candidate.submittedAt) >= since &&
       (states === undefined || states.includes(candidate.state)) &&
-      (authors === undefined || authors.includes(normalizeLogin(candidate.author))),
+      (names === undefined || matchesAuthor(candidate.author, names)) &&
+      // A value that ugoke does not know is in no set, so its review does not count.
+      (associations === undefined || associations.has(candidate.authorAssociation)),
   );
   // Reviews are in the order that they were created, and a pending review is submitted later than
   // the reviews created after it, so the earliest submission is not always the first.
@@ -124,7 +155,7 @@ const judgeReviews = (
     return waiting;
   }
   return answerOf(snapshot, "review", review.submittedAt, {
-    reviewAuthor: review.author,
+    reviewAuthor: reviewAuthorOf(review.author),
     reviewBody: review.body,
     reviewState: review.state,
     reviewUrl: review.url,

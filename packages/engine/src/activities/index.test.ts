@@ -1133,18 +1133,20 @@ describe("respondToWait", () => {
    * Answers a wait step with a method that records what it receives.
    *
    * @param respond Runs in the method after the context is recorded, such as to write to the log.
+   * @param contexts Records the contexts that the method receives, even when the activity fails.
    */
   const respondToWait = async (
     request: Partial<WaitRequest>,
     {
+      contexts = [],
       log,
       respond = () => {},
     }: {
+      contexts?: WaitResponseContext<unknown>[];
       log?: (message: string) => void;
       respond?: (context: WaitResponseContext<unknown>) => void;
     } = {},
   ) => {
-    const contexts: WaitResponseContext<unknown>[] = [];
     const values = await new MockActivityEnvironment({ scheduledTimestampMs }).run(
       createActivities({
         log,
@@ -1194,6 +1196,17 @@ describe("respondToWait", () => {
       expect(contexts[0]?.startedAt).toEqual(new Date(scheduledTimestampMs));
     },
   );
+
+  it("fails without calling the method when the options do not match its schema", async () => {
+    const contexts: WaitResponseContext<unknown>[] = [];
+
+    await expect(respondToWait({ options: { message: 1 } }, { contexts })).rejects.toMatchObject({
+      message: expect.stringContaining("steps.ask.with.message"),
+      nonRetryable: true,
+      type: "InvalidWaitOptions",
+    });
+    expect(contexts).toEqual([]);
+  });
 
   it("writes what the method logs to the log of the Worker, with the step", async () => {
     const lines: string[] = [];

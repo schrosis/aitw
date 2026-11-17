@@ -124,6 +124,10 @@ export const createTerminal = (
   };
 };
 
+/** Why `--from-ai` cannot follow a run on a server that loses its runs when it stops. */
+export const fromAiNeedsDurableServer =
+  "--from-ai needs a server that keeps its runs, such as of ugoke daemon, or --dev with --dev-db";
+
 /** Options of {@link followRun}. */
 export interface FollowRunOptions {
   /** Name of the workflow, which prefixes the messages. */
@@ -138,6 +142,13 @@ export interface FollowRunOptions {
    * that a process can attach to it later. Otherwise, it cancels the run.
    */
   interrupt: AbortSignal;
+  /**
+   * Configures the Temporal runtime, right before {@link FollowRunOptions.follow}.
+   *
+   * An installed runtime keeps the process alive until a Worker shuts it down, so it must not be
+   * installed when the command returns before it follows the run.
+   */
+  prepareEngine?: (() => void) | undefined;
   /** Starts the run, or attaches to it, with the options that this module prepares. */
   follow: (options: FollowOptions) => Promise<RunOutcome>;
   /** Terminal that wait steps ask in, when the command already reads standard input. */
@@ -167,6 +178,7 @@ export const followRun = async (
     interrupt,
     name,
     ownsWorker = true,
+    prepareEngine,
     root,
     server,
     steps,
@@ -226,11 +238,7 @@ export const followRun = async (
   try {
     // Stopping at a question leaves the run waiting, which a server without runs would lose.
     if (fromAi && !server.durable) {
-      write({
-        message:
-          "--from-ai needs a server that keeps its runs, such as of ugoke daemon, or --dev with --dev-db",
-        type: "failed",
-      });
+      write({ message: fromAiNeedsDurableServer, type: "failed" });
       return 1;
     }
     // The file is read once, so that the progress and the plugins follow the same contents.
@@ -246,6 +254,7 @@ export const followRun = async (
         });
     // Plugins load before the run starts, so that a broken one stops nothing.
     const loaded = await loadConfiguredPlugins(read, root);
+    prepareEngine?.();
     const following = follow({
       address: server.address,
       eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),

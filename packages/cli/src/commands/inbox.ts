@@ -330,7 +330,6 @@ const answerAndFollow = async (
     throw error;
   }
   try {
-    prepareEngine?.();
     return await followRun(
       {
         follow: async (followOptions) =>
@@ -350,6 +349,7 @@ const answerAndFollow = async (
         interrupt: signal,
         name,
         ownsWorker: taskQueue !== servedTaskQueue,
+        prepareEngine,
         root,
         server,
       },

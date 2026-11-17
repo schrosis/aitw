@@ -159,7 +159,6 @@ export const attach = async (options: AttachOptions, context: CommandContext): P
       throw error;
     }
     try {
-      prepareEngine?.();
       return await followRun(
         {
           follow: async (followOptions) =>
@@ -171,6 +170,7 @@ export const attach = async (options: AttachOptions, context: CommandContext): P
             }),
           interrupt: signal,
           name: run.name,
+          prepareEngine,
           steps: await stepOrder(root, run.name),
           ownsWorker: run.taskQueue !== servedTaskQueue,
           root,

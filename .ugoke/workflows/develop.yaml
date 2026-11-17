@@ -6,7 +6,7 @@ inputs:
   name:
     type: string
     required: true
-    description: plan で作った作業の名前。docs/work/<name>/tasks.md の、まだ終わっていない最初のタスクを実装する
+    description: plan で作った作業の名前。docs/work/<name>/tasks.md の、まだ終わっていない最初の PR を実装する
   reviewer:
     type: string
     default: schrosis
@@ -18,8 +18,10 @@ env:
 start: pick
 
 steps:
-  # 1. タスクを拾う
-  # 先頭の `- [ ] ` の行から、次のタスクの行の前までを 1 つのタスクとして出す。
+  # 1. PR を拾う
+  # tasks.md の形は .claude/skills/sdd-tasks/rules/tasks.md の「形の決まり」にある。大タスク 1 つが PR 1 つになる。
+  # 先頭の未完了の大タスクの行から、次の大タスクの行か見出しの前までを 1 つの PR として出す。
+  # Wave は上から順に並ぶため、今は先頭の未完了の PR を 1 つずつ実装する。
   pick:
     type: script
     run: |
@@ -38,32 +40,48 @@ steps:
         fi
       done
 
-      task=$(awk '
-        /^- \[ \] / { if (found) exit; found = 1; print; next }
-        found && /^- / { exit }
-        found && /^[^ \t]/ && !/^[[:space:]]*$/ { exit }
+      pr=$(awk '
+        /^- \[[ x]\] [0-9]+\. / { if (found) exit }
+        /^- \[ \] [0-9]+\. / { found = 1; print; next }
+        found && /^#/ { exit }
+        found && /^[^ \t-]/ { exit }
         found { print }
       ' "$dir/tasks.md")
-      if [ -z "$task" ]; then
-        echo "Every task in $dir/tasks.md is done" >&2
+      if [ -z "$pr" ]; then
+        echo "Every pull request in $dir/tasks.md is done" >&2
         exit 1
       fi
-      printf '%s\n' "$task"
+
+      # 依存する PR（大タスク）がすべて終わっていることを確かめる。注釈は大タスクの行の直後にある。
+      dependencies=$(printf '%s\n' "$pr" | sed -n 's/^  - _Depends: \(.*\)_[[:space:]]*$/\1/p' | head -n 1)
+      for dependency in $(printf '%s\n' "$dependencies" | tr ',' ' '); do
+        case "$dependency" in
+          '' | *[!0-9]*)
+            echo "The dependency must be the number of a major task, such as 1: $dependency" >&2
+            exit 1
+            ;;
+        esac
+        if ! grep -Eq "^- \[x\] $dependency\. " "$dir/tasks.md"; then
+          echo "Task $dependency is not done. Finish it before this pull request" >&2
+          exit 1
+        fi
+      done
+      printf '%s\n' "$pr"
     outputs:
-      task: ${{ trim(result.stdout) }}
+      pr: ${{ trim(result.stdout) }}
     next: branch
 
-  # 2. main を最新にして、タスクのブランチを切る
-  # 今すでにタスクのブランチにいるなら、前の develop が途中で止めた続きなので、そのまま使う。
+  # 2. main を最新にして、PR のブランチを切る
+  # 今すでに PR のブランチにいるなら、前の develop が途中で止めた続きなので、そのまま使う。
   branch:
     type: script
     env:
-      TASK: ${{ steps.pick.outputs.task }}
+      PR: ${{ steps.pick.outputs.pr }}
     run: |
-      branch=$(printf '%s\n' "$TASK" | sed -n 's/^  - ブランチ: `\([^`]*\)`.*$/\1/p' | head -n 1)
+      branch=$(printf '%s\n' "$PR" | sed -n 's/^  - _Branch: `\{0,1\}\([^`_]*\)`\{0,1\}_[[:space:]]*$/\1/p' | head -n 1)
       case "$branch" in
         '' | /* | */ | *//* | *[!a-z0-9/-]*)
-          echo "The task needs a line such as \"  - ブランチ: \`feat/short-name\`\": $branch" >&2
+          echo "The pull request needs a line such as \"  - _Branch: feat/short-name_\": $branch" >&2
           exit 1
           ;;
       esac
@@ -90,17 +108,24 @@ steps:
     model: claude-opus-5-5
     timeout: 60m
     prompt: |
-      ugoke リポジトリで、次のタスクを実装してください。
+      ugoke リポジトリで、次の PR を実装してください。PR は tasks.md の大タスクです。中のサブタスクを、
+      上から順にすべて実装してください。
       コミット、push、ブランチの作成はしないでください。
       docs/work/${{ workflow.inputs.name }}/ の文書は変更しないでください。変更が要るときは、下の
       `人間の判断を仰ぐとき` に従ってください。
 
-      ## タスク
-      ${{ steps.pick.outputs.task }}
+      ## PR
+      ${{ steps.pick.outputs.pr }}
 
       ## 要件、設計、タスクの一覧
       docs/work/${{ workflow.inputs.name }}/ の requirements.md、design.md、tasks.md を読んで、
-      それに沿って実装してください。
+      それに沿って実装してください。サブタスクの `_Requirements:_` にある番号の受け入れ基準を満たしてください。
+      tasks.md に「実装メモ」の節があれば、前の PR で得た知見なので、それも踏まえてください。
+
+      変えるのは、PR の `_Boundary:_` にある部品のファイルです。部品とファイルの対応は、design.md の
+      「ファイルの構成」にあります。同じ Wave のほかの PR と変えるファイルが重ならないように決めた境界です。
+      境界の外のファイルを変えるのは、テストの補助や公開する名前の追加など、小さく、ほかの PR と
+      ぶつからないものだけにしてください。それ以外は、人間の判断を仰いでください。
 
       ## 確かめ方
       pnpm check は、あなたが作業を終えた後にワークフローが実行し、失敗したら結果を渡して戻します。
@@ -127,7 +152,7 @@ steps:
       ${{ steps.wait_review.outputs.body }}
 
       ## PR のレビューへの対応
-      まず `gh pr view ${{ steps.branch.outputs.name }} --json url,state,reviews` で、このタスクのブランチの
+      まず `gh pr view ${{ steps.branch.outputs.name }} --json url,state,reviews` で、このブランチの
       PR を確かめてください。前の develop が途中で止まった続きのときは、PR がすでにあることがあります。
       開いている PR があれば、次のものをすべて読んで、指摘に対応してください。
       - 最後に push した後に出されたレビューの本文。上の「最後に受けた PR のレビュー」は、その中の
@@ -142,6 +167,7 @@ steps:
       次のような、あなたが決めるべきでないことにぶつかったら、作業を途中で止めて status を
       needs_decision にし、question に判断してほしいことを書いてください。
       - 要件、設計、タスクの一覧から外れる必要がある。またはそれらが間違っている、足りない
+      - PR の境界の外のファイルを、上に書いた小さな変更を超えて変える必要がある
       - 仕様が曖昧で、妥当な解釈が複数あり、どれを選ぶかで結果が変わる
       - 公開 API、設定、データの形式など、後から変えにくいものを決める必要がある
       - 依存の追加、ファイルの削除など、設計にない大きな変更が要る
@@ -152,16 +178,19 @@ steps:
       作業を終えたら status を done にし、question は空にしてください。
 
       ## 要件、設計、タスクの一覧への反映
-      PR がマージされると、ワークフローが tasks.md のこのタスクに完了の印を付けます。
+      PR がマージされると、ワークフローが tasks.md のこの PR に完了の印を付けます。
       次のどれかに当たるときだけ、reflect を true にしてください。別のステップが文書を直します。
       - 実装が要件や設計から外れた。または、実装の中で要件や設計にないことを決めた
-      - 後のタスクの内容を直す必要がある気づきがある
+      - 後の PR の内容を直す必要がある気づきがある
+      - 後の PR の実装に役立つ知見がある。たとえば、使える既存の部品、守るべき約束事、はまりやすい
+        ところ。この PR だけに関わることは含めない
       どれにも当たらなければ false にしてください。
 
       ## まとめの書き方
-      summary には、今回の分だけでなく、これまでのまとめを引き継いで、このタスク全体を通して
-      何をしたかを書いてください。受けた指摘や判断と、それにどう対応したかも含めてください。
-      要件や設計から外れたこと、後のタスクに関わる気づきがあれば、それも書いてください。
+      summary には、今回の分だけでなく、これまでのまとめを引き継いで、この PR 全体を通して
+      何をしたかを、サブタスクごとに書いてください。受けた指摘や判断と、それにどう対応したかも
+      含めてください。要件や設計から外れたこと、後の PR に関わる気づきや知見があれば、それも
+      書いてください。
     schema:
       type: object
       properties:
@@ -173,10 +202,10 @@ steps:
           description: 判断してほしいこと。背景、選択肢、おすすめと理由を Markdown で書く。done なら空
         summary:
           type: string
-          description: タスク全体を通して、したことと、わかったこと。Markdown で簡潔に書く
+          description: PR 全体を通して、したことと、わかったこと。Markdown で簡潔に書く
         reflect:
           type: boolean
-          description: 要件、設計、後のタスクに反映すべきことがあれば true
+          description: 要件、設計、後の PR に反映すべきこと、後の PR に役立つ知見があれば true
       required: [status, question, summary, reflect]
     with:
       allowedTools: [Read, Edit, Write, Grep, Glob, Bash]
@@ -196,8 +225,8 @@ steps:
     method: terminal
     with:
       message: |
-        ## タスク
-        ${{ steps.pick.outputs.task }}
+        ## PR
+        ${{ steps.pick.outputs.pr }}
 
         ## ここまでのまとめ
         ${{ steps.implement.outputs.summary }}
@@ -206,7 +235,7 @@ steps:
         ${{ steps.implement.outputs.question }}
 
         要件、設計、タスクを直すなら `反映して終える` を選んでください。
-        直す場合は、このタスクは終えずに止まりますので、develop をもう一度回してください。
+        直す場合は、この PR は終えずに止まりますので、develop をもう一度回してください。
       schema:
         action:
           type: choice
@@ -251,6 +280,7 @@ steps:
       - to: review
 
   # 6. ローカルのレビュー
+  # PR の中のタスクをまとめて、1 回のレビューで見る。
   review:
     type: ai
     provider: claude-code
@@ -258,11 +288,11 @@ steps:
     prompt: |
       ugoke リポジトリの、まだコミットしていない変更をレビューしてください。コードは変更しないでください。
       git diff と git status で変更を確かめ、.claude/review.md の観点に従ってください。
-      このタスクのブランチ（${{ steps.branch.outputs.name }}）で、main からの変更を見てください。
+      この PR のブランチ（${{ steps.branch.outputs.name }}）で、main からの変更を見てください。
       PR のレビューに対応した後なら、コミット済みの変更（git diff main...HEAD）も合わせて見てください。
 
-      ## タスク
-      ${{ steps.pick.outputs.task }}
+      ## PR
+      ${{ steps.pick.outputs.pr }}
 
       ## 要件、設計、タスクの一覧
       docs/work/${{ workflow.inputs.name }}/ の requirements.md、design.md、tasks.md
@@ -273,7 +303,11 @@ steps:
       ## これまでのレビューのまとめ（前回あなたが書いたもの。空なら初回）
       ${{ steps.review.outputs.summary }}
 
-      タスクの完了の条件を満たしているか、要件と設計に沿っているかも確かめてください。
+      次のことも確かめてください。
+      - PR の中のサブタスクがすべて実装され、それぞれの終わったときに確かめられることを満たしているか
+      - サブタスクの `_Requirements:_` にある番号の受け入れ基準を満たし、要件と設計に沿っているか
+      - PR の `_Boundary:_` の外のファイルを、ほかの PR とぶつかる形で変えていないか
+
       直すべき問題があれば verdict を changes にし、findings に今回の指摘を書いてください。
       なければ approve にし、findings は空にしてください。
 
@@ -308,12 +342,12 @@ steps:
     provider: claude-code
     model: claude-opus-5-5
     prompt: |
-      ugoke リポジトリで、このタスクの変更をコミットして push し、PR を作ってください。
+      ugoke リポジトリで、この PR の変更をコミットして push し、PR を作ってください。
       PR がすでにあるときは、PR のレビューへの返信もしてください。
       コードとファイルは変更しないでください。
 
-      ## タスク
-      ${{ steps.pick.outputs.task }}
+      ## PR
+      ${{ steps.pick.outputs.pr }}
 
       ## ブランチ
       ${{ steps.branch.outputs.name }}
@@ -333,11 +367,12 @@ steps:
       開いている PR があれば「PR がすでにあるとき」、なければ「PR がまだないとき」に従ってください。
 
       ## コミットと push
-      - このタスクのために変えたファイルだけを、名前を指定して git add してください。
-        git add -A や git add . は使わないでください。README.md など、タスクと関係のない変更は
+      - この PR のために変えたファイルだけを、名前を指定して git add してください。
+        git add -A や git add . は使わないでください。README.md など、この PR と関係のない変更は
         含めないでください
       - コミットのメッセージは、英語で Conventional Commits に従って書いてください。本文には、
-        何をなぜ変えたかを書いてください
+        何をなぜ変えたかを書いてください。PR の中のサブタスクが独立していて、分けたほうがレビュー
+        しやすいときは、サブタスクごとにコミットを分けてもかまいません
       - 変更がなければ、コミットしないでください
       - ブランチを origin に push してください。force push はしないでください
 
@@ -413,22 +448,28 @@ steps:
       exit 1
     next: end
 
-  # 9. タスクに完了の印を付ける
-  # 拾ったタスクが今も先頭の未完了のタスクであることを確かめてから付ける。
+  # 9. PR に完了の印を付ける
+  # 拾った PR が今も先頭の未完了の大タスクであることを確かめてから、大タスクとそのサブタスクに付ける。
   mark_done:
     type: script
     env:
-      TASK: ${{ steps.pick.outputs.task }}
+      PR: ${{ steps.pick.outputs.pr }}
     run: |
       file="docs/work/$WORK_NAME/tasks.md"
-      line=$(printf '%s\n' "$TASK" | head -n 1)
-      first=$(grep -m 1 '^- \[ \] ' "$file" || true)
+      line=$(printf '%s\n' "$PR" | head -n 1)
+      first=$(grep -E -m 1 '^- \[ \] [0-9]+\. ' "$file" || true)
       if [ "$first" != "$line" ]; then
-        echo "The first unfinished task in $file is not the one that ran: $first" >&2
+        echo "The first unfinished pull request in $file is not the one that ran: $first" >&2
         exit 1
       fi
+      number=$(printf '%s\n' "$line" | sed 's/^- \[ \] \([0-9]*\)\. .*$/\1/')
       tmp="$file.tmp.$$"
-      awk 'done || !/^- \[ \] / { print; next } { sub(/^- \[ \] /, "- [x] "); print; done = 1 }' "$file" > "$tmp"
+      awk -v number="$number" '
+        $0 ~ "^- \\[ \\] " number "\\. " || $0 ~ "^- \\[ \\]\\*? " number "\\.[0-9]+ " {
+          sub(/^- \[ \]/, "- [x]")
+        }
+        { print }
+      ' "$file" > "$tmp"
       mv "$tmp" "$file"
       printf '%s\n' "$line" | sed 's/^- \[ \] /- [x] /'
     outputs:
@@ -439,7 +480,8 @@ steps:
       - to: finish
 
   # 10. 要件、設計、タスクに反映する
-  # 実装が要件や設計から外れたときと、実装の途中で止めたときだけ動く。直すところだけを Edit で直す。
+  # 実装が要件や設計から外れたとき、後の PR に役立つ知見があるとき、実装の途中で止めたときだけ動く。
+  # 直すところだけを Edit で直す。
   reflect:
     type: ai
     provider: claude-code
@@ -450,10 +492,10 @@ steps:
       直すところだけを Edit で直してください。直さない文書は、書き直さないでください。
       ほかのファイルは変更しないでください。
 
-      ## タスク
-      ${{ steps.pick.outputs.task }}
+      ## PR
+      ${{ steps.pick.outputs.pr }}
 
-      ## 完了の印（空なら、タスクは完了していません）
+      ## 完了の印（空なら、PR は完了していません）
       ${{ steps.mark_done.outputs.line }}
 
       ## 実装のまとめ
@@ -467,18 +509,22 @@ steps:
       ${{ steps.decide.outputs.answer }}
 
       ## 反映のしかた
-      完了の印があれば、タスクは完了しています。tasks.md の印は、ワークフローが付けました。
+      完了の印があれば、PR は完了しています。tasks.md の印は、ワークフローが付けました。
       - 実装で要件や設計から外れたこと、決まったことがあれば、requirements.md と design.md に反映する
-      - 後のタスクに影響する気づきがあれば、そのタスクの内容を直す
+      - 後の PR に影響する気づきがあれば、その PR の内容を直す
+      - 後の PR の実装に役立つ知見があれば、tasks.md の「## 実装メモ」の節に、`- ` で始まる行で
+        書き足す。どの PR で得た知見かを、行の先頭に `1: ` のように大タスクの番号で書く。節がなければ、
+        「## 人間が行う作業」の前に作る。その節もなければ、文書の最後に作る
 
-      完了の印が空なら、実装の途中で判断を受けて止めています。タスクは完了していません。
+      完了の印が空なら、実装の途中で判断を受けて止めています。PR は完了していません。
       - 回答に沿って、requirements.md、design.md、tasks.md を直す
-      - このタスクは `- [ ] ` のままにする。内容を直す、分ける、前に新しいタスクを足すのはよい
+      - この PR の大タスクは `- [ ] ` のままにする。内容を直す、分ける、前に新しい大タスクを足すのはよい
       - 作業ツリーに残った途中の変更は、次の develop が同じブランチで引き継ぐ。そのことを踏まえて
-        タスクを書く。タスクのブランチの行は変えない
+        PR を書く。この PR の `_Branch:_` は変えない
 
-      tasks.md の形は変えないでください。develop は、先頭の `- [ ] ` の行から、次のタスクの行の前
-      までを 1 つのタスクとして読みます。
+      tasks.md を直すときは、.claude/skills/sdd-tasks/rules/tasks.md の決まり、特に「Wave」と
+      「形の決まり」を守ってください。develop は、その形をスクリプトで読みます。
+      今ある大タスクの番号は振り直さないでください。新しい大タスクには、今ある最大の番号の次を振ってください。
     schema:
       type: object
       properties:
@@ -497,7 +543,7 @@ steps:
     outputs:
       changes: ${{ result.data.changes }}
     next:
-      # 途中で止めたときは、次の develop が続きをやれるよう、タスクのブランチに残る。
+      # 途中で止めたときは、次の develop が続きをやれるよう、PR のブランチに残る。
       - if: ${{ steps.mark_done.outputs.line == null }}
         to: end
       - to: finish

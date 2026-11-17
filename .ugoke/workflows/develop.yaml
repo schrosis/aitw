@@ -465,7 +465,7 @@ steps:
       number=$(printf '%s\n' "$line" | sed 's/^- \[ \] \([0-9]*\)\. .*$/\1/')
       tmp="$file.tmp.$$"
       awk -v number="$number" '
-        $0 ~ "^- \\[ \\] " number "\\. " || $0 ~ "^- \\[ \\]\\*? " number "\\.[0-9]+ " {
+        $0 ~ "^- \\[ \\] " number "\\. " || $0 ~ "^- \\[ \\] " number "\\.[0-9]+ " {
           sub(/^- \[ \]/, "- [x]")
         }
         { print }

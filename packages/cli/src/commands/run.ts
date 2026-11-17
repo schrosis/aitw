@@ -4,7 +4,7 @@ import { jsonBytes, maxValueBytes, runWorkflow, startWorkflow } from "@ugoke/eng
 import { realpath } from "node:fs/promises";
 
 import { reportAiFailure, writeAiLine } from "../ai.js";
-import { cancelledExitCode, followRun, rootMessage } from "../follow.js";
+import { cancelledExitCode, followRun, fromAiNeedsDurableServer, rootMessage } from "../follow.js";
 import { readWorkflowInput } from "../input.js";
 import { acquireRunLock } from "../lock.js";
 import type { RunLock } from "../lock.js";
@@ -29,7 +29,7 @@ export interface RunOptions {
    * not keep its runs.
    */
   signal: AbortSignal;
-  /** Called after the workflow is validated and before it starts. */
+  /** Configures the Temporal runtime, right before the run starts. */
   prepareEngine?: () => void;
   /**
    * Starts the run and exits without following it. The resident process runs the steps, and
@@ -108,6 +108,13 @@ const runWorkflowCommand = async (
     return 1;
   }
 
+  // A development server without a SQLite file would lose the run at the first question, so the
+  // server is not started for nothing.
+  if (fromAi && server?.type === "dev" && server.dbFilename === undefined) {
+    writeAiLine(context.stdout, { message: fromAiNeedsDurableServer, type: "failed" });
+    return 1;
+  }
+
   let opened: OpenedServer | undefined;
   try {
     const root = await realpath(workflow.root);
@@ -146,7 +153,6 @@ const runWorkflowCommand = async (
       return 0;
     }
 
-    prepareEngine?.();
     let lock: RunLock | undefined;
     try {
       return await followRun(
@@ -175,6 +181,7 @@ const runWorkflowCommand = async (
           interrupt: signal,
           name,
           ownsWorker: servedTaskQueue === undefined,
+          prepareEngine,
           root,
           server: opened,
           steps: Object.keys(workflow.intermediate.steps),

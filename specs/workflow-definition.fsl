@@ -1,0 +1,144 @@
+fsl 5
+// Requirements for reading a workflow definition.
+// Source: docs/guide/workflow-definition.md
+//
+// MODEL-DEF-001: a definition is modelled by the problems it has, not by its text.
+// MODEL-DEF-002: the default timeout of 30m, the meaning of `next: end` and the format of error
+//                messages are outside this spec.
+requirements WorkflowDefinition {
+  actor Author, Ugoke
+
+  entity Definition {
+    unsupportedVersion: Bool = false
+    missingTopLevelField: Bool = false
+    invalidStepId: Bool = false
+    missingScriptField: Bool = false
+    invalidTimeout: Bool = false
+    unknownField: Bool = false
+    duplicateKey: Bool = false
+    multipleDocuments: Bool = false
+    anchorOrAlias: Bool = false
+    lifecycle Draft -> Written -> Accepted
+    lifecycle Written -> Rejected
+  }
+
+  concept Faulty = Definition where unsupportedVersion or missingTopLevelField or invalidStepId
+    or missingScriptField or invalidTimeout or unknownField or duplicateKey or multipleDocuments
+    or anchorOrAlias
+
+  event write = Author writes Definition
+    with unsupportedVersion, missingTopLevelField, invalidStepId, missingScriptField,
+      invalidTimeout, unknownField, duplicateKey, multipleDocuments, anchorOrAlias
+    (Draft -> Written)
+    covers REQ-DEF-011 "ワークフローは、YAML のファイルに定義する"
+  event accept = Ugoke accepts Definition (Written -> Accepted)
+  event reject = Ugoke rejects Definition (Written -> Rejected)
+
+  rule REQ-DEF-001 "version は定義の形式の版で、v0.1 だけを受け付ける" {
+    never Ugoke accepts Definition when unsupportedVersion
+  }
+  rule REQ-DEF-002 "version、start、steps は必須" {
+    never Ugoke accepts Definition when missingTopLevelField
+  }
+  rule REQ-DEF-003 "ステップの ID は、英字で始め、英字、数字、_ だけで書く。start と end は予約語のため使えない" {
+    never Ugoke accepts Definition when invalidStepId
+  }
+  rule REQ-DEF-004 "script ステップの type、run、next は必須" {
+    never Ugoke accepts Definition when missingScriptField
+  }
+  rule REQ-DEF-005 "timeout は、正の整数に単位 s、m、h を付けて書く" {
+    never Ugoke accepts Definition when invalidTimeout
+  }
+  rule REQ-DEF-006 "定義にない項目はエラーになる" {
+    never Ugoke accepts Definition when unknownField
+  }
+  rule REQ-DEF-007 "同じマップの中で重複したキーはエラーになる" {
+    never Ugoke accepts Definition when duplicateKey
+  }
+  rule REQ-DEF-008 "1 つのファイルに複数のドキュメントがあるとエラーになる" {
+    never Ugoke accepts Definition when multipleDocuments
+  }
+  rule REQ-DEF-009 "YAML のアンカーとエイリアスはエラーになる" {
+    never Ugoke accepts Definition when anchorOrAlias
+  }
+  rule REQ-DEF-010 "問題のない定義は受け付ける" {
+    allow Ugoke rejects Definition only for Faulty
+  }
+
+  scenario AC-DEF-001 "最小の定義を受け付ける" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField false, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    Ugoke accepts d1
+    then d1 is Accepted
+  }
+  scenario AC-DEF-002 "問題のある定義を断る" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField true, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    Ugoke rejects d1
+    then d1 is Rejected
+  }
+
+  forbidden FB-DEF-001 "版が v0.1 でない定義を受け付けない" {
+    Author writes d1
+      with unsupportedVersion true, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField false, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    Ugoke accepts d1
+    then rejected
+  }
+  forbidden FB-DEF-002 "必須の最上位の項目がない定義を受け付けない" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField true, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField false, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    Ugoke accepts d1
+    then rejected
+  }
+  forbidden FB-DEF-003 "使えないステップの ID の定義を受け付けない" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId true, missingScriptField false, invalidTimeout false, unknownField false, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    Ugoke accepts d1
+    then rejected
+  }
+  forbidden FB-DEF-004 "run か next のない script ステップの定義を受け付けない" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField true, invalidTimeout false, unknownField false, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    Ugoke accepts d1
+    then rejected
+  }
+  forbidden FB-DEF-005 "書き方の違う timeout の定義を受け付けない" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout true, unknownField false, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    Ugoke accepts d1
+    then rejected
+  }
+  forbidden FB-DEF-006 "定義にない項目のある定義を受け付けない" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField true, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    Ugoke accepts d1
+    then rejected
+  }
+  forbidden FB-DEF-007 "重複したキーのある定義を受け付けない" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField false, duplicateKey true, multipleDocuments false, anchorOrAlias false
+    Ugoke accepts d1
+    then rejected
+  }
+  forbidden FB-DEF-008 "複数のドキュメントのある定義を受け付けない" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField false, duplicateKey false, multipleDocuments true, anchorOrAlias false
+    Ugoke accepts d1
+    then rejected
+  }
+  forbidden FB-DEF-009 "アンカーかエイリアスのある定義を受け付けない" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField false, duplicateKey false, multipleDocuments false, anchorOrAlias true
+    Ugoke accepts d1
+    then rejected
+  }
+  forbidden FB-DEF-010 "問題のない定義を断らない" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField false, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    Ugoke rejects d1
+    then rejected
+  }
+}
+verify {
+  instances Definition = 1
+}

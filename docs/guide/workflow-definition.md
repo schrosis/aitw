@@ -59,3 +59,9 @@ steps:
 ```text
 .ugoke/workflows/hello.yaml:7:5 steps.hello.foo: Unknown field: foo
 ```
+
+YAML の構文のエラーと、アンカーとエイリアスのエラーには、項目のパスが付きません。
+
+```text
+.ugoke/workflows/hello.yaml:6:13 YAML anchors are not supported
+```

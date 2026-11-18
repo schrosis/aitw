@@ -43,7 +43,7 @@ requirements WorkflowDefinition {
   rule REQ-DEF-003 "ステップの ID は、英字で始め、英字、数字、_ だけで書く。start と end は予約語のため使えない" {
     never Ugoke accepts Definition when invalidStepId
   }
-  rule REQ-DEF-004 "script ステップの type、run、next は必須" {
+  rule REQ-DEF-004 "script ステップの run と next は必須" {
     never Ugoke accepts Definition when missingScriptField
   }
   rule REQ-DEF-005 "timeout は、正の整数に単位 s、m、h を付けて書く" {

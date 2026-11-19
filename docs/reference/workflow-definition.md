@@ -9,11 +9,30 @@
 | `version` | はい | 定義の形式の版です。`v0.1` だけを受け付けます             |
 | `start`   | はい | 最初に実行するステップの ID です                          |
 | `steps`   | はい | ステップの一覧です。キーがステップの ID、値がステップです |
+| `inputs`  | いいえ | ワークフローの入力の宣言です。[ワークフローの入力](#ワークフローの入力)を見てください |
 
 ## ステップの ID
 
 - 英字で始め、英字、数字、`_` だけで書きます
 - `start` と `end` は予約語のため、使えません
+
+## ワークフローの入力
+
+`inputs` には、ワークフローが始まるときに受け取る値を、名前と宣言の組で書きます。名前は英字で始め、英字、数字、`_` だけで書きます。値は、`ugoke run` の `--input` で渡します。
+
+| 項目          | 必須   | 内容                                                                     |
+| ------------- | ------ | ------------------------------------------------------------------------ |
+| `type`        | はい   | `string`、`number`、`boolean`、`choice` のどれかです                     |
+| `options`     | `choice` のとき | 選べる値の一覧です。1 つ以上書きます。空の文字列と、同じ値を重ねて書けません                    |
+| `required`    | いいえ | 値を必ず渡すかどうかです。既定は `false` です                            |
+| `default`     | いいえ | 値を渡さなかったときの値です。`type` に合う値を書きます                  |
+| `description` | いいえ | 入力の説明です                                                           |
+
+- `required: true` と `default` は、一緒に書けません
+- 必須でない値を渡さなかったときは、`default` を使います。`default` もなければ `null` です
+- 宣言にない名前の値、型の合わない値、`options` にない値を渡すと、実行せずに失敗します
+- `number` の値は、`1.5` のように書きます。`1e3` のような指数の書き方は使えません
+- 入力の値は、JSON で 512 KiB までです
 
 ## script ステップ
 
@@ -46,6 +65,7 @@
 | 参照できる値                                                              | 使える場所                   |
 | ------------------------------------------------------------------------- | ---------------------------- |
 | 前に実行するステップの `outputs`（`steps.<ステップ>.outputs.<名前>`）     | `inputs`、`run`、`outputs`   |
+| ワークフローの入力（`workflow.inputs.<名前>`）                            | `inputs`、`run`、`outputs`   |
 | 自分の `inputs`（`inputs.<名前>`）                                        | `run`、`outputs`             |
 | スクリプトの結果（`result.exitCode`、`result.stdout`、`result.stderr`）   | `outputs`                    |
 
@@ -91,9 +111,14 @@
 | `Step is not reachable from start`                                                                          | `start` からたどれないステップがある                       |
 | `Step <step> cannot reach end, so the workflow could never finish`                                          | `end` に着けないステップがある                             |
 | `Step <step> does not run before <step>`                                                                    | 前に実行しないステップの `outputs` を参照している          |
-| `Step <step> does not declare the output <name>`、`Step <step> does not declare the input <name>`           | 宣言していない値を参照している                             |
+| `Step <step> does not declare the output <name>`、`Step <step> does not declare the input <name>`、`The workflow does not declare the input <name>` | 宣言していない値を参照している |
 | `Can reference only <参照できるもの>`                                                                       | その場所では参照できない値を参照している                   |
-| `Cannot reference a field of an output value`、`Cannot reference a field of an input value`                 | 値の中の項目を参照している                                 |
+| `Cannot reference a field of an output value`、`Cannot reference a field of an input value`、`Cannot reference a field of a workflow input value` | 値の中の項目を参照している |
+| `A required input cannot have a default`                                                                    | `required: true` の入力に `default` を書いた               |
+| `Duplicate option: <option>`                                                                                | `options` に同じ値を重ねて書いた                           |
+| `Must be one of <options>` | `choice` の `default` が `options` にない |
+| `Invalid input: expected <型>, received <型>` | `default` が `type` に合わない |
+| `Must be a decimal number such as 1.5, without exponent notation` | `number` の `default` を、`1e3`、`0x10`、`.inf` のような、10 進数でない書き方で書いた |
 | `Invalid expression: <式>. <理由>`、`Unterminated expression: <式>`                                         | 式の書き方が正しくない                                     |
 
 実行したときのエラー:

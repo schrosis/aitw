@@ -8,7 +8,7 @@ spec ValidateExpressions {
   entity Reference
   enum CheckPhase { Unchecked, Lexed, RootChecked, OrderChecked, NameChecked, RefsPassed, RefsFailed }
   enum Site { AtInputs, AtRun, AtOutputs }
-  enum Target { ToStep, ToOwn, ToResult, ToOther }
+  enum Target { ToStep, ToWorkflow, ToOwn, ToResult, ToOther }
   enum Message { NoMessage, CanReferenceOnly, FieldOfValue, NotBefore, NotDeclared }
 
   state {
@@ -33,10 +33,10 @@ spec ValidateExpressions {
     }
   }
 
-  // The roots of each place: step outputs everywhere, inputs in run and outputs, and result only
-  // in outputs.
+  // The roots of each place: step outputs and workflow inputs everywhere, own inputs in run and
+  // outputs, and result only in outputs.
   def rootAllowed(s: Site, t: Target) =
-    t == ToStep or (t == ToOwn and s != AtInputs) or (t == ToResult and s == AtOutputs)
+    t == ToStep or t == ToWorkflow or (t == ToOwn and s != AtInputs) or (t == ToResult and s == AtOutputs)
 
   @requirement("REQ-REF-001", "式は、${{ }} で囲んで、ほかの値を参照する")
   action read(r: Reference, s: Site, t: Target, d: Bool, e: Bool, n: Bool) {

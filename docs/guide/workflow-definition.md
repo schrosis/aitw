@@ -70,6 +70,33 @@ steps:
 
 式で参照できる値は、書く場所ごとに決まっています。`ugoke validate` は、参照できない値を参照していないかも確かめます。詳しくは、[リファレンスの式](../reference/workflow-definition.md#式)を見てください。
 
+## ワークフローの入力を受け取る
+
+ワークフローが始まるときに受け取る値は、最上位の `inputs` に宣言します。
+
+```yaml
+version: v0.1
+inputs:
+  env:
+    type: choice
+    options: [staging, production]
+    required: true
+start: deploy
+steps:
+  deploy:
+    type: script
+    run: echo "deploy to ${{ workflow.inputs.env }}"
+    next: end
+```
+
+値は、`ugoke run` の `--input` に JSON で渡します。
+
+```console
+$ ugoke run deploy --input '{"env": "staging"}'
+```
+
+ステップの式からは、`${{ workflow.inputs.env }}` のように参照します。宣言に合わない値を渡すと、実行せずに失敗します。宣言の書き方は、[リファレンスのワークフローの入力](../reference/workflow-definition.md#ワークフローの入力)を見てください。
+
 ## 定義を確かめる
 
 `ugoke validate` で、定義を実行する前に確かめられます。

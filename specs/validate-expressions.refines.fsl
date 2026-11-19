@@ -17,6 +17,7 @@ refinement ValidateExpressionsRefinesStepReferences {
     if site[r] == AtInputs then InInputs else if site[r] == AtRun then InRun else InOutputs
   map reference_root[r: Reference] =
     if target[r] == ToStep then StepOutput
+    else if target[r] == ToWorkflow then WorkflowValue
     else if target[r] == ToOwn then OwnInput
     else if target[r] == ToResult then ScriptResult
     else Unknown
@@ -27,7 +28,7 @@ refinement ValidateExpressionsRefinesStepReferences {
   action read(r, s, t, d, e, n) -> write(
     r,
     if s == AtInputs then InInputs else if s == AtRun then InRun else InOutputs,
-    if t == ToStep then StepOutput else if t == ToOwn then OwnInput else if t == ToResult then ScriptResult else Unknown,
+    if t == ToStep then StepOutput else if t == ToWorkflow then WorkflowValue else if t == ToOwn then OwnInput else if t == ToResult then ScriptResult else Unknown,
     d, e, n)
   action rootFails(r) -> reject(r)
   action rootPasses(r) -> stutter

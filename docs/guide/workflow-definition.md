@@ -53,15 +53,30 @@ steps:
 - どのステップも、`start` から `next` をたどって行ける
 - どのステップからも、`next` をたどって `end` に着ける
 
-このため、行き先を 1 つだけ書いた `next` では、輪を作れません。たとえば、`first` の `next` が `second`、`second` の `next` が `first` の定義では、どちらのステップからも `end` に着けません。行き先を条件で分ける書き方は、別の節で説明します。
+このため、行き先を 1 つだけ書いた `next` では、輪を作れません。たとえば、`first` の `next` が `second`、`second` の `next` が `first` の定義では、どちらのステップからも `end` に着けません。行き先を条件で分ける書き方は、このガイドではまだ説明していません。
 
-満たさない定義は、`ugoke validate` で次のエラーになります。
+満たさない定義は、`ugoke validate` でエラーになります。次は、それぞれ別の定義のエラーの例です。
+
+`first` の `next` が、定義にない `missing` を指す定義:
 
 ```text
 .ugoke/workflows/hello.yaml:7:11 steps.first.next: Unknown step: missing
-.ugoke/workflows/hello.yaml:8:3 steps.lonely: Step is not reachable from start
-.ugoke/workflows/hello.yaml:7:11 steps.first.next: Step first cannot reach end, so the workflow could never finish
 ```
+
+`start` からたどれない `lonely` がある定義:
+
+```text
+.ugoke/workflows/hello.yaml:8:3 steps.lonely: Step is not reachable from start
+```
+
+`first` と `second` が互いを `next` に書いた定義:
+
+```text
+.ugoke/workflows/hello.yaml:7:11 steps.first.next: Step first cannot reach end, so the workflow could never finish
+.ugoke/workflows/hello.yaml:11:11 steps.second.next: Step second cannot reach end, so the workflow could never finish
+```
+
+存在しないステップを指すステップは、`end` に着けないとは報告しません。`Unknown step` だけを報告します。
 
 ## YAML の書き方の制限
 

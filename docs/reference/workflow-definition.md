@@ -18,7 +18,7 @@
 
 ## ワークフローの入力
 
-`inputs` には、ワークフローが始まるときに受け取る値を、名前と宣言の組で書きます。名前は、ステップの ID と同じ決まりで書きます。値は、`ugoke run` の `--input` で渡します。
+`inputs` には、ワークフローが始まるときに受け取る値を、名前と宣言の組で書きます。名前は英字で始め、英字、数字、`_` だけで書きます。値は、`ugoke run` の `--input` で渡します。
 
 | 項目          | 必須   | 内容                                                                     |
 | ------------- | ------ | ------------------------------------------------------------------------ |
@@ -118,6 +118,7 @@
 | `Duplicate option: <option>`                                                                                | `options` に同じ値を重ねて書いた                           |
 | `Must be one of <options>` | `choice` の `default` が `options` にない |
 | `Invalid input: expected <型>, received <型>` | `default` が `type` に合わない |
+| `Must be a decimal number such as 1.5, without exponent notation` | `number` の `default` を、`1e3`、`0x10`、`.inf` のような、10 進数でない書き方で書いた |
 | `Invalid expression: <式>. <理由>`、`Unterminated expression: <式>`                                         | 式の書き方が正しくない                                     |
 
 実行したときのエラー:

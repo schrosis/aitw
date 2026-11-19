@@ -55,7 +55,7 @@ requirements WorkflowInput {
     set serverStarted = true
   event refuse = Ugoke refuses Input (Requested -> Refused)
 
-  rule REQ-INP-002 "名前は、ステップの ID と同じ決まりで書く。required: true と default は一緒に書けない。default は type と options に合わなければならない。options は 1 つ以上書き、空の文字列と同じ値を重ねて書けない" {
+  rule REQ-INP-002 "名前は英字で始め、英字、数字、_ だけで書く。required: true と default は一緒に書けない。default は type と options に合わなければならない。options は 1 つ以上書き、空の文字列と同じ値を重ねて書けない" {
     allow Ugoke declares Input only when declarationOk(nameOk, required, hasDefault, defaultFits, badOptions)
     allow Ugoke rejects Input only when not declarationOk(nameOk, required, hasDefault, defaultFits, badOptions)
     DeclaredIsOk: always Input in Declared has declarationOk(nameOk, required, hasDefault, defaultFits, badOptions)

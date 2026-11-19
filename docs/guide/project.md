@@ -21,7 +21,7 @@ ugoke は、コマンドを実行したディレクトリから上へたどり�
 途中のディレクトリにも `.ugoke` があるときは、より近い方をルートにします。どのディレクトリにも `.ugoke` がなければ、次のエラーになります。
 
 ```text
-No .ugoke directory found in /private/tmp or its parents
+No .ugoke directory found in /home/user/scratch or its parents
 ```
 
 ## ワークフローの名前とファイル

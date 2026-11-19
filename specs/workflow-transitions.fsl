@@ -3,7 +3,7 @@ fsl 5
 // A definition here has passed the shape check of workflow-definition.fsl; accept and reject are
 // the final decision on it. Running an accepted definition is in workflow-run.fsl, and that its
 // run always reaches end (REQ-TRN-004) is checked by workflow-pipeline.fsl.
-// Source: docs/guide/workflow-definition.md ("ステップのつながり"),
+// Source: docs/reference/workflow-definition.md ("ステップのつながり"),
 //         packages/core/src/intermediate/validate.ts (validateTransitions).
 //
 // MODEL-TRN-001: a definition has at most three steps, numbered 0 to 2. Node 3 is end.

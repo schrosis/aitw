@@ -1,6 +1,6 @@
 fsl 5
 // Requirements for running an accepted workflow definition.
-// Source: docs/guide/workflow-definition.md ("script ステップの実行", "ステップの ID").
+// Source: docs/reference/workflow-definition.md ("実行", "ステップのつながり").
 //
 // MODEL-RUN-001: a run is described by the steps it has left before end, which the run of an
 //                accepted definition knows when it starts. workflow-transitions.fsl decides

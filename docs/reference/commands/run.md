@@ -41,7 +41,7 @@ ugoke run [options] <workflow>
 キャッシュになければ、ダウンロードします。キャッシュは `$XDG_CACHE_HOME/ugoke/temporal-cli` で、`XDG_CACHE_HOME` がなければ `~/.cache/ugoke/temporal-cli` です。
 
 > [!NOTE]
-> Windows では、Temporal CLI をダウンロードできません。`--temporal-bin` で Temporal CLI を指定してください。
+> Windows では、Temporal CLI をダウンロードしません。`--temporal-bin` で Temporal CLI を指定してください。
 
 ## 出力
 

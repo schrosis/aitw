@@ -75,6 +75,34 @@ requirements ProjectFiles {
     Ugoke resolves c1
     then c1 is Resolved
   }
+  scenario AC-PRJ-002 "決まりに合わない名前は、名前のエラーになる" {
+    User runs c1 with u0 false, u1 false, u2 false, u3 true, validName false, yaml true, yml false
+    Ugoke rejects c1
+    then c1 is BadName
+  }
+  scenario AC-PRJ-003 "どのディレクトリにも .ugoke がなければ、エラーになる" {
+    User runs c1 with u0 false, u1 false, u2 false, u3 false, validName true, yaml true, yml false
+    Ugoke abandons c1
+    then c1 is NoProject
+  }
+  scenario AC-PRJ-004 ".yaml と .yml のどちらもなければ、エラーになる" {
+    User runs c1 with u0 true, u1 false, u2 false, u3 false, validName true, yaml false, yml false
+    Ugoke locates c1 with root 0
+    Ugoke misses c1
+    then c1 is NoWorkflow
+  }
+  scenario AC-PRJ-005 ".yaml と .yml の両方があれば、エラーになる" {
+    User runs c1 with u0 true, u1 false, u2 true, u3 false, validName true, yaml true, yml true
+    Ugoke locates c1 with root 2
+    Ugoke doubts c1
+    then c1 is Ambiguous
+  }
+  scenario AC-PRJ-006 "実行したディレクトリをルートにして、.yml の定義を使う" {
+    User runs c1 with u0 true, u1 true, u2 true, u3 true, validName true, yaml false, yml true
+    Ugoke locates c1 with root 3
+    Ugoke resolves c1
+    then c1 is Resolved
+  }
 
   forbidden FB-PRJ-001 "より近い .ugoke があるときは、遠い方をルートにしない" {
     User runs c1 with u0 true, u1 false, u2 true, u3 false, validName true, yaml true, yml false
@@ -112,6 +140,29 @@ requirements ProjectFiles {
     User runs c1 with u0 false, u1 false, u2 false, u3 true, validName true, yaml true, yml false
     Ugoke locates c1 with root 3
     Ugoke doubts c1
+    then rejected
+  }
+  forbidden FB-PRJ-008 "ルートを決めたあとに、もう一度探さない" {
+    User runs c1 with u0 false, u1 false, u2 false, u3 true, validName true, yaml true, yml false
+    Ugoke locates c1 with root 3
+    Ugoke locates c1 with root 3
+    then rejected
+  }
+  forbidden FB-PRJ-009 "実行したコマンドを、もう一度実行しない" {
+    User runs c1 with u0 false, u1 false, u2 false, u3 true, validName true, yaml true, yml false
+    User runs c1 with u0 false, u1 false, u2 false, u3 true, validName true, yaml true, yml false
+    then rejected
+  }
+  forbidden FB-PRJ-010 "名前のエラーを、2 度出さない" {
+    User runs c1 with u0 false, u1 false, u2 false, u3 true, validName false, yaml true, yml false
+    Ugoke rejects c1
+    Ugoke rejects c1
+    then rejected
+  }
+  forbidden FB-PRJ-011 "プロジェクトがないエラーを、2 度出さない" {
+    User runs c1 with u0 false, u1 false, u2 false, u3 false, validName true, yaml true, yml false
+    Ugoke abandons c1
+    Ugoke abandons c1
     then rejected
   }
 }

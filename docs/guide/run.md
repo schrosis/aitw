@@ -12,6 +12,8 @@ $ ugoke daemon start
 
 常駐プロセスを使わずに試すときは、`ugoke run` に `--dev` を付けます。その実行のあいだだけ、一時的な Temporal Server を起動します。
 
+常駐プロセスも `--dev` も、Temporal Server を初めて起動するときは、それを起動する Temporal CLI をダウンロードします（「[Temporal CLI](../reference/commands/run.md#temporal-cli)」）。
+
 ## 実行する
 
 `ugoke run` に、ワークフローの名前を指定します。

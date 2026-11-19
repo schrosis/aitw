@@ -39,7 +39,7 @@ ugoke は、ワークフローを [Temporal](https://temporal.io/) の Workflow 
 
 使う Temporal Server は、次の 3 種類です。
 
-- 常駐プロセスが子プロセスとして起動する開発サーバー。記録は状態ディレクトリの `temporal.db` に残します
+- 常駐プロセスが子プロセスとして起動する開発サーバー。実行の記録を残します
 - `ugoke run --dev` が、その実行のあいだだけ起動する開発サーバー。`--dev-db` を付けない限り、記録を残しません
 - `--address` や `.ugoke/config.yaml` の `temporal.address` で指定した、外の Temporal Server
 
@@ -77,23 +77,8 @@ sequenceDiagram
 1. CLI は、ワークフローの名前から定義のファイルを探し、形とステップのつながりを確かめて、中間表現にします。問題があれば、ここで止まります
 2. CLI は、Temporal Server でワークフローを始めます。ワークフローの ID は `<ワークフロー名>-<UUID>` です
 3. Worker は、Workflow を実行します。Workflow は、中間表現をもう一度確かめてから、`start` のステップから `next` をたどって進みます
-4. ステップは、Activity として実行します。スクリプトのステップは、1 度だけ試し、失敗するとワークフローを失敗させます
+4. ステップは、Activity として実行します。スクリプトのステップは、1 度だけ試し、失敗するとワークフローを失敗させます。ステップの出力は、Temporal の記録に載せず、実行ごとのイベントのログに書きます
 5. CLI は、進み方を追いかけて表示し、ワークフローが終わると結果を返します。表示と終了ステータスは「[ugoke run](../reference/commands/run.md)」にあります
-
-## 状態の置き場所
-
-ugoke は、利用者ごとの状態を、状態ディレクトリ（`$XDG_STATE_HOME/ugoke`、既定は `~/.local/state/ugoke`）に置きます。持ち主だけが読み書きできる権限で作ります。
-
-```text
-~/.local/state/ugoke/
-├── temporal.db          常駐プロセスの Temporal Server の記録
-├── encryption.key       Temporal を通る値を暗号化する鍵
-├── daemon/              常駐プロセスのロック、ソケット、ログ、登録したプロジェクト
-├── locks/               実行を追いかけるコマンドのロック
-└── logs/                実行ごとのイベントのログ（ステップの出力など）
-```
-
-ワークフローの実行の記録は Temporal Server が持ちます。ステップの出力は Temporal の記録に載せず、`logs/` のイベントのログに書きます。
 
 ## パッケージの構成
 

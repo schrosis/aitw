@@ -1,0 +1,38 @@
+fsl 5
+// refine: follow-run.fsl run-command.fsl
+//
+// ugoke run keeps the requirements of the command: it runs only a checked definition, handles
+// Ctrl+C by where the steps run, and ends with the exit status of what happened.
+refinement FollowRunRefinesRunCommand {
+  impl FollowRun
+  abs RunCommand
+
+  map command_stage[c: Command] =
+    if phase[c] == Unstarted then Typed
+    else if phase[c] == Launched then Issued
+    else if phase[c] == Watching then Following
+    else if phase[c] == Stopping then Draining
+    else if phase[c] == Finished then Completed
+    else if phase[c] == Broke then Failed
+    else if phase[c] == Left then Detached
+    else if phase[c] == Withdrew then Cancelled
+    else if phase[c] == Quit then Abandoned
+    else Refused
+  map command_definitionOk[c: Command] = definitionOk[c]
+  map command_viaDaemon[c: Command] = viaDaemon[c]
+  map command_durable[c: Command] = durable[c]
+  map command_exitCode[c: Command] = exitCode[c]
+
+  action run(c, ok, d, k) -> issue(c, ok, d, k)
+  action reject(c) -> refuse(c)
+  action begin(c) -> start(c)
+  action stepStarts(c) -> stutter
+  action stepEnds(c) -> stutter
+  action finish(c) -> complete(c)
+  action breaks(c) -> fail(c)
+  action interruptDaemon(c) -> detach(c)
+  action interruptEphemeral(c) -> cancel(c)
+  action interruptOwnWorker(c) -> drain(c)
+  action stopped(c) -> settle(c)
+  action interruptAgain(c) -> abandon(c)
+}

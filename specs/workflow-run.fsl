@@ -9,13 +9,14 @@ fsl 5
 // MODEL-RUN-002: whether a script succeeds is not decided by ugoke, so a failure is a fault event.
 requirements WorkflowRun {
   number Count
-  actor Ugoke, Script
+  actor Ugoke, Script, User
 
   entity Run {
     remaining: Count = 0
     executed: Count = 0
     lifecycle Waiting -> Running -> Completed
     lifecycle Running -> Failed
+    lifecycle Running -> Cancelled
   }
 
   event start = Ugoke starts Run with remaining (Waiting -> Running)
@@ -27,6 +28,9 @@ requirements WorkflowRun {
   fault event fail = Script fails Run (Running -> Failed)
     set executed = executed + 1
     covers REQ-RUN-001 "ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する"
+  event cancel = User cancels Run (Running -> Cancelled)
+    set executed = executed + 1
+    covers REQ-RUN-006 "取り消すと、ワークフローはそれ以降のステップを実行しない"
 
   rule REQ-RUN-005 "受け付けた定義の実行は、end までのステップを 1 つ以上持つ" {
     allow Ugoke starts Run only when input remaining >= 1 and input remaining <= 3
@@ -38,7 +42,7 @@ requirements WorkflowRun {
     allow Ugoke completes Run only when remaining == 1
   }
   rule REQ-RUN-002 "失敗したステップは、やり直さない" {
-    RunsEachStepOnce: always Run in Failed, Completed has executed <= 3
+    RunsEachStepOnce: always Run in Failed, Completed, Cancelled has executed <= 3
   }
   rule REQ-RUN-003 "失敗しなければ、ワークフローは end で終わる" {
     NoStepAfterEnd: always Run in Running has remaining >= 1
@@ -57,6 +61,12 @@ requirements WorkflowRun {
     then r1 is Failed
   }
 
+  forbidden FB-RUN-006 "取り消したあとは、次のステップに進まない" {
+    Ugoke starts r1 with remaining 2
+    User cancels r1
+    Ugoke advances r1
+    then rejected
+  }
   forbidden FB-RUN-001 "失敗したあとは、次のステップに進まない" {
     Ugoke starts r1 with remaining 2
     Script fails r1

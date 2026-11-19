@@ -7,7 +7,7 @@ fsl 5
 spec ResolveWorkflow {
   entity Command
   type Level = 0..3
-  enum ResolvePhase { Idle, Started, Searching, RootFound, FileFound, NameRejected, NoRoot, FileMissing, FileDoubled }
+  enum ResolvePhase { Asked, Started, Searching, RootFound, FileFound, NameRejected, NoRoot, FileMissing, FileDoubled }
 
   state {
     phase: Map<Command, ResolvePhase>,
@@ -24,7 +24,7 @@ spec ResolveWorkflow {
 
   init {
     forall c: Command {
-      phase[c] = Idle
+      phase[c] = Asked
       u0[c] = false
       u1[c] = false
       u2[c] = false
@@ -42,7 +42,7 @@ spec ResolveWorkflow {
 
   @requirement("REQ-PRJ-004", "ワークフローは、名前で指定する")
   action run(c: Command, a0: Bool, a1: Bool, a2: Bool, a3: Bool, n: Bool, a: Bool, b: Bool) {
-    requires phase[c] == Idle
+    requires phase[c] == Asked
     phase[c] = Started
     u0[c] = a0
     u1[c] = a1

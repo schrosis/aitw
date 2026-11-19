@@ -1,0 +1,154 @@
+fsl 5
+// Design of ugoke run (packages/cli/src/commands/run.ts and packages/cli/src/follow.ts). It
+// starts a run of a checked definition and follows it. At Ctrl+C, it detaches at once when the
+// resident process runs the steps; it cancels the run when the Temporal Server keeps no runs; and
+// otherwise it stops its own Worker, which waits for the running step, and detaches. A second
+// Ctrl+C exits at once (packages/cli/src/program.ts).
+//
+// It refines the requirements of run-command.fsl.
+spec FollowRun {
+  entity Command
+  enum FollowPhase { Unstarted, Launched, Watching, Stopping, Finished, Broke, Left, Withdrew, Quit, Rejected }
+  enum Exit { Running, Zero, One, Three, OneThirty }
+
+  state {
+    phase: Map<Command, FollowPhase>,
+    definitionOk: Map<Command, Bool>,
+    viaDaemon: Map<Command, Bool>,
+    durable: Map<Command, Bool>,
+    stepRunning: Map<Command, Bool>,
+    exitCode: Map<Command, Exit>
+  }
+
+  init {
+    forall c: Command {
+      phase[c] = Unstarted
+      definitionOk[c] = false
+      viaDaemon[c] = false
+      durable[c] = false
+      stepRunning[c] = false
+      exitCode[c] = Running
+    }
+  }
+
+  @requirement("REQ-CMD-001", "常駐プロセスのサーバーは、実行の記録を残す")
+  action run(c: Command, ok: Bool, d: Bool, k: Bool) {
+    requires phase[c] == Unstarted
+    requires not d or k
+    phase[c] = Launched
+    definitionOk[c] = ok
+    viaDaemon[c] = d
+    durable[c] = k
+  }
+
+  @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")
+  action reject(c: Command) {
+    requires phase[c] == Launched
+    requires not definitionOk[c]
+    phase[c] = Rejected
+    exitCode[c] = One
+  }
+
+  @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")
+  action begin(c: Command) {
+    requires phase[c] == Launched
+    requires definitionOk[c]
+    phase[c] = Watching
+  }
+
+  // A step starts or ends on the Worker. Only the steps matter for the Ctrl+C that waits.
+  @requirement("MODEL-FOL-001", "ステップの実行が始まり、終わる")
+  action stepStarts(c: Command) {
+    requires phase[c] == Watching
+    requires not stepRunning[c]
+    stepRunning[c] = true
+  }
+
+  @requirement("MODEL-FOL-001", "ステップの実行が始まり、終わる")
+  action stepEnds(c: Command) {
+    requires phase[c] == Watching or phase[c] == Stopping
+    requires stepRunning[c]
+    stepRunning[c] = false
+  }
+
+  @requirement("REQ-CMD-003", "終了ステータスは、完了で 0、失敗か定義の問題で 1、切り離しで 3、取り消しか 2 度目の Ctrl+C で 130")
+  action finish(c: Command) {
+    requires phase[c] == Watching
+    requires not stepRunning[c]
+    phase[c] = Finished
+    exitCode[c] = Zero
+  }
+
+  @requirement("REQ-CMD-003", "終了ステータスは、完了で 0、失敗か定義の問題で 1、切り離しで 3、取り消しか 2 度目の Ctrl+C で 130")
+  action breaks(c: Command) {
+    requires phase[c] == Watching
+    phase[c] = Broke
+    stepRunning[c] = false
+    exitCode[c] = One
+  }
+
+  // handleInterrupt: the first Ctrl+C.
+  @requirement("REQ-CMD-005", "常駐プロセスで実行しているときは、すぐに切り離れ、ワークフローは続く")
+  action interruptDaemon(c: Command) {
+    requires phase[c] == Watching
+    requires viaDaemon[c]
+    phase[c] = Left
+    exitCode[c] = Three
+  }
+
+  @requirement("REQ-CMD-007", "実行の記録を残さないサーバーでは、ワークフローを取り消す")
+  action interruptEphemeral(c: Command) {
+    requires phase[c] == Watching
+    requires not viaDaemon[c]
+    requires not durable[c]
+    phase[c] = Withdrew
+    stepRunning[c] = false
+    exitCode[c] = OneThirty
+  }
+
+  @requirement("REQ-CMD-006", "実行中のステップが終わるのを待ってから切り離れる")
+  action interruptOwnWorker(c: Command) {
+    requires phase[c] == Watching
+    requires not viaDaemon[c]
+    requires durable[c]
+    phase[c] = Stopping
+  }
+
+  // The Worker has stopped after the running step.
+  @requirement("REQ-CMD-006", "実行中のステップが終わるのを待ってから切り離れる")
+  action stopped(c: Command) {
+    requires phase[c] == Stopping
+    requires not stepRunning[c]
+    phase[c] = Left
+    exitCode[c] = Three
+  }
+
+  // The second Ctrl+C exits the process at once.
+  @requirement("REQ-CMD-009", "待っているあいだにもう 1 度 Ctrl+C を押すと、すぐに終了し、実行中のステップは失敗する")
+  action interruptAgain(c: Command) {
+    requires phase[c] == Stopping
+    phase[c] = Quit
+    stepRunning[c] = false
+    exitCode[c] = OneThirty
+  }
+
+  @requirement("MODEL-FOL-002", "ugoke run が自分の Worker を止めるのは、記録を残すサーバーのときだけ")
+  invariant StoppingOnlyOwnDurable {
+    forall c: Command { phase[c] == Stopping => (not viaDaemon[c] and durable[c]) }
+  }
+
+  @requirement("REQ-CMD-006", "実行中のステップが終わるのを待ってから切り離れる")
+  invariant DetachesWithoutRunningStep {
+    forall c: Command { (phase[c] == Left and not viaDaemon[c]) => not stepRunning[c] }
+  }
+
+  terminal {
+    forall c: Command {
+      phase[c] == Finished or phase[c] == Broke or phase[c] == Left or phase[c] == Withdrew
+        or phase[c] == Quit or phase[c] == Rejected
+    }
+  }
+}
+verify {
+  instances Command = 1
+}

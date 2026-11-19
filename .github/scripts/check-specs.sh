@@ -38,7 +38,7 @@ for spec in "${specs[@]}"; do
   # A spec it cannot explore, such as one with a leadsTo, falls back to bounded BMC, and then
   # induction must prove the invariants. A state where nothing can happen and that the spec does
   # not declare terminal fails.
-  result=$(fslc verify --engine auto --deadlock error --depth 16 "$spec" | jq -r '.result') || true
+  result=$(fslc verify --engine auto --deadlock error --depth 32 "$spec" | jq -r '.result') || true
   case "$result" in
     proved) ;;
     verified)
@@ -49,7 +49,7 @@ for spec in "${specs[@]}"; do
       }
       ;;
     *)
-      fslc verify --engine auto --deadlock error --depth 16 "$spec" || true
+      fslc verify --engine auto --deadlock error --depth 32 "$spec" || true
       echo "::error file=$spec::fslc verify returned $result"
       exit 1
       ;;

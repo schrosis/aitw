@@ -1,0 +1,137 @@
+fsl 5
+// Requirements for ugoke run: it checks the definition, runs it, follows the run, and ends with
+// the exit status of what happened.
+// Source: docs/reference/commands/run.md, docs/guide/run.md
+//
+// MODEL-CMD-001: whether the definition is valid, whether the resident process runs the steps,
+//                and whether the Temporal Server keeps its runs are given when the command starts.
+// MODEL-CMD-002: whether the run succeeds is not decided by ugoke, so a failure is a fault event.
+requirements RunCommand {
+  enum Exit { Running, Zero, One, Three, OneThirty }
+  actor User, Ugoke, Script
+
+  entity Command {
+    definitionOk: Bool = false
+    viaDaemon: Bool = false
+    durable: Bool = false
+    exitCode: Exit = Running
+    lifecycle Typed -> Issued -> Following -> Completed
+    lifecycle Issued -> Refused
+    lifecycle Following -> Failed
+    lifecycle Following -> Detached
+    lifecycle Following -> Cancelled
+    lifecycle Following -> Draining -> Detached
+    lifecycle Draining -> Abandoned
+  }
+
+  concept ViaDaemon = Command where viaDaemon
+  concept OwnDurable = Command where not viaDaemon and durable
+  concept OwnEphemeral = Command where not viaDaemon and not durable
+
+  event issue = User runs Command with definitionOk, viaDaemon, durable (Typed -> Issued)
+    covers REQ-PRJ-004 "ワークフローは、名前で指定する"
+  event refuse = Ugoke refuses Command (Issued -> Refused)
+    set exitCode = One
+  event start = Ugoke starts Command (Issued -> Following)
+  event complete = Ugoke completes Command (Following -> Completed)
+    set exitCode = Zero
+    covers REQ-CMD-003 "終了ステータスは、完了で 0、失敗か定義の問題で 1、切り離しで 3、取り消しか 2 度目の Ctrl+C で 130"
+  fault event fail = Script fails Command (Following -> Failed)
+    set exitCode = One
+    covers REQ-CMD-003 "ワークフローが失敗すると、終了ステータスは 1"
+  event detach = User detaches Command (Following -> Detached)
+    set exitCode = Three
+  event cancel = User cancels Command (Following -> Cancelled)
+    set exitCode = OneThirty
+  event drain = User drains Command (Following -> Draining)
+  event settle = Ugoke settles Command (Draining -> Detached)
+    set exitCode = Three
+    covers REQ-CMD-004 "実行の途中で Ctrl+C を押したときの動きは、どこでステップを実行しているかで変わる"
+  event abandon = User abandons Command (Draining -> Abandoned)
+    set exitCode = OneThirty
+    covers REQ-CMD-009 "待っているあいだにもう 1 度 Ctrl+C を押すと、すぐに終了し、実行中のステップは失敗する"
+
+  rule REQ-CMD-001 "常駐プロセスのサーバーは、実行の記録を残す" {
+    allow User runs Command only when not input viaDaemon or input durable
+  }
+  rule REQ-CMD-002 "定義に問題があるときは、エラーを表示し、何も実行しない" {
+    never Ugoke starts Command when not definitionOk
+    allow Ugoke refuses Command only when not definitionOk
+  }
+
+  rule REQ-CMD-005 "常駐プロセスで実行しているときは、すぐに切り離れ、ワークフローは続く" {
+    allow User detaches Command only for ViaDaemon
+  }
+  rule REQ-CMD-007 "実行の記録を残さないサーバーでは、ワークフローを取り消す" {
+    allow User cancels Command only for OwnEphemeral
+  }
+  rule REQ-CMD-006 "実行中のステップが終わるのを待ってから切り離れる" {
+    allow User drains Command only for OwnDurable
+  }
+
+  rule REQ-CMD-003 "終了ステータスは、完了で 0、失敗か定義の問題で 1、切り離しで 3、取り消しか 2 度目の Ctrl+C で 130" {
+    CompletedExitsZero: always Command in Completed has exitCode == Zero
+    FailuresExitOne: always Command in Failed, Refused has exitCode == One
+    DetachedExitsThree: always Command in Detached has exitCode == Three
+    StoppedExitsOneThirty: always Command in Cancelled, Abandoned has exitCode == OneThirty
+  }
+  rule REQ-CMD-008 "実行の記録を残すサーバーでは、Ctrl+C でワークフローを取り消さない" {
+    NoCancelWhenDurable: always Command in Cancelled has not durable
+  }
+
+  scenario AC-CMD-001 "常駐プロセスで完了する" {
+    User runs c1 with definitionOk true, viaDaemon true, durable true
+    Ugoke starts c1
+    Ugoke completes c1
+    then c1 is Completed
+  }
+  scenario AC-CMD-002 "記録を残すサーバーで、2 度目の Ctrl+C ですぐに終了する" {
+    User runs c1 with definitionOk true, viaDaemon false, durable true
+    Ugoke starts c1
+    User drains c1
+    User abandons c1
+    then c1 is Abandoned
+  }
+
+  forbidden FB-CMD-001 "常駐プロセスで、記録を残さないことはない" {
+    User runs c1 with definitionOk true, viaDaemon true, durable false
+    then rejected
+  }
+  forbidden FB-CMD-002 "問題のある定義は実行しない" {
+    User runs c1 with definitionOk false, viaDaemon true, durable true
+    Ugoke starts c1
+    then rejected
+  }
+  forbidden FB-CMD-003 "正しい定義を、実行せずに終えない" {
+    User runs c1 with definitionOk true, viaDaemon true, durable true
+    Ugoke refuses c1
+    then rejected
+  }
+  forbidden FB-CMD-004 "常駐プロセスでの Ctrl+C で、取り消さない" {
+    User runs c1 with definitionOk true, viaDaemon true, durable true
+    Ugoke starts c1
+    User cancels c1
+    then rejected
+  }
+  forbidden FB-CMD-005 "記録を残すサーバーでの Ctrl+C で、取り消さない" {
+    User runs c1 with definitionOk true, viaDaemon false, durable true
+    Ugoke starts c1
+    User cancels c1
+    then rejected
+  }
+  forbidden FB-CMD-007 "常駐プロセスでの Ctrl+C で、ステップを待たない" {
+    User runs c1 with definitionOk true, viaDaemon true, durable true
+    Ugoke starts c1
+    User drains c1
+    then rejected
+  }
+  forbidden FB-CMD-006 "記録を残さないサーバーでの Ctrl+C で、切り離さない" {
+    User runs c1 with definitionOk true, viaDaemon false, durable false
+    Ugoke starts c1
+    User detaches c1
+    then rejected
+  }
+}
+verify {
+  instances Command = 1
+}

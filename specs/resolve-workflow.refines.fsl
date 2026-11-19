@@ -7,7 +7,7 @@ refinement ResolveWorkflowRefinesProjectFiles {
   abs ProjectFiles
 
   map command_stage[c: Command] =
-    if phase[c] == Idle then Typed
+    if phase[c] == Asked then Typed
     else if phase[c] == Started or phase[c] == Searching then Issued
     else if phase[c] == RootFound then Located
     else if phase[c] == FileFound then Resolved

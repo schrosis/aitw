@@ -31,6 +31,7 @@ requirements TemplateValues {
     allow Ugoke evaluates Template only when correct(whole, kind, input produced, input embedding)
     WholeKeepsKind: always Template in Evaluated has (not whole or produced == kind)
     MixedIsText: always Template in Evaluated has (whole or produced == TextKind)
+    EmbeddedByKind: always Template in Evaluated has (if whole then embedding == NoEmbedding else embedding == embeddingOf(kind))
   }
 
   scenario AC-TPL-001 "式だけで書いた数は、数のまま" {
@@ -41,6 +42,22 @@ requirements TemplateValues {
   scenario AC-TPL-002 "文字と続けて書いた null は、空の文字列" {
     Author writes t1 with whole false, kind NullKind
     Ugoke evaluates t1 with produced TextKind, embedding AsEmpty
+    then t1 is Evaluated
+  }
+
+  scenario AC-TPL-003 "文字と続けて書いた文字列は、そのまま埋め込む" {
+    Author writes t1 with whole false, kind TextKind
+    Ugoke evaluates t1 with produced TextKind, embedding AsIs
+    then t1 is Evaluated
+  }
+  scenario AC-TPL-004 "文字と続けて書いたオブジェクトは、JSON で埋め込む" {
+    Author writes t1 with whole false, kind ObjectKind
+    Ugoke evaluates t1 with produced TextKind, embedding AsJson
+    then t1 is Evaluated
+  }
+  scenario AC-TPL-005 "文字と続けて書いた数は、そのまま文字にする" {
+    Author writes t1 with whole false, kind NumberKind
+    Ugoke evaluates t1 with produced TextKind, embedding AsIs
     then t1 is Evaluated
   }
 
@@ -57,6 +74,21 @@ requirements TemplateValues {
   forbidden FB-TPL-003 "文字と続けて書いたオブジェクトを、JSON 以外にしない" {
     Author writes t1 with whole false, kind ObjectKind
     Ugoke evaluates t1 with produced TextKind, embedding AsIs
+    then rejected
+  }
+  forbidden FB-TPL-004 "文字と続けて書いた文字列を、JSON にしない" {
+    Author writes t1 with whole false, kind TextKind
+    Ugoke evaluates t1 with produced TextKind, embedding AsJson
+    then rejected
+  }
+  forbidden FB-TPL-005 "書く前の値を、評価しない" {
+    Ugoke evaluates t1 with produced TextKind, embedding AsIs
+    then rejected
+  }
+  forbidden FB-TPL-006 "評価した値を、書き直さない" {
+    Author writes t1 with whole true, kind TextKind
+    Ugoke evaluates t1 with produced TextKind, embedding NoEmbedding
+    Author writes t1 with whole true, kind TextKind
     then rejected
   }
 }

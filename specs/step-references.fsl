@@ -68,6 +68,17 @@ requirements StepReferences {
     then r1 is Accepted
   }
 
+  scenario AC-REF-004 "参照できない値は拒む" {
+    Author writes r1 with place InRun, root ScriptResult, declared true, earlier false, nested false
+    Ugoke rejects r1
+    then r1 is Rejected
+  }
+  scenario AC-REF-005 "あとに実行するステップの outputs は拒む" {
+    Author writes r1 with place InInputs, root StepOutput, declared true, earlier false, nested false
+    Ugoke rejects r1
+    then r1 is Rejected
+  }
+
   forbidden FB-REF-001 "あとに実行するステップの outputs を受け付けない" {
     Author writes r1 with place InInputs, root StepOutput, declared true, earlier false, nested false
     Ugoke accepts r1
@@ -91,6 +102,31 @@ requirements StepReferences {
   forbidden FB-REF-005 "参照できる値を拒まない" {
     Author writes r1 with place InOutputs, root OwnInput, declared true, earlier false, nested false
     Ugoke rejects r1
+    then rejected
+  }
+  forbidden FB-REF-006 "前のステップの outputs を、inputs で拒まない" {
+    Author writes r1 with place InInputs, root StepOutput, declared true, earlier true, nested false
+    Ugoke rejects r1
+    then rejected
+  }
+  forbidden FB-REF-007 "スクリプトの結果を、outputs で拒まない" {
+    Author writes r1 with place InOutputs, root ScriptResult, declared true, earlier false, nested false
+    Ugoke rejects r1
+    then rejected
+  }
+  forbidden FB-REF-008 "自分の inputs を、run で拒まない" {
+    Author writes r1 with place InRun, root OwnInput, declared true, earlier false, nested false
+    Ugoke rejects r1
+    then rejected
+  }
+  forbidden FB-REF-009 "書く前の参照を、確かめない" {
+    Ugoke rejects r1
+    then rejected
+  }
+  forbidden FB-REF-010 "確かめた参照を、書き直さない" {
+    Author writes r1 with place InRun, root OwnInput, declared true, earlier false, nested false
+    Ugoke accepts r1
+    Author writes r1 with place InRun, root OwnInput, declared true, earlier false, nested false
     then rejected
   }
 }

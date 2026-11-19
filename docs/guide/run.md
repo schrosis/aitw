@@ -4,7 +4,7 @@
 
 ## 準備
 
-ワークフローは、Temporal Server の上で実行します。ふだんは、常駐プロセスを 1 度起動しておきます。常駐プロセスが、Temporal Server を起動し、ワークフローのステップを実行します。
+ワークフローは、Temporal Server の上で実行します。ふだんは、常駐プロセスを 1 度起動しておきます。常駐プロセスが、Temporal Server を起動し、ワークフローのステップを実行します。仕組みは「[アーキテクチャ](../explanation/architecture.md)」で説明します。
 
 ```console
 $ ugoke daemon start

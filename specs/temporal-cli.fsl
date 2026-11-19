@@ -1,7 +1,8 @@
 fsl 5
 // Requirements for the Temporal CLI that starts a temporary Temporal Server: the one that the user
 // gives, or the release that ugoke pins and downloads to its cache.
-// Source: docs/reference/commands/run.md ("Temporal CLI")
+// Source: docs/reference/commands/run.md ("Temporal CLI"). The checksum, the platforms, and the
+// safety of the cache directory are kept here only, and not in the docs.
 //
 // MODEL-TCL-001: whether the user gives a Temporal CLI, whether ugoke has a release for the
 //                platform, whether the cache directory is safe, whether the release is in the

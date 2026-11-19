@@ -1,0 +1,92 @@
+fsl 5
+// A definition from its file to the end of its run: parseDefinition checks its shape, the
+// transition check of compileDefinition accepts or rejects it, and the interpreter of the engine
+// runs an accepted one. The shape is a necessary condition of acceptance, and only an accepted
+// definition runs.
+//
+// A definition that could not finish, or whose run could not end, would stop here with nothing
+// left to do, which the deadlock check reports.
+//
+// MODEL-PIP-001: parse-definition.fsl checks every kind of shape problem on its own. Here one kind
+//                stands for all of them, and the steps arrive only after the aliases are checked,
+//                so that the components do not interleave without need.
+compose WorkflowPipeline {
+  use ParseDefinition as parse from "parse-definition.fsl"
+  use ValidateTransitions as links from "validate-transitions.fsl"
+  use InterpretWorkflow as run from "interpret-workflow.fsl"
+
+  @requirement("REQ-DEF-011", "ワークフローは、YAML のファイルに定義する")
+  fair action write(d: parse.Definition, broken: Bool) =
+    parse.write(d, broken, false, false, false, false, false, false, false, false) {
+  }
+
+  @requirement("REQ-DEF-011", "ワークフローは、YAML のファイルに定義する")
+  fair action fill(d: parse.Definition, p: Bool, n: links.Node) =
+    links.fill(d, p, n) || run.fill(d, p, n) {
+    requires parse.phase[d] == AliasesChecked
+  }
+
+  // A definition that passes the shape check is built into the intermediate representation.
+  @requirement("MODEL-VAL-001", "形のチェックを通った定義から、中間表現を作る")
+  fair action build(d: parse.Definition, s: links.Node) =
+    parse.schemaOk(d) || links.build(d, s) {
+  }
+
+  // Only an accepted definition is handed to the interpreter.
+  @requirement("REQ-TRN-005", "つながりの決まりを満たす定義は受け付ける")
+  fair action launch(d: parse.Definition) =
+    links.validateOk(d) || run.aim(d, links.start[d]) {
+  }
+
+  internal parse.write
+  internal parse.schemaOk
+  internal links.fill
+  internal links.build
+  internal links.validateOk
+  internal run.fill
+  internal run.aim
+
+  @requirement("MODEL-CMP-001", "形のチェックを通らない定義は、つながりのチェックに進まない")
+  invariant ShapeComesFirst {
+    forall d: parse.Definition {
+      links.phase[d] != Waiting => parse.phase[d] == Parsed
+    }
+  }
+
+  @requirement("MODEL-PIP-002", "受け付けた定義だけを実行する")
+  invariant OnlyAcceptedDefinitionsRun {
+    forall d: parse.Definition {
+      (run.phase[d] == Executing or run.phase[d] == Succeeded or run.phase[d] == Aborted)
+        => links.phase[d] == Valid
+    }
+  }
+
+  @requirement("REQ-TRN-004", "受け付けた定義は、実行すると必ず終わる。失敗しなければ end で終わる")
+  invariant InterpreterNeverRefusesAccepted {
+    forall d: parse.Definition { run.phase[d] != Refused }
+  }
+
+  @requirement("REQ-TRN-004", "受け付けた定義は、実行すると必ず終わる。失敗しなければ end で終わる")
+  invariant RunIsShort {
+    forall d: parse.Definition { run.executed[d] <= 3 }
+  }
+
+  @requirement("REQ-TRN-002", "どのステップも、start からたどれなければならない")
+  invariant EveryStepRuns {
+    forall d: parse.Definition {
+      run.phase[d] == Succeeded => (
+        (run.v0[d] or not links.p0[d]) and (run.v1[d] or not links.p1[d])
+          and (run.v2[d] or not links.p2[d]))
+    }
+  }
+
+  // A definition ends when its shape check or its transition check fails, or when its run ends.
+  // compose has no terminal block, so this action marks those states as ends: any other state
+  // where nothing can happen is a deadlock.
+  @requirement("MODEL-CMP-002", "形のチェックで落ちるか、つながりのチェックで落ちるか、実行が終わると、定義は終わる")
+  action rest(d: parse.Definition) {
+    requires parse.phase[d] == SyntaxBroken or parse.phase[d] == AliasesBroken
+      or parse.phase[d] == SchemaBroken
+      or links.phase[d] == Invalid or run.phase[d] == Succeeded or run.phase[d] == Aborted
+  }
+}

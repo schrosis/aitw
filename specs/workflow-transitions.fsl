@@ -1,17 +1,14 @@
 fsl 5
-// Requirements for the transitions of a workflow definition, and what they guarantee when it runs.
+// Requirements for the transitions of a workflow definition.
 // A definition here has passed the shape check of workflow-definition.fsl; accept and reject are
-// the final decision on it.
+// the final decision on it. Running an accepted definition is in workflow-run.fsl, and that its
+// run always reaches end (REQ-TRN-004) is checked by workflow-pipeline.fsl.
 // Source: docs/guide/workflow-definition.md ("ステップのつながり"),
 //         packages/core/src/intermediate/validate.ts (validateTransitions).
 //
 // MODEL-TRN-001: a definition has at most three steps, numbered 0 to 2. Node 3 is end.
 // MODEL-TRN-002: next names one node. Branches with if are outside this spec.
 // MODEL-TRN-003: a step that next names but the definition does not have is an unknown step.
-//
-// A definition stops in Finished or Rejected, the stages with no way out. The deadlock check
-// finds no other state where a run stops, and RunIsShort bounds the run, so a run of an accepted
-// definition always reaches end (REQ-TRN-004).
 requirements WorkflowTransitions {
   number Node
   number Count
@@ -26,18 +23,16 @@ requirements WorkflowTransitions {
     n1: Node = 3
     n2: Node = 3
     start: Node = 0
-    current: Node = 0
-    taken: Count = 0
-    v0: Bool = false
-    v1: Bool = false
-    v2: Bool = false
     filled: Count = 0
-    lifecycle Draft -> Written -> Accepted -> Running -> Finished
+    lifecycle Draft -> Written -> Accepted
     lifecycle Written -> Rejected
   }
 
   // A definition is the steps it has (p0 to p2), where each goes next (n0 to n2), and start.
 
+  // These definitions are copies: workflow-transitions.fsl, validate-transitions.fsl and
+  // interpret-workflow.fsl each have them, because FSL cannot share a def across files. Keep the
+  // three the same.
   def has(p0: Bool, p1: Bool, p2: Bool, x: Node) = (x == 0 and p0) or (x == 1 and p1) or (x == 2 and p2)
 
   def to(n0: Node, n1: Node, n2: Node, x: Node) =
@@ -94,15 +89,6 @@ requirements WorkflowTransitions {
     covers REQ-DEF-011 "ワークフローは、YAML のファイルに定義する"
   event accept = Ugoke accepts Definition (Written -> Accepted)
   event reject = Ugoke rejects Definition (Written -> Rejected)
-  event begin = Ugoke starts Definition (Accepted -> Running)
-    set current = start, v0 = start == 0, v1 = start == 1, v2 = start == 2
-    covers REQ-TRN-008 "ワークフローは start のステップから始まる"
-  event step = Ugoke runs Definition in Running
-    set current = to(n0, n1, n2, current), taken = taken + 1,
-      v0 = v0 or to(n0, n1, n2, current) == 0,
-      v1 = v1 or to(n0, n1, n2, current) == 1,
-      v2 = v2 or to(n0, n1, n2, current) == 2
-  event finish = Ugoke finishes Definition (Running -> Finished)
 
   // MODEL-TRN-004: the author writes the steps one by one and then start, so that each event has
   // few inputs. One event with all of them would make every state try thousands of inputs.
@@ -125,29 +111,14 @@ requirements WorkflowTransitions {
         and allReachable(p0, p1, p2, n0, n1, n2, start)
         and allCanEnd(p0, p1, p2, n0, n1, n2))
   }
-  rule REQ-TRN-006 "ステップを実行すると、その next に進む" {
-    allow Ugoke runs Definition only when to(n0, n1, n2, current) != END
-  }
-  rule REQ-TRN-007 "next に end を書いたステップを実行すると、ワークフローが終わる" {
-    allow Ugoke finishes Definition only when to(n0, n1, n2, current) == END
-  }
-  rule REQ-TRN-004 "受け付けた定義は、実行すると必ず end で終わる" {
-    RunIsShort: always Definition in Running has taken <= 2
-    NeverUnknownStep: always Definition in Running has has(p0, p1, p2, current)
-    EveryStepRuns: always Definition in Finished has
-      (v0 or not p0) and (v1 or not p1) and (v2 or not p2)
-  }
 
-  scenario AC-TRN-001 "start から next をたどって end で終わる" {
+  scenario AC-TRN-001 "start から next をたどって end に着く定義を受け付ける" {
     Author fills d1 with p true, n 1
     Author fills d1 with p true, n 3
     Author fills d1 with p false, n 3
     Author writes d1 with start 0
     Ugoke accepts d1
-    Ugoke starts d1
-    Ugoke runs d1
-    Ugoke finishes d1
-    then d1 is Finished
+    then d1 is Accepted
   }
 
   forbidden FB-TRN-008 "4 つ目のステップは書けない（モデルのステップは 3 つまで）" {
@@ -187,26 +158,6 @@ requirements WorkflowTransitions {
     Author fills d1 with p false, n 3
     Author writes d1 with start 0
     Ugoke rejects d1
-    then rejected
-  }
-  forbidden FB-TRN-006 "next が end のステップから先へ進まない" {
-    Author fills d1 with p true, n 3
-    Author fills d1 with p false, n 3
-    Author fills d1 with p false, n 3
-    Author writes d1 with start 0
-    Ugoke accepts d1
-    Ugoke starts d1
-    Ugoke runs d1
-    then rejected
-  }
-  forbidden FB-TRN-007 "next が end でないステップで終わらない" {
-    Author fills d1 with p true, n 1
-    Author fills d1 with p true, n 3
-    Author fills d1 with p false, n 3
-    Author writes d1 with start 0
-    Ugoke accepts d1
-    Ugoke starts d1
-    Ugoke finishes d1
     then rejected
   }
 }

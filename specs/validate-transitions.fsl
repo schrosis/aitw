@@ -1,8 +1,7 @@
 fsl 5
-// Design of the transition check and of running a definition. compileDefinition
-// (packages/definition/src/compile.ts) builds the intermediate representation of a definition
-// that passed parseDefinition, and validateIntermediate (packages/core/src/intermediate/
-// validate.ts) checks its transitions. The engine then runs it from start along next.
+// Design of the transition check. compileDefinition (packages/definition/src/compile.ts) builds
+// the intermediate representation of a definition that passed parseDefinition, and
+// validateIntermediate (packages/core/src/intermediate/validate.ts) checks its transitions.
 //
 // It refines the transition requirements of workflow-transitions.fsl.
 spec ValidateTransitions {
@@ -10,7 +9,7 @@ spec ValidateTransitions {
   const END = 3
   type Node = 0..3
   type Count = 0..4
-  enum TransitionPhase { Waiting, Built, Valid, Invalid, Going, Done }
+  enum TransitionPhase { Waiting, Built, Valid, Invalid }
 
   state {
     phase: Map<Definition, TransitionPhase>,
@@ -22,12 +21,7 @@ spec ValidateTransitions {
     n2: Map<Definition, Node>,
     start: Map<Definition, Node>,
     ok: Map<Definition, Bool>,
-    current: Map<Definition, Node>,
-    taken: Map<Definition, Count>,
-    filled: Map<Definition, Count>,
-    v0: Map<Definition, Bool>,
-    v1: Map<Definition, Bool>,
-    v2: Map<Definition, Bool>
+    filled: Map<Definition, Count>
   }
 
   init {
@@ -41,15 +35,13 @@ spec ValidateTransitions {
       n2[d] = 3
       start[d] = 0
       ok[d] = false
-      current[d] = 0
-      taken[d] = 0
       filled[d] = 0
-      v0[d] = false
-      v1[d] = false
-      v2[d] = false
     }
   }
 
+  // These definitions are copies: workflow-transitions.fsl, validate-transitions.fsl and
+  // interpret-workflow.fsl each have them, because FSL cannot share a def across files. Keep the
+  // three the same.
   def has(p0: Bool, p1: Bool, p2: Bool, x: Node) = (x == 0 and p0) or (x == 1 and p1) or (x == 2 and p2)
 
   def to(n0: Node, n1: Node, n2: Node, x: Node) =
@@ -132,42 +124,12 @@ spec ValidateTransitions {
     phase[d] = Invalid
   }
 
-  @requirement("REQ-TRN-008", "ワークフローは start のステップから始まる")
-  action begin(d: Definition) {
-    requires phase[d] == Valid
-    phase[d] = Going
-    current[d] = start[d]
-    v0[d] = start[d] == 0
-    v1[d] = start[d] == 1
-    v2[d] = start[d] == 2
+  @requirement("MODEL-VAL-002", "受け付けるのは、つながりのチェックを通った定義だけ")
+  invariant OnlyValidDefinitionsPass {
+    forall d: Definition { phase[d] == Valid => ok[d] }
   }
 
-  @requirement("REQ-TRN-006", "ステップを実行すると、その next に進む")
-  action step(d: Definition) {
-    requires phase[d] == Going
-    requires taken[d] < 4
-    let t = to(n0[d], n1[d], n2[d], current[d])
-    requires t != END
-    current[d] = t
-    taken[d] = taken[d] + 1
-    v0[d] = v0[d] or t == 0
-    v1[d] = v1[d] or t == 1
-    v2[d] = v2[d] or t == 2
-  }
-
-  @requirement("REQ-TRN-007", "next に end を書いたステップを実行すると、ワークフローが終わる")
-  action finish(d: Definition) {
-    requires phase[d] == Going
-    requires to(n0[d], n1[d], n2[d], current[d]) == END
-    phase[d] = Done
-  }
-
-  @requirement("MODEL-VAL-002", "つながりのチェックを通った定義だけを実行する")
-  invariant OnlyValidDefinitionsRun {
-    forall d: Definition { (phase[d] == Going or phase[d] == Done) => ok[d] }
-  }
-
-  terminal { forall d: Definition { phase[d] == Done or phase[d] == Invalid } }
+  terminal { forall d: Definition { phase[d] == Valid or phase[d] == Invalid } }
 }
 verify {
   instances Definition = 1

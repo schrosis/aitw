@@ -103,7 +103,7 @@ spec EmitStepEvents {
     phase[s] = phase[s]
   }
 
-  @requirement("REQ-PRG-002", "ステップの出力は、始まりの行と結果の行のあいだに表示する")
+  @requirement("MODEL-EVT-003", "stepFinished は 1 度だけ出す")
   invariant OneFinishedEvent {
     forall s: StepRun { finished[s] <= 1 and ((phase[s] == Returned or phase[s] == Threw) => finished[s] == 1) }
   }

@@ -1,0 +1,331 @@
+fsl 5
+// Requirements for the temporary Temporal Server of ugoke run --dev: the options that need --dev,
+// the Temporal CLI that starts it, how it starts and stops, and that it lives only while the
+// command runs.
+// Source: docs/reference/commands/run.md ("オプション"), docs/guide/run.md ("準備"). The retry,
+// the way that the server is stopped, its local address, and the permissions of the --dev-db file
+// are kept here only, and not in the docs.
+//
+// MODEL-DEV-001: how the run ends after it starts (completed, failed, cancelled, detached) is
+//                described in run-command.fsl. Here, every ending is one event with its exit code.
+// MODEL-DEV-002: the Temporal CLI that the pinned release gives is described in temporal-cli.fsl.
+// MODEL-DEV-003: the time that a stopped server gets to end (5 seconds) is one tick of the clock,
+//                and the time that ugoke waits for the server to start is not modeled.
+requirements DevServer {
+  enum Exit { Pending, Zero, One, Three, OneThirty }
+  enum Bin { NoBin, PathBin, NameBin }
+  enum Lookup { NoLookup, Pinned, FromCwd, FromPath }
+  actor User, Ugoke, Clock
+
+  entity DevRun {
+    devOpt: Bool = false
+    dbOpt: Bool = false
+    uiOpt: Bool = false
+    bin: Bin = NoBin
+    lookup: Lookup = NoLookup
+    local: Bool = false
+    process: Bool = false
+    began: Bool = false
+    uiUp: Bool = false
+    dbPrivate: Bool = false
+    retried: Bool = false
+    interrupted: Bool = false
+    asked: Bool = false
+    graceOver: Bool = false
+    forced: Bool = false
+    exitCode: Exit = Pending
+    lifecycle Untyped -> Typed -> Starting -> Running -> Stopping -> Ended
+    lifecycle Starting -> Starting
+    lifecycle Starting -> Stopping
+    lifecycle Stopping -> Stopping
+    lifecycle Typed -> Running
+    lifecycle Typed -> Errored
+    lifecycle Running -> Ended
+  }
+
+  def needsDev(d: Bool, u: Bool, b: Bin) = d or u or b != NoBin
+  def lookupOf(b: Bin) = if b == PathBin then FromCwd else if b == NameBin then FromPath else Pinned
+
+  event type = User types DevRun with devOpt, dbOpt, uiOpt, bin (Untyped -> Typed)
+    covers REQ-DEV-001 "--dev は、その実行のあいだだけ、一時的な Temporal Server を起動する"
+  event refuse = Ugoke refuses DevRun (Typed -> Errored)
+    set exitCode = One
+  event connect = Ugoke connects DevRun (Typed -> Running)
+    set began = true
+  event launch = Ugoke launches DevRun with lookup, local (Typed -> Starting)
+    set process = true
+  event retry = Ugoke retries DevRun (Starting -> Starting)
+    set retried = true
+  event serve = Ugoke serves DevRun with uiUp, dbPrivate (Starting -> Running)
+    set began = true
+  event abort = User aborts DevRun (Starting -> Stopping)
+    set exitCode = OneThirty, interrupted = true, asked = true
+    covers REQ-DEV-005 "サーバーの起動中に Ctrl+C を押すと、取り消して終了ステータス 130 で終わる。起動しなければ、ワークフローを始めずに、終了ステータス 1 で終わる"
+  event fail = Ugoke fails DevRun (Starting -> Stopping)
+    set exitCode = One, asked = true
+    covers REQ-DEV-005 "サーバーの起動中に Ctrl+C を押すと、取り消して終了ステータス 130 で終わる。起動しなければ、ワークフローを始めずに、終了ステータス 1 で終わる"
+  event finish = Ugoke finishes DevRun with exitCode (Running -> Stopping)
+    set asked = true
+  event leave = Ugoke leaves DevRun with exitCode (Running -> Ended)
+  event halt = Ugoke halts DevRun (Stopping -> Ended)
+    set process = false
+    covers REQ-DEV-007 "サーバーを止めるときは、まず終了を求める。5 秒たっても残っていれば、強制的に止める"
+  event lapse = Clock lapses DevRun (Stopping -> Stopping)
+    set graceOver = true
+    covers REQ-DEV-007 "サーバーを止めるときは、まず終了を求める。5 秒たっても残っていれば、強制的に止める"
+  event force = Ugoke forces DevRun (Stopping -> Ended)
+    set process = false, forced = true
+  event kill = User kills DevRun (Running -> Ended)
+    set process = false, forced = true, interrupted = true, exitCode = OneThirty
+    covers REQ-DEV-004 "一時的な Temporal Server は、コマンドがどう終わっても止まる。2 度目の Ctrl+C でも止まる"
+
+  rule REQ-DEV-002 "--dev-db、--dev-ui、--temporal-bin は、--dev と使う。--dev がなければ、終了ステータス 1 で終わる" {
+    allow Ugoke refuses DevRun only when needsDev(dbOpt, uiOpt, bin) and not devOpt
+    allow Ugoke connects DevRun only when not devOpt and not needsDev(dbOpt, uiOpt, bin)
+    allow Ugoke launches DevRun only when devOpt
+    ErroredExitsOne: always DevRun in Errored has exitCode == One
+  }
+  rule REQ-DEV-003 "--temporal-bin は、パスなら今のディレクトリから、/ を含まない名前なら PATH から探す。指定しなければ、ugoke が決めた版を使う" {
+    allow Ugoke launches DevRun only when input lookup == lookupOf(bin)
+    LookupFollowsBin: always DevRun in Running has (not devOpt or lookup == lookupOf(bin))
+  }
+  rule REQ-DEV-004 "一時的な Temporal Server は、コマンドがどう終わっても止まる。2 度目の Ctrl+C でも止まる" {
+    allow Ugoke finishes DevRun only when devOpt
+    allow Ugoke leaves DevRun only when not devOpt
+    ServerOnlyWhileRunning: always DevRun in Ended has not process
+    ServerFollowsDev: always DevRun in Running has process == devOpt
+  }
+  rule REQ-DEV-005 "サーバーの起動中に Ctrl+C を押すと、取り消して終了ステータス 130 で終わる。起動しなければ、ワークフローを始めずに、終了ステータス 1 で終わる" {
+    allow Ugoke finishes DevRun only when input exitCode != Pending
+    allow Ugoke leaves DevRun only when input exitCode != Pending
+    EndedHasExit: always DevRun in Ended has exitCode != Pending
+    RunningHasNoExit: always DevRun in Running has exitCode == Pending
+    NotBegunEnds: always DevRun in Ended has (began or (interrupted == (exitCode == OneThirty) and (exitCode == One or exitCode == OneThirty)))
+  }
+  rule REQ-DEV-006 "サーバーが起動する前に終わったときは、1 度だけ起動し直す" {
+    allow Ugoke retries DevRun only when not retried
+  }
+  rule REQ-DEV-007 "サーバーを止めるときは、まず終了を求める。5 秒たっても残っていれば、強制的に止める" {
+    allow Ugoke forces DevRun only when graceOver
+    AskedBeforeForced: always DevRun in Ended has (not forced or asked or interrupted)
+  }
+  rule REQ-DEV-008 "Web UI は、--dev-ui を付けたときだけ起動する" {
+    allow Ugoke serves DevRun only when input uiUp == uiOpt
+    UiFollowsOption: always DevRun in Running has uiUp == (devOpt and uiOpt)
+  }
+  rule REQ-DEV-009 "サーバーは、このマシンの中からだけつながるアドレスで待ち受ける" {
+    allow Ugoke launches DevRun only when input local
+    LocalOnly: always DevRun in Running has (not devOpt or local)
+  }
+  rule REQ-DEV-010 "--dev-db のファイルは、自分だけが読み書きできるようにする" {
+    allow Ugoke serves DevRun only when input dbPrivate == dbOpt
+    DbIsPrivate: always DevRun in Running has (not dbOpt or dbPrivate)
+  }
+
+  scenario AC-DEV-001 "--dev で実行して完了すると、サーバーを止める" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke serves r1 with uiUp false, dbPrivate false
+    Ugoke finishes r1 with exitCode Zero
+    Ugoke halts r1
+    then r1 is Ended
+  }
+  scenario AC-DEV-002 "--dev がないのに --dev-db を使うと、エラーになる" {
+    User types r1 with devOpt false, dbOpt true, uiOpt false, bin NoBin
+    Ugoke refuses r1
+    then r1 is Errored
+  }
+  scenario AC-DEV-003 "--dev なしでは、サーバーを起動しない" {
+    User types r1 with devOpt false, dbOpt false, uiOpt false, bin NoBin
+    Ugoke connects r1
+    Ugoke leaves r1 with exitCode Zero
+    then r1 is Ended
+  }
+  scenario AC-DEV-004 "起動中の Ctrl+C で、取り消して終わる" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NameBin
+    Ugoke launches r1 with lookup FromPath, local true
+    User aborts r1
+    Ugoke halts r1
+    then r1 is Ended
+  }
+  scenario AC-DEV-005 "サーバーが起動しなければ、失敗する" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin PathBin
+    Ugoke launches r1 with lookup FromCwd, local true
+    Ugoke fails r1
+    Ugoke halts r1
+    then r1 is Ended
+  }
+  scenario AC-DEV-006 "2 度目の Ctrl+C でも、サーバーを止める" {
+    User types r1 with devOpt true, dbOpt true, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke serves r1 with uiUp false, dbPrivate true
+    User kills r1
+    then r1 is Ended
+  }
+  scenario AC-DEV-007 "--dev がないのに --temporal-bin を使うと、エラーになる" {
+    User types r1 with devOpt false, dbOpt false, uiOpt false, bin PathBin
+    Ugoke refuses r1
+    then r1 is Errored
+  }
+  scenario AC-DEV-008 "起動する前に終わったサーバーを、起動し直す" {
+    User types r1 with devOpt true, dbOpt false, uiOpt true, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke retries r1
+    Ugoke serves r1 with uiUp true, dbPrivate false
+    then r1 is Running
+  }
+  scenario AC-DEV-009 "終了を求めても残るサーバーは、強制的に止める" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke serves r1 with uiUp false, dbPrivate false
+    Ugoke finishes r1 with exitCode One
+    Clock lapses r1
+    Ugoke forces r1
+    then r1 is Ended
+  }
+  scenario AC-DEV-010 "--dev がないのに --dev-ui を使うと、エラーになる" {
+    User types r1 with devOpt false, dbOpt false, uiOpt true, bin NoBin
+    Ugoke refuses r1
+    then r1 is Errored
+  }
+
+  forbidden FB-DEV-001 "--dev がないのに --temporal-bin を受け付けない" {
+    User types r1 with devOpt false, dbOpt false, uiOpt false, bin NameBin
+    Ugoke connects r1
+    then rejected
+  }
+  forbidden FB-DEV-002 "--dev があるのに、エラーにしない" {
+    User types r1 with devOpt true, dbOpt true, uiOpt true, bin PathBin
+    Ugoke refuses r1
+    then rejected
+  }
+  forbidden FB-DEV-003 "--dev なしで、サーバーを起動しない" {
+    User types r1 with devOpt false, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    then rejected
+  }
+  forbidden FB-DEV-004 "--dev があるのに、サーバーなしで実行しない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke connects r1
+    then rejected
+  }
+  forbidden FB-DEV-005 "名前の --temporal-bin を、今のディレクトリから探さない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NameBin
+    Ugoke launches r1 with lookup FromCwd, local true
+    then rejected
+  }
+  forbidden FB-DEV-006 "パスの --temporal-bin を、PATH から探さない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin PathBin
+    Ugoke launches r1 with lookup FromPath, local true
+    then rejected
+  }
+  forbidden FB-DEV-007 "--temporal-bin を指定したのに、決めた版を使わない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NameBin
+    Ugoke launches r1 with lookup Pinned, local true
+    then rejected
+  }
+  forbidden FB-DEV-008 "--temporal-bin を指定しないのに、探さない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup FromPath, local true
+    then rejected
+  }
+  forbidden FB-DEV-009 "起動する前に、ワークフローを始めない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke finishes r1 with exitCode Zero
+    then rejected
+  }
+  forbidden FB-DEV-010 "起動しなかったあとに、ワークフローを始めない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke fails r1
+    Ugoke serves r1 with uiUp false, dbPrivate false
+    then rejected
+  }
+  forbidden FB-DEV-011 "終わったことを、終了ステータスなしにしない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke serves r1 with uiUp false, dbPrivate false
+    Ugoke finishes r1 with exitCode Pending
+    then rejected
+  }
+  forbidden FB-DEV-012 "--dev なしで、サーバーを止めることにしない" {
+    User types r1 with devOpt false, dbOpt false, uiOpt false, bin NoBin
+    Ugoke connects r1
+    Ugoke finishes r1 with exitCode Zero
+    then rejected
+  }
+  forbidden FB-DEV-013 "打つ前に、実行しない" {
+    Ugoke connects r1
+    then rejected
+  }
+  forbidden FB-DEV-014 "打ったあとに、打ち直さない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    then rejected
+  }
+  forbidden FB-DEV-015 "サーバーを起動する前に、Ctrl+C で止めたことにしない" {
+    User types r1 with devOpt false, dbOpt false, uiOpt false, bin NoBin
+    User aborts r1
+    then rejected
+  }
+  forbidden FB-DEV-016 "何も指定しないのに、エラーにしない" {
+    User types r1 with devOpt false, dbOpt false, uiOpt false, bin NoBin
+    Ugoke refuses r1
+    then rejected
+  }
+  forbidden FB-DEV-017 "2 度は、起動し直さない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke retries r1
+    Ugoke retries r1
+    then rejected
+  }
+  forbidden FB-DEV-018 "終了を求めてすぐに、強制的に止めない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke serves r1 with uiUp false, dbPrivate false
+    Ugoke finishes r1 with exitCode Zero
+    Ugoke forces r1
+    then rejected
+  }
+  forbidden FB-DEV-019 "--dev-ui がないのに、Web UI を起動しない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke serves r1 with uiUp true, dbPrivate false
+    then rejected
+  }
+  forbidden FB-DEV-020 "--dev-ui があるのに、Web UI を起動し忘れない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt true, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke serves r1 with uiUp false, dbPrivate false
+    then rejected
+  }
+  forbidden FB-DEV-021 "ほかのマシンからつながるアドレスで、待ち受けない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local false
+    then rejected
+  }
+  forbidden FB-DEV-022 "--dev-db のファイルを、ほかのユーザーに読ませない" {
+    User types r1 with devOpt true, dbOpt true, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke serves r1 with uiUp false, dbPrivate false
+    then rejected
+  }
+  forbidden FB-DEV-023 "サーバーが起動する前に、2 度目の Ctrl+C で止めたことにしない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    User kills r1
+    then rejected
+  }
+  forbidden FB-DEV-024 "--dev があるのに、サーバーを止めずに終わらない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke serves r1 with uiUp false, dbPrivate false
+    Ugoke leaves r1 with exitCode Zero
+    then rejected
+  }
+}
+verify {
+  instances DevRun = 1
+}

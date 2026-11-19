@@ -5,15 +5,26 @@ fsl 5
 // otherwise it stops its own Worker, which waits for the running step, and detaches. A second
 // Ctrl+C exits at once (packages/cli/src/program.ts).
 //
+// openCommandServer (packages/cli/src/daemon/connect.ts) chooses the server: the options of the
+// command, then temporal.address of the configuration file, then the server of the resident
+// process. The resident process runs the steps only without options, when it runs this version of
+// ugoke and, with temporal.address, serves that address.
+//
 // It refines the requirements of run-command.fsl.
 spec FollowRun {
   entity Command
-  enum FollowPhase { Unstarted, Launched, Watching, Stopping, Finished, Broke, Left, Withdrew, Quit, Rejected }
+  enum FollowPhase { Unstarted, Launched, Watching, Stopping, Finished, Broke, Left, Withdrew, Quit, Rejected, Unserved }
   enum Exit { Running, Zero, One, Three, OneThirty }
 
   state {
     phase: Map<Command, FollowPhase>,
     definitionOk: Map<Command, Bool>,
+    addressOpt: Map<Command, Bool>,
+    devOpt: Map<Command, Bool>,
+    devDb: Map<Command, Bool>,
+    configAddress: Map<Command, Bool>,
+    daemonRunning: Map<Command, Bool>,
+    daemonMatches: Map<Command, Bool>,
     viaDaemon: Map<Command, Bool>,
     durable: Map<Command, Bool>,
     stepRunning: Map<Command, Bool>,
@@ -24,6 +35,12 @@ spec FollowRun {
     forall c: Command {
       phase[c] = Unstarted
       definitionOk[c] = false
+      addressOpt[c] = false
+      devOpt[c] = false
+      devDb[c] = false
+      configAddress[c] = false
+      daemonRunning[c] = false
+      daemonMatches[c] = false
       viaDaemon[c] = false
       durable[c] = false
       stepRunning[c] = false
@@ -31,14 +48,33 @@ spec FollowRun {
     }
   }
 
-  @requirement("REQ-CMD-001", "常駐プロセスのサーバーは、実行の記録を残す")
-  action run(c: Command, ok: Bool, d: Bool, k: Bool) {
+  @requirement("REQ-CMD-010", "使う Temporal Server は、オプション、.ugoke/config.yaml の temporal.address、常駐プロセスのサーバーの順に決める")
+  action run(c: Command, ok: Bool, a: Bool, dv: Bool, db: Bool, cfg: Bool, dr: Bool, dm: Bool) {
     requires phase[c] == Unstarted
-    requires not d or k
+    requires not (a and dv)
+    requires not db or dv
     phase[c] = Launched
     definitionOk[c] = ok
-    viaDaemon[c] = d
-    durable[c] = k
+    addressOpt[c] = a
+    devOpt[c] = dv
+    devDb[c] = db
+    configAddress[c] = cfg
+    daemonRunning[c] = dr
+    daemonMatches[c] = dm
+    // With options, the command opens the server itself and the resident process is not used.
+    viaDaemon[c] = not a and not dv and dr and dm
+    // A development server without --dev-db is the only server that keeps no runs.
+    durable[c] = not dv or db
+  }
+
+  // DaemonUnavailableError: no options, no temporal.address, and no resident process.
+  @requirement("REQ-CMD-011", "オプションも temporal.address もなく、常駐プロセスが動いていないときは、終了ステータス 1")
+  action unserved(c: Command) {
+    requires phase[c] == Launched
+    requires definitionOk[c]
+    requires not addressOpt[c] and not devOpt[c] and not configAddress[c] and not daemonRunning[c]
+    phase[c] = Unserved
+    exitCode[c] = One
   }
 
   @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")
@@ -53,6 +89,7 @@ spec FollowRun {
   action begin(c: Command) {
     requires phase[c] == Launched
     requires definitionOk[c]
+    requires addressOpt[c] or devOpt[c] or configAddress[c] or daemonRunning[c]
     phase[c] = Watching
   }
 
@@ -145,7 +182,7 @@ spec FollowRun {
   terminal {
     forall c: Command {
       phase[c] == Finished or phase[c] == Broke or phase[c] == Left or phase[c] == Withdrew
-        or phase[c] == Quit or phase[c] == Rejected
+        or phase[c] == Quit or phase[c] == Rejected or phase[c] == Unserved
     }
   }
 }

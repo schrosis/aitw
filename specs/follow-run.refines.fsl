@@ -17,13 +17,21 @@ refinement FollowRunRefinesRunCommand {
     else if phase[c] == Left then Detached
     else if phase[c] == Withdrew then Cancelled
     else if phase[c] == Quit then Abandoned
+    else if phase[c] == Unserved then NoServer
     else Refused
   map command_definitionOk[c: Command] = definitionOk[c]
+  map command_addressOpt[c: Command] = addressOpt[c]
+  map command_devOpt[c: Command] = devOpt[c]
+  map command_devDb[c: Command] = devDb[c]
+  map command_configAddress[c: Command] = configAddress[c]
+  map command_daemonRunning[c: Command] = daemonRunning[c]
+  map command_daemonMatches[c: Command] = daemonMatches[c]
   map command_viaDaemon[c: Command] = viaDaemon[c]
   map command_durable[c: Command] = durable[c]
   map command_exitCode[c: Command] = exitCode[c]
 
-  action run(c, ok, d, k) -> issue(c, ok, d, k)
+  action run(c, ok, a, dv, db, cfg, dr, dm) -> issue(c, ok, a, dv, db, cfg, dr, dm)
+  action unserved(c) -> noServer(c)
   action reject(c) -> refuse(c)
   action begin(c) -> start(c)
   action stepStarts(c) -> stutter

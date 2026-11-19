@@ -2,7 +2,7 @@ fsl 5
 // Requirements for the shape of a workflow definition.
 // The shape is a necessary condition: a definition that fails here is rejected, and one that
 // passes goes on to the checks of workflow-transitions.fsl, which accept or reject it.
-// Source: docs/guide/workflow-definition.md
+// Source: docs/reference/workflow-definition.md
 //
 // MODEL-DEF-001: a definition is modelled by the problems it has, not by its text.
 // MODEL-DEF-002: the default timeout of 30m, the meaning of `next: end` and the format of error

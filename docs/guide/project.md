@@ -41,23 +41,6 @@ Workflow deploy has both .yaml and .yml files
 Workflow not found: deploy
 ```
 
-## ワークフローを検証する
+## ワークフローを確かめる
 
-`ugoke validate` は、名前で指定したワークフローの定義を検証します。
-
-```console
-$ ugoke validate deploy
-deploy: valid
-```
-
-定義に問題があるときは、ファイル、行と列、項目のパス、メッセージを表示します。定義の決まりは「[ワークフローの定義](workflow-definition.md)」で説明します。
-
-```text
-.ugoke/workflows/hello.yaml:7:11 steps.first.next: Unknown step: missing
-```
-
-終了ステータスは、定義が正しければ 0、エラーがあれば 1 です。
-
-## 版を確かめる
-
-`ugoke --version` は、ugoke の版を表示します。
+定義を書いたら、`ugoke validate` で確かめられます。書き方は「[ワークフローの定義](workflow-definition.md)」で、コマンドの詳細は「[ugoke validate](../reference/commands/validate.md)」で説明します。ugoke の版は `ugoke --version` で表示します（「[ugoke](../reference/commands/ugoke.md)」）。

@@ -1,6 +1,6 @@
 fsl 5
 // Requirements for finding the project and the file of a workflow.
-// Source: docs/guide/project.md
+// Source: docs/guide/project.md, docs/reference/commands/validate.md
 //
 // MODEL-PRJ-001: the directory where a command runs is level 3, and its parents are levels 2,
 //                1 and 0. Level 0 has no parent.

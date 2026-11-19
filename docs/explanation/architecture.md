@@ -1,0 +1,122 @@
+# アーキテクチャ
+
+このページでは、ugoke がワークフローをどのように実行するかを説明します。使い方を順に知るには[ガイド](../guide/)を、コマンドや形式を引くには[リファレンス](../reference/)を読んでください。
+
+## 全体の図
+
+```mermaid
+flowchart LR
+  user([利用者・AI]) -->|ugoke run など| cli[CLI]
+  cli -->|プロジェクトを登録する<br/>状態を問い合わせる| daemon[常駐プロセス]
+  daemon -->|起動する| server[(Temporal Server)]
+  cli -->|ワークフローを始める<br/>進み方を問い合わせる| server
+  subgraph daemon_box [常駐プロセスの中]
+    worker[Worker<br/>プロジェクトごと]
+  end
+  daemon --- worker
+  worker -->|タスクを取りに行く| server
+  worker --> workflow[Workflow<br/>インタプリタ]
+  worker --> activity[Activity<br/>スクリプト、AI、待機]
+```
+
+ugoke は、ワークフローを [Temporal](https://temporal.io/) の Workflow として実行します。Temporal Server が実行の記録を持ち、Worker がその記録に沿ってステップを進めます。このため、ugoke のコマンドが終わっても、Worker があればワークフローは続きます。
+
+## 登場人物
+
+| 名前            | 役割                                                                                                                              |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| CLI             | `ugoke` コマンドです。定義を確かめ、ワークフローを始め、進み方を表示します                                                        |
+| 常駐プロセス    | `ugoke daemon start` で起動する、ホストに 1 つのプロセスです。Temporal Server を起動し、登録したプロジェクトの Worker を動かします |
+| Temporal Server | ワークフローの実行の記録を持つサーバーです                                                                                        |
+| Worker          | Temporal Server からタスクを取り、Workflow と Activity を実行します                                                               |
+| Workflow        | 定義の中間表現を解釈し、ステップを順に進めます。外の世界には触れません                                                            |
+| Activity        | スクリプトの実行、AI の呼び出し、待機など、外の世界に触れる処理です                                                               |
+| プラグイン      | AI のプロバイダーや待機の方法を足します。`.ugoke/config.yaml` の `plugins` に書きます                                              |
+
+### Temporal Server
+
+使う Temporal Server は、次の 3 種類です。
+
+- 常駐プロセスが子プロセスとして起動する開発サーバー。記録は状態ディレクトリの `temporal.db` に残します
+- `ugoke run --dev` が、その実行のあいだだけ起動する開発サーバー。`--dev-db` を付けない限り、記録を残しません
+- `--address` や `.ugoke/config.yaml` の `temporal.address` で指定した、外の Temporal Server
+
+開発サーバーは、ugoke が版を決めて取得した Temporal CLI で起動します。
+
+### Worker
+
+Worker は、次のどちらかで動きます。
+
+- 常駐プロセスの中。登録したプロジェクトごとに 1 つ動き、コマンドが終わってもステップを進めます
+- コマンドの中。常駐プロセスがそのプロジェクトのステップを実行しないときに、`ugoke run` などが一時的に Worker を動かします。コマンドが終わると、Worker も止まります
+
+`ugoke run` の Ctrl+C の動きがどこでステップを実行しているかで変わるのは、このためです。常駐プロセスの Worker がステップを実行しているときは、コマンドが離れても、ワークフローは続きます。
+
+## ワークフローが動く流れ
+
+```mermaid
+sequenceDiagram
+  participant C as CLI
+  participant S as Temporal Server
+  participant W as Worker
+  C->>C: 定義を探して確かめ、中間表現にする
+  C->>S: ワークフローを始める
+  W->>S: タスクを取る
+  W->>W: Workflow が中間表現を確かめ直し、start のステップへ
+  loop ステップごと
+    W->>W: Activity でステップを実行する
+    W->>S: 結果を記録する
+    C->>S: 進み方を問い合わせて表示する
+  end
+  W->>S: 完了か失敗を記録する
+  C->>C: 結果と終了ステータスを返す
+```
+
+1. CLI は、ワークフローの名前から定義のファイルを探し、形とステップのつながりを確かめて、中間表現にします。問題があれば、ここで止まります
+2. CLI は、Temporal Server でワークフローを始めます。ワークフローの ID は `<ワークフロー名>-<UUID>` です
+3. Worker は、Workflow を実行します。Workflow は、中間表現をもう一度確かめてから、`start` のステップから `next` をたどって進みます
+4. ステップは、Activity として実行します。スクリプトのステップは、1 度だけ試し、失敗するとワークフローを失敗させます
+5. CLI は、進み方を追いかけて表示し、ワークフローが終わると結果を返します
+
+## 状態の置き場所
+
+ugoke は、利用者ごとの状態を、状態ディレクトリ（`$XDG_STATE_HOME/ugoke`、既定は `~/.local/state/ugoke`）に置きます。持ち主だけが読み書きできる権限で作ります。
+
+```text
+~/.local/state/ugoke/
+├── temporal.db          常駐プロセスの Temporal Server の記録
+├── encryption.key       Temporal を通る値を暗号化する鍵
+├── daemon/              常駐プロセスのロック、ソケット、ログ、登録したプロジェクト
+├── locks/               実行を追いかけるコマンドのロック
+└── logs/                実行ごとのイベントのログ（ステップの出力など）
+```
+
+ワークフローの実行の記録は Temporal Server が持ちます。ステップの出力は Temporal の記録に載せず、`logs/` のイベントのログに書きます。
+
+## パッケージの構成
+
+ugoke のソースは、次のパッケージに分かれています。矢印は依存の向きです。
+
+```mermaid
+flowchart TD
+  cli[ugoke<br/>CLI] --> definition["@ugoke/definition"]
+  cli --> engine["@ugoke/engine"]
+  cli --> adapters["@ugoke/adapter-*"]
+  cli --> core["@ugoke/core"]
+  definition --> core
+  engine --> core
+  adapters --> core
+  adapters --> dotenv["@ugoke/dotenv"]
+  dotenv --> core
+```
+
+| パッケージ          | 役割                                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `@ugoke/core`       | 中間表現の型と、外の世界とのつなぎ目（Port）を持ちます。Temporal に依存しません                               |
+| `@ugoke/definition` | 定義の読み込み、検証、中間表現への変換を担当します                                                            |
+| `@ugoke/engine`     | Workflow、Activity、Worker を持ちます。`@ugoke/core` だけに依存し、定義の読み込みや具体的な Adapter に依存しません |
+| `@ugoke/dotenv`     | dotenv ファイルを読み込みます。Adapter から使います                                                            |
+| `@ugoke/adapter-*`  | Port の実装です。スクリプトの実行、イベントのログ、端末での待機、AI、GitHub の待機などがあります              |
+| `ugoke`             | CLI です。Adapter を組み立て、コマンドを提供します                                                            |
+
+`@ugoke/adapter-ai-claude-code` と `@ugoke/adapter-wait-github` は、CLI が直接は使わず、プラグインとして読み込みます。

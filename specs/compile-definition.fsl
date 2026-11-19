@@ -1,0 +1,52 @@
+fsl 5
+// Design of compileDefinition (packages/definition/src/compile.ts): parseDefinition checks the
+// shape of a definition, and only a definition that passes goes on to the transition check.
+// The shape is a necessary condition of acceptance.
+//
+// If the two requirements disagreed on a definition, it would stop here with no way to finish,
+// which the deadlock check reports.
+compose CompileDefinition {
+  use ParseDefinition as parse from "parse-definition.fsl"
+  use ValidateTransitions as links from "validate-transitions.fsl"
+
+  // MODEL-CMP-003: parse-definition.fsl checks every kind of shape problem on its own. Here one
+  // kind stands for all of them, and the steps arrive only after the aliases are checked, so
+  // that the two components do not interleave without need.
+  @requirement("REQ-DEF-011", "ワークフローは、YAML のファイルに定義する")
+  fair action write(d: parse.Definition, broken: Bool) =
+    parse.write(d, broken, false, false, false, false, false, false, false, false) {
+  }
+
+  @requirement("REQ-DEF-011", "ワークフローは、YAML のファイルに定義する")
+  fair action fill(d: parse.Definition, p: Bool, n: links.Node) = links.fill(d, p, n) {
+    requires parse.phase[d] == AliasesChecked
+  }
+
+  // A definition that passes the shape check is built into the intermediate representation.
+  @requirement("MODEL-VAL-001", "形のチェックを通った定義から、中間表現を作る")
+  fair action build(d: parse.Definition, s: links.Node) =
+    parse.schemaOk(d) || links.build(d, s) {
+  }
+
+  internal parse.write
+  internal parse.schemaOk
+  internal links.fill
+  internal links.build
+
+  @requirement("MODEL-CMP-001", "形のチェックを通らない定義は、つながりのチェックに進まない")
+  invariant ShapeComesFirst {
+    forall d: parse.Definition {
+      links.phase[d] != Waiting => parse.phase[d] == Parsed
+    }
+  }
+
+  // A definition ends when the shape check fails, or when the transition check fails, or when its
+  // run finishes. compose has no terminal block, so this action marks those states as ends: any
+  // other state where nothing can happen is a deadlock.
+  @requirement("MODEL-CMP-002", "形のチェックで落ちるか、つながりのチェックで落ちるか、実行が終わると、定義は終わる")
+  action rest(d: parse.Definition) {
+    requires parse.phase[d] == SyntaxBroken or parse.phase[d] == AliasesBroken
+      or parse.phase[d] == SchemaBroken
+      or links.phase[d] == Invalid or links.phase[d] == Done
+  }
+}

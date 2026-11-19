@@ -39,6 +39,9 @@ spec ValidateTransitions {
     }
   }
 
+  // These definitions are copies: workflow-transitions.fsl, validate-transitions.fsl and
+  // interpret-workflow.fsl each have them, because FSL cannot share a def across files. Keep the
+  // three the same.
   def has(p0: Bool, p1: Bool, p2: Bool, x: Node) = (x == 0 and p0) or (x == 1 and p1) or (x == 2 and p2)
 
   def to(n0: Node, n1: Node, n2: Node, x: Node) =

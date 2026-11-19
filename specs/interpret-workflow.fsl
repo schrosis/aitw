@@ -58,6 +58,9 @@ spec InterpretWorkflow {
     }
   }
 
+  // These definitions are copies: workflow-transitions.fsl, validate-transitions.fsl and
+  // interpret-workflow.fsl each have them, because FSL cannot share a def across files. Keep the
+  // three the same.
   def has(p0: Bool, p1: Bool, p2: Bool, x: Node) = (x == 0 and p0) or (x == 1 and p1) or (x == 2 and p2)
 
   def to(n0: Node, n1: Node, n2: Node, x: Node) =
@@ -100,7 +103,6 @@ spec InterpretWorkflow {
   def allCanEnd(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node) =
     forall x: Node { has(p0, p1, p2, x) => canEnd(p0, p1, p2, n0, n1, n2, x) }
 
-  // The author writes the steps one by one, and then start.
 
   // Steps that following next from s takes to reach end, for a valid representation.
   def distance(n0: Node, n1: Node, n2: Node, s: Node) =
@@ -199,9 +201,17 @@ spec InterpretWorkflow {
     }
   }
 
-  @requirement("REQ-RUN-002", "失敗したステップは、やり直さない")
+  @requirement("MODEL-INT-004", "失敗には、0 以外の終了か時間切れの原因がある")
   invariant FailureHasCause {
     forall d: Definition { phase[d] == Aborted => cause[d] != NoCause }
+  }
+
+  // A failed run does nothing more: no step runs again after it fails.
+  @requirement("REQ-RUN-002", "失敗したステップは、やり直さない")
+  trans FailedRunStaysFailed {
+    forall d: Definition {
+      old(phase[d]) == Aborted => (phase[d] == Aborted and executed[d] == old(executed[d]))
+    }
   }
 
   terminal {

@@ -34,6 +34,15 @@ ugoke run [options] <workflow>
 2. `.ugoke/config.yaml` に `temporal.address` があるときは、そのサーバー
 3. それ以外は、`ugoke daemon start` で起動した常駐プロセスのサーバー
 
+## Temporal CLI
+
+`--dev` の一時的な Temporal Server は、Temporal CLI で起動します。`--temporal-bin` を指定しないときは、ugoke が決めた版の Temporal CLI を使います。
+
+- キャッシュになければ、ダウンロードします。キャッシュは `$XDG_CACHE_HOME/ugoke/temporal-cli` で、`XDG_CACHE_HOME` がなければ `~/.cache/ugoke/temporal-cli` です
+- ダウンロードしたファイルは、決めたチェックサムと比べます。合わなければ、使わずに失敗します
+- ダウンロードできるのは、macOS と Linux の x64 と arm64 です。ほかの環境では、`--temporal-bin` を指定します
+- キャッシュのディレクトリを、ほかのユーザーが使えたり置き換えたりできるときは、失敗します。キャッシュにある Temporal CLI は、チェックサムを確かめ直さずに使うためです
+
 ## 出力
 
 ステップごとに、ステップの ID、実行するコマンド（`│ >` の行）、コマンドの出力（`│` の行）、結果（成功は `✓`、失敗は `✗`、取り消しは `■` の行）を表示します。最後の行は、ワークフローの名前と結果です。

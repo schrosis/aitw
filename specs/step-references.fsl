@@ -9,7 +9,7 @@ fsl 5
 //                definition (workflow-transitions.fsl).
 requirements StepReferences {
   enum Place { InInputs, InRun, InOutputs }
-  enum Root { StepOutput, OwnInput, ScriptResult, Unknown }
+  enum Root { StepOutput, WorkflowValue, OwnInput, ScriptResult, Unknown }
   actor Author, Ugoke
 
   entity Reference {
@@ -22,10 +22,10 @@ requirements StepReferences {
     lifecycle Written -> Rejected
   }
 
-  // A reference that the place may use: a step output from anywhere, an own input from run and
-  // outputs, and the script result from outputs.
+  // A reference that the place may use: a step output and a workflow input from anywhere, an own
+  // input from run and outputs, and the script result from outputs.
   def placeAllows(p: Place, r: Root) =
-    r == StepOutput or (r == OwnInput and p != InInputs) or (r == ScriptResult and p == InOutputs)
+    r == StepOutput or r == WorkflowValue or (r == OwnInput and p != InInputs) or (r == ScriptResult and p == InOutputs)
 
   def allowed(p: Place, r: Root, d: Bool, e: Bool, n: Bool) = placeAllows(p, r) and d and not n and (r != StepOutput or e)
 
@@ -46,6 +46,9 @@ requirements StepReferences {
   rule REQ-REF-005 "宣言していない値と、値の中の項目は参照できない" {
     never Ugoke accepts Reference when not declared or nested
     never Ugoke accepts Reference when root == Unknown
+  }
+  rule REQ-REF-007 "どの式でも、ワークフローが宣言した入力を参照できる" {
+    never Ugoke rejects Reference when root == WorkflowValue and declared and not nested
   }
   rule REQ-REF-006 "参照できる値は、受け付ける" {
     allow Ugoke accepts Reference only when allowed(place, root, declared, earlier, nested)
@@ -75,6 +78,17 @@ requirements StepReferences {
   }
   scenario AC-REF-005 "あとに実行するステップの outputs は拒む" {
     Author writes r1 with place InInputs, root StepOutput, declared true, earlier false, nested false
+    Ugoke rejects r1
+    then r1 is Rejected
+  }
+
+  scenario AC-REF-006 "ワークフローの入力を inputs で受け取る" {
+    Author writes r1 with place InInputs, root WorkflowValue, declared true, earlier false, nested false
+    Ugoke accepts r1
+    then r1 is Accepted
+  }
+  scenario AC-REF-007 "宣言していないワークフローの入力は、参照できない" {
+    Author writes r1 with place InRun, root WorkflowValue, declared false, earlier false, nested false
     Ugoke rejects r1
     then r1 is Rejected
   }
@@ -127,6 +141,16 @@ requirements StepReferences {
     Author writes r1 with place InRun, root OwnInput, declared true, earlier false, nested false
     Ugoke accepts r1
     Author writes r1 with place InRun, root OwnInput, declared true, earlier false, nested false
+    then rejected
+  }
+  forbidden FB-REF-011 "宣言したワークフローの入力を、拒まない" {
+    Author writes r1 with place InOutputs, root WorkflowValue, declared true, earlier false, nested false
+    Ugoke rejects r1
+    then rejected
+  }
+  forbidden FB-REF-012 "ワークフローの入力の中の項目を、受け付けない" {
+    Author writes r1 with place InRun, root WorkflowValue, declared true, earlier false, nested true
+    Ugoke accepts r1
     then rejected
   }
 }

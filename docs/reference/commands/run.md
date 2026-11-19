@@ -17,7 +17,7 @@ ugoke run [options] <workflow>
 | オプション              | 内容                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------- |
 | `--address <address>`   | 使う Temporal Server のアドレスです                                                     |
-| `--input <json-or-file>` | ワークフローの入力です。JSON のオブジェクトか、`.json` のファイルのパスです            |
+| `--input <json-or-file>` | [ワークフローの入力](../workflow-definition.md#ワークフローの入力)です。JSON のオブジェクトか、`.json` のファイルのパスです |
 | `--detach`              | 実行を始めて、すぐに終了します。常駐プロセスが実行します                                |
 | `--from-ai`             | AI エージェントなどのプログラム向けに、JSON Lines で出力します                         |
 | `--dev`                 | この実行のあいだだけ、一時的な Temporal Server を起動します                             |

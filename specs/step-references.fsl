@@ -7,13 +7,16 @@ fsl 5
 //                whether the named value is declared are given when it is written.
 // MODEL-REF-002: whether the step it names runs before comes from the transitions of the
 //                definition (workflow-transitions.fsl).
+// MODEL-REF-003: whether the reference is in a wait step is given when it is written. A wait step
+//                has with and no run, and a script step has run and no with.
 requirements StepReferences {
-  enum Place { InInputs, InRun, InOutputs }
-  enum Root { StepOutput, WorkflowValue, OwnInput, ScriptResult, Unknown }
+  enum Place { InInputs, InRun, InWith, InOutputs }
+  enum Root { StepOutput, WorkflowValue, OwnInput, ScriptResult, Answer, Unknown }
   actor Author, Ugoke
 
   entity Reference {
     place: Place = InInputs
+    waitStep: Bool = false
     root: Root = StepOutput
     declared: Bool = false
     earlier: Bool = false
@@ -23,13 +26,15 @@ requirements StepReferences {
   }
 
   // A reference that the place may use: a step output and a workflow input from anywhere, an own
-  // input from run and outputs, and the script result from outputs.
-  def placeAllows(p: Place, r: Root) =
-    r == StepOutput or r == WorkflowValue or (r == OwnInput and p != InInputs) or (r == ScriptResult and p == InOutputs)
+  // input from run, with, and outputs, the script result from the outputs of a script step, and
+  // the answers from the outputs of a wait step.
+  def placeAllows(p: Place, r: Root, w: Bool) =
+    r == StepOutput or r == WorkflowValue or (r == OwnInput and p != InInputs)
+      or (r == ScriptResult and p == InOutputs and not w) or (r == Answer and p == InOutputs and w)
 
-  def allowed(p: Place, r: Root, d: Bool, e: Bool, n: Bool) = placeAllows(p, r) and d and not n and (r != StepOutput or e)
+  def allowed(p: Place, r: Root, w: Bool, d: Bool, e: Bool, n: Bool) = placeAllows(p, r, w) and d and not n and (r != StepOutput or e)
 
-  event write = Author writes Reference with place, root, declared, earlier, nested (Unwritten -> Written)
+  event write = Author writes Reference with place, waitStep, root, declared, earlier, nested (Unwritten -> Written)
     covers REQ-REF-001 "式は、${{ }} で囲んで、ほかの値を参照する"
   event accept = Ugoke accepts Reference (Written -> Accepted)
   event reject = Ugoke rejects Reference (Written -> Rejected)
@@ -50,86 +55,113 @@ requirements StepReferences {
   rule REQ-REF-007 "どの式でも、ワークフローが宣言した入力を参照できる" {
     never Ugoke rejects Reference when root == WorkflowValue and declared and not nested
   }
+  rule REQ-REF-008 "wait ステップの outputs は、待ち方が宣言した答えを result.<名前> で参照できる。with は、run と同じ値を参照できる" {
+    allow Author writes Reference only when (input place != InWith or input waitStep) and (input place != InRun or not input waitStep)
+    never Ugoke accepts Reference when root == Answer and not waitStep
+    never Ugoke accepts Reference when root == ScriptResult and waitStep
+  }
   rule REQ-REF-006 "参照できる値は、受け付ける" {
-    allow Ugoke accepts Reference only when allowed(place, root, declared, earlier, nested)
-    allow Ugoke rejects Reference only when not allowed(place, root, declared, earlier, nested)
+    allow Ugoke accepts Reference only when allowed(place, root, waitStep, declared, earlier, nested)
+    allow Ugoke rejects Reference only when not allowed(place, root, waitStep, declared, earlier, nested)
   }
 
   scenario AC-REF-001 "前のステップの outputs を inputs で受け取る" {
-    Author writes r1 with place InInputs, root StepOutput, declared true, earlier true, nested false
+    Author writes r1 with place InInputs, waitStep false, root StepOutput, declared true, earlier true, nested false
     Ugoke accepts r1
     then r1 is Accepted
   }
   scenario AC-REF-002 "run で自分の inputs を使う" {
-    Author writes r1 with place InRun, root OwnInput, declared true, earlier false, nested false
+    Author writes r1 with place InRun, waitStep false, root OwnInput, declared true, earlier false, nested false
     Ugoke accepts r1
     then r1 is Accepted
   }
   scenario AC-REF-003 "outputs でスクリプトの結果を使う" {
-    Author writes r1 with place InOutputs, root ScriptResult, declared true, earlier false, nested false
+    Author writes r1 with place InOutputs, waitStep false, root ScriptResult, declared true, earlier false, nested false
     Ugoke accepts r1
     then r1 is Accepted
   }
 
   scenario AC-REF-004 "参照できない値は拒む" {
-    Author writes r1 with place InRun, root ScriptResult, declared true, earlier false, nested false
+    Author writes r1 with place InRun, waitStep false, root ScriptResult, declared true, earlier false, nested false
     Ugoke rejects r1
     then r1 is Rejected
   }
   scenario AC-REF-005 "あとに実行するステップの outputs は拒む" {
-    Author writes r1 with place InInputs, root StepOutput, declared true, earlier false, nested false
+    Author writes r1 with place InInputs, waitStep false, root StepOutput, declared true, earlier false, nested false
     Ugoke rejects r1
     then r1 is Rejected
   }
 
   scenario AC-REF-006 "ワークフローの入力を inputs で受け取る" {
-    Author writes r1 with place InInputs, root WorkflowValue, declared true, earlier false, nested false
+    Author writes r1 with place InInputs, waitStep false, root WorkflowValue, declared true, earlier false, nested false
     Ugoke accepts r1
     then r1 is Accepted
   }
   scenario AC-REF-007 "宣言していないワークフローの入力は、参照できない" {
-    Author writes r1 with place InRun, root WorkflowValue, declared false, earlier false, nested false
+    Author writes r1 with place InRun, waitStep false, root WorkflowValue, declared false, earlier false, nested false
     Ugoke rejects r1
     then r1 is Rejected
   }
 
+  scenario AC-REF-008 "wait ステップの outputs で、答えを受け取る" {
+    Author writes r1 with place InOutputs, waitStep true, root Answer, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then r1 is Accepted
+  }
+  scenario AC-REF-009 "with で、自分の inputs を参照する" {
+    Author writes r1 with place InWith, waitStep true, root OwnInput, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then r1 is Accepted
+  }
+  scenario AC-REF-010 "宣言していない答えは、参照できない" {
+    Author writes r1 with place InOutputs, waitStep true, root Answer, declared false, earlier true, nested false
+    Ugoke rejects r1
+    then r1 is Rejected
+  }
+
+  scenario AC-REF-011 "wait ステップの inputs で、前のステップの outputs を受け取る" {
+    Author writes r1 with place InInputs, waitStep true, root StepOutput, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then r1 is Accepted
+  }
+
   forbidden FB-REF-001 "あとに実行するステップの outputs を受け付けない" {
-    Author writes r1 with place InInputs, root StepOutput, declared true, earlier false, nested false
+    Author writes r1 with place InInputs, waitStep false, root StepOutput, declared true, earlier false, nested false
     Ugoke accepts r1
     then rejected
   }
   forbidden FB-REF-002 "inputs で自分の inputs を受け付けない" {
-    Author writes r1 with place InInputs, root OwnInput, declared true, earlier false, nested false
+    Author writes r1 with place InInputs, waitStep false, root OwnInput, declared true, earlier false, nested false
     Ugoke accepts r1
     then rejected
   }
   forbidden FB-REF-003 "run でスクリプトの結果を受け付けない" {
-    Author writes r1 with place InRun, root ScriptResult, declared true, earlier false, nested false
+    Author writes r1 with place InRun, waitStep false, root ScriptResult, declared true, earlier false, nested false
     Ugoke accepts r1
     then rejected
   }
   forbidden FB-REF-004 "値の中の項目を受け付けない" {
-    Author writes r1 with place InInputs, root StepOutput, declared true, earlier true, nested true
+    Author writes r1 with place InInputs, waitStep false, root StepOutput, declared true, earlier true, nested true
     Ugoke accepts r1
     then rejected
   }
   forbidden FB-REF-005 "参照できる値を拒まない" {
-    Author writes r1 with place InOutputs, root OwnInput, declared true, earlier false, nested false
+    Author writes r1 with place InOutputs, waitStep false, root OwnInput, declared true, earlier false, nested false
     Ugoke rejects r1
     then rejected
   }
   forbidden FB-REF-006 "前のステップの outputs を、inputs で拒まない" {
-    Author writes r1 with place InInputs, root StepOutput, declared true, earlier true, nested false
+    Author writes r1 with place InInputs, waitStep false, root StepOutput, declared true, earlier true, nested false
     Ugoke rejects r1
     then rejected
   }
   forbidden FB-REF-007 "スクリプトの結果を、outputs で拒まない" {
-    Author writes r1 with place InOutputs, root ScriptResult, declared true, earlier false, nested false
+    Author writes r1 with place InOutputs, waitStep false, root ScriptResult, declared true, earlier false, nested false
     Ugoke rejects r1
     then rejected
   }
   forbidden FB-REF-008 "自分の inputs を、run で拒まない" {
-    Author writes r1 with place InRun, root OwnInput, declared true, earlier false, nested false
+    Author writes r1 with place InRun, waitStep false, root OwnInput, declared true, earlier false, nested false
     Ugoke rejects r1
     then rejected
   }
@@ -138,19 +170,43 @@ requirements StepReferences {
     then rejected
   }
   forbidden FB-REF-010 "確かめた参照を、書き直さない" {
-    Author writes r1 with place InRun, root OwnInput, declared true, earlier false, nested false
+    Author writes r1 with place InRun, waitStep false, root OwnInput, declared true, earlier false, nested false
     Ugoke accepts r1
-    Author writes r1 with place InRun, root OwnInput, declared true, earlier false, nested false
+    Author writes r1 with place InRun, waitStep false, root OwnInput, declared true, earlier false, nested false
     then rejected
   }
   forbidden FB-REF-011 "宣言したワークフローの入力を、拒まない" {
-    Author writes r1 with place InOutputs, root WorkflowValue, declared true, earlier false, nested false
+    Author writes r1 with place InOutputs, waitStep false, root WorkflowValue, declared true, earlier false, nested false
     Ugoke rejects r1
     then rejected
   }
   forbidden FB-REF-012 "ワークフローの入力の中の項目を、受け付けない" {
-    Author writes r1 with place InRun, root WorkflowValue, declared true, earlier false, nested true
+    Author writes r1 with place InRun, waitStep false, root WorkflowValue, declared true, earlier false, nested true
     Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-013 "script ステップの outputs で、答えを受け付けない" {
+    Author writes r1 with place InOutputs, waitStep false, root Answer, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-014 "wait ステップの outputs で、スクリプトの結果を受け付けない" {
+    Author writes r1 with place InOutputs, waitStep true, root ScriptResult, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-015 "with で、答えを受け付けない" {
+    Author writes r1 with place InWith, waitStep true, root Answer, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-016 "答えの中の項目を、受け付けない" {
+    Author writes r1 with place InOutputs, waitStep true, root Answer, declared true, earlier true, nested true
+    Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-017 "script ステップに、with を書かない" {
+    Author writes r1 with place InWith, waitStep false, root StepOutput, declared true, earlier true, nested false
     then rejected
   }
 }

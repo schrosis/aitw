@@ -7,13 +7,14 @@ fsl 5
 spec ValidateExpressions {
   entity Reference
   enum CheckPhase { Unchecked, Lexed, RootChecked, OrderChecked, NameChecked, RefsPassed, RefsFailed }
-  enum Site { AtInputs, AtRun, AtOutputs }
-  enum Target { ToStep, ToWorkflow, ToOwn, ToResult, ToOther }
+  enum Site { AtInputs, AtRun, AtWith, AtOutputs }
+  enum Target { ToStep, ToWorkflow, ToOwn, ToResult, ToAnswer, ToOther }
   enum Message { NoMessage, CanReferenceOnly, FieldOfValue, NotBefore, NotDeclared }
 
   state {
     phase: Map<Reference, CheckPhase>,
     site: Map<Reference, Site>,
+    inWait: Map<Reference, Bool>,
     target: Map<Reference, Target>,
     declared: Map<Reference, Bool>,
     earlier: Map<Reference, Bool>,
@@ -25,6 +26,7 @@ spec ValidateExpressions {
     forall r: Reference {
       phase[r] = Unchecked
       site[r] = AtInputs
+      inWait[r] = false
       target[r] = ToStep
       declared[r] = false
       earlier[r] = false
@@ -33,16 +35,21 @@ spec ValidateExpressions {
     }
   }
 
-  // The roots of each place: step outputs and workflow inputs everywhere, own inputs in run and
-  // outputs, and result only in outputs.
-  def rootAllowed(s: Site, t: Target) =
-    t == ToStep or t == ToWorkflow or (t == ToOwn and s != AtInputs) or (t == ToResult and s == AtOutputs)
+  // The roots of each place: step outputs and workflow inputs everywhere, own inputs in run, with,
+  // and outputs, the script result in the outputs of a script step, and the answers in the outputs
+  // of a wait step.
+  def rootAllowed(s: Site, w: Bool, t: Target) =
+    t == ToStep or t == ToWorkflow or (t == ToOwn and s != AtInputs)
+      or (t == ToResult and s == AtOutputs and not w) or (t == ToAnswer and s == AtOutputs and w)
 
   @requirement("REQ-REF-001", "式は、${{ }} で囲んで、ほかの値を参照する")
-  action read(r: Reference, s: Site, t: Target, d: Bool, e: Bool, n: Bool) {
+  action read(r: Reference, s: Site, w: Bool, t: Target, d: Bool, e: Bool, n: Bool) {
     requires phase[r] == Unchecked
+    // A wait step has with and no run, and a script step has run and no with.
+    requires (s != AtWith or w) and (s != AtRun or not w)
     phase[r] = Lexed
     site[r] = s
+    inWait[r] = w
     target[r] = t
     declared[r] = d
     earlier[r] = e
@@ -52,7 +59,7 @@ spec ValidateExpressions {
   @requirement("REQ-REF-004", "スクリプトの結果は、outputs だけが参照できる")
   action rootFails(r: Reference) {
     requires phase[r] == Lexed
-    requires not rootAllowed(site[r], target[r])
+    requires not rootAllowed(site[r], inWait[r], target[r])
     phase[r] = RefsFailed
     message[r] = CanReferenceOnly
   }
@@ -60,7 +67,7 @@ spec ValidateExpressions {
   @requirement("REQ-REF-003", "inputs は自分の inputs を参照できない。run と outputs は自分の inputs を参照できる")
   action rootPasses(r: Reference) {
     requires phase[r] == Lexed
-    requires rootAllowed(site[r], target[r])
+    requires rootAllowed(site[r], inWait[r], target[r])
     phase[r] = RootChecked
   }
 

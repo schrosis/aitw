@@ -179,6 +179,11 @@ requirements TemporalCli {
     Ugoke downloads f1
     then rejected
   }
+  forbidden FB-TCL-016 "求められたあとに、もう 1 度求めない" {
+    User asks f1 with binGiven true, supported true, cacheSafe true, cached true, checksumOk true
+    User asks f1 with binGiven true, supported true, cacheSafe true, cached true, checksumOk true
+    then rejected
+  }
   forbidden FB-TCL-017 "求められる前に、指定された Temporal CLI を使わない" {
     Ugoke uses f1
     then rejected
@@ -200,11 +205,6 @@ requirements TemporalCli {
     User asks f1 with binGiven false, supported true, cacheSafe true, cached true, checksumOk true
     Ugoke reuses f1
     Ugoke downloads f1
-    then rejected
-  }
-  forbidden FB-TCL-016 "求められたあとに、もう 1 度求めない" {
-    User asks f1 with binGiven true, supported true, cacheSafe true, cached true, checksumOk true
-    User asks f1 with binGiven true, supported true, cacheSafe true, cached true, checksumOk true
     then rejected
   }
 }

@@ -45,6 +45,24 @@ steps:
 
 `timeout` は、正の整数に単位を付けて書きます。単位は `s`（秒）、`m`（分）、`h`（時間）です。たとえば `30s`、`5m`、`1h` と書きます。
 
+## ステップのつながり
+
+ワークフローは `start` のステップから始まり、各ステップの `next` をたどって進みます。実行が必ず `end` で終わるように、ステップのつながりは次の 3 つを満たす必要があります。
+
+- `start` と `next` が指すステップが、定義にある
+- どのステップも、`start` から `next` をたどって行ける
+- どのステップからも、`next` をたどって `end` に着ける
+
+このため、行き先を 1 つだけ書いた `next` では、輪を作れません。たとえば、`first` の `next` が `second`、`second` の `next` が `first` の定義では、どちらのステップからも `end` に着けません。行き先を条件で分ける書き方は、別の節で説明します。
+
+満たさない定義は、`ugoke validate` で次のエラーになります。
+
+```text
+.ugoke/workflows/hello.yaml:7:11 steps.first.next: Unknown step: missing
+.ugoke/workflows/hello.yaml:8:3 steps.lonely: Step is not reachable from start
+.ugoke/workflows/hello.yaml:7:11 steps.first.next: Step first cannot reach end, so the workflow could never finish
+```
+
 ## YAML の書き方の制限
 
 定義の意味がひと目でわかるように、次の書き方はエラーになります。

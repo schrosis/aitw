@@ -66,16 +66,21 @@ describe("ugoke executable", () => {
   ])(
     "exits after %s fails outside a project",
     async (...args) => {
-      await expect(execute(args, outside)).resolves.toMatchObject({ exitCode: 1 });
+      const { exitCode, output } = await execute(args, outside);
+
+      expect(exitCode, output).toBe(1);
     },
     20_000,
   );
 
   it("exits when the Temporal Server cannot be reached", async () => {
     // Port 1 is reserved and nothing listens on it.
-    await expect(
-      execute(["run", "valid", "--address", "127.0.0.1:1"], fixtureProject),
-    ).resolves.toMatchObject({ exitCode: 1 });
+    const { exitCode, output } = await execute(
+      ["run", "valid", "--address", "127.0.0.1:1"],
+      fixtureProject,
+    );
+
+    expect(exitCode, output).toBe(1);
   }, 20_000);
 
   it("exits after validate succeeds", async () => {
@@ -97,7 +102,7 @@ describe("ugoke executable", () => {
         },
       );
 
-      expect(exitCode).toBe(0);
+      expect(exitCode, output).toBe(0);
       // The Web UI starts only with --dev-ui.
       expect(output).not.toContain("Temporal Web UI");
       expect(output).toContain("run-success: completed (check, finish)\n");
@@ -116,7 +121,7 @@ describe("ugoke executable", () => {
           },
         );
 
-        expect(exitCode).toBe(0);
+        expect(exitCode, output).toBe(0);
         expect(output).toContain("run-success: completed (check, finish)\n");
       } finally {
         rmSync(directory, { force: true, recursive: true });
@@ -139,7 +144,7 @@ describe("ugoke executable", () => {
         },
       );
 
-      expect(exitCode).toBe(130);
+      expect(exitCode, output).toBe(130);
       expect(output).toContain("■ ask  cancelled · ");
       expect(output).toContain(
         "wait-valid: cancelled. A development server without --dev-db keeps no runs to attach to later\n",
@@ -150,7 +155,7 @@ describe("ugoke executable", () => {
 
     it("stops the server when interrupted twice", async () => {
       let address: string | undefined;
-      const { exitCode } = await execute(
+      const { exitCode, output } = await execute(
         ["run", "run-sleep", "--dev", "--dev-ui", "--temporal-bin", executable],
         fixtureProject,
         {
@@ -165,7 +170,7 @@ describe("ugoke executable", () => {
         },
       );
 
-      expect(exitCode).toBe(130);
+      expect(exitCode, output).toBe(130);
       expect(address).toBeDefined();
       await expect(fetch(address ?? "")).rejects.toThrow();
     }, 40_000);
@@ -186,7 +191,7 @@ describe("ugoke executable", () => {
         },
       );
 
-      expect(exitCode).toBe(130);
+      expect(exitCode, output).toBe(130);
       expect(output).toContain(
         "run-sleep: cancelled. A development server without --dev-db keeps no runs to attach to later\n",
       );
@@ -205,7 +210,7 @@ describe("ugoke executable", () => {
     async (options, message) => {
       const { exitCode, output } = await execute(["run", "valid", ...options], fixtureProject);
 
-      expect(exitCode).toBe(1);
+      expect(exitCode, output).toBe(1);
       expect(output).toContain(message);
     },
     20_000,

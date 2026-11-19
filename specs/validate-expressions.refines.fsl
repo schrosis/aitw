@@ -1,0 +1,41 @@
+fsl 5
+// refine: validate-expressions.fsl step-references.fsl
+//
+// The reference check keeps the requirements of the references: it accepts a reference exactly
+// when the place may use it, the value is declared, the step runs before, and no field of a value
+// is read.
+refinement ValidateExpressionsRefinesStepReferences {
+  impl ValidateExpressions
+  abs StepReferences
+
+  map reference_stage[r: Reference] =
+    if phase[r] == Unread then Unwritten
+    else if phase[r] == Passed then Accepted
+    else if phase[r] == Failed then Rejected
+    else Written
+  map reference_place[r: Reference] =
+    if site[r] == Inputs then InInputs else if site[r] == Run then InRun else InOutputs
+  map reference_root[r: Reference] =
+    if target[r] == Step then StepOutput
+    else if target[r] == Own then OwnInput
+    else if target[r] == Result then ScriptResult
+    else Unknown
+  map reference_declared[r: Reference] = declared[r]
+  map reference_earlier[r: Reference] = earlier[r]
+  map reference_nested[r: Reference] = nested[r]
+
+  action read(r, s, t, d, e, n) -> write(
+    r,
+    if s == Inputs then InInputs else if s == Run then InRun else InOutputs,
+    if t == Step then StepOutput else if t == Own then OwnInput else if t == Result then ScriptResult else Unknown,
+    d, e, n)
+  action rootFails(r) -> reject(r)
+  action rootPasses(r) -> stutter
+  action shapeFails(r) -> reject(r)
+  action shapePasses(r) -> stutter
+  action orderFails(r) -> reject(r)
+  action orderPasses(r) -> stutter
+  action declarationFails(r) -> reject(r)
+  action declarationPasses(r) -> accept(r)
+  action rest(r) -> stutter
+}

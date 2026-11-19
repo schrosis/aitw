@@ -23,6 +23,8 @@
 | `run`     | はい   | 実行するコマンドです                                      |
 | `next`    | はい   | 次に実行するステップの ID か、`end` です                  |
 | `timeout` | いいえ | ステップの最大の実行時間です。既定は `30m` です           |
+| `inputs`  | いいえ | ステップが受け取る値です。名前と[式](#式)の組で書きます |
+| `outputs` | いいえ | ステップが出す値です。名前と[式](#式)の組で書きます     |
 
 `timeout` は、正の整数に単位 `s`（秒）、`m`（分）、`h`（時間）を付けて書きます。たとえば `30s`、`5m`、`1h` です。
 
@@ -34,6 +36,25 @@
 - 0 以外の終了ステータスで終わるか、`timeout` を過ぎると、ステップは失敗します
 - ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗します。失敗したステップは、やり直しません
 - `timeout` を過ぎると、スクリプトと、スクリプトが起動したプロセスに終了を求め、5 秒たっても残っていれば強制的に止めます
+
+## 式
+
+`${{ <参照> }}` の形で、ほかの値を参照します。参照は、`steps.fetch.outputs.title` のように `.` で区切った名前です。
+
+どの式でも、前に実行するステップの `outputs` を `steps.<ステップ>.outputs.<名前>` で参照できます。そのうえで、書く場所ごとに次も参照できます。
+
+| 書く場所  | ほかに参照できるもの                                                                            |
+| --------- | ----------------------------------------------------------------------------------------------- |
+| `inputs`  | なし                                                                                            |
+| `run`     | 自分の `inputs`（`inputs.<名前>`）                                                              |
+| `outputs` | 自分の `inputs` と、スクリプトの結果（`result.exitCode`、`result.stdout`、`result.stderr`） |
+
+- 宣言していない値は参照できません。参照した値の中の項目（`steps.fetch.outputs.title.text` など）も参照できません
+- 式だけで書いた値は、参照した値の型のままです。ほかの文字と続けて書いた値は、文字列になります。そのとき、`null` は空の文字列に、オブジェクトと配列は JSON になります
+- `result.stdout` と `result.stderr` は、最後の改行を 1 つ取り除いた値です
+- ステップが受け取る値と出す値は、それぞれ JSON で 512 KiB までです
+
+`ugoke validate` と `ugoke run` は、実行する前に式を確かめます。
 
 ## ステップのつながり
 
@@ -69,6 +90,11 @@
 | `Unknown step: <step>`                                                                                      | `start` か `next` が、定義にないステップを指している       |
 | `Step is not reachable from start`                                                                          | `start` からたどれないステップがある                       |
 | `Step <step> cannot reach end, so the workflow could never finish`                                          | `end` に着けないステップがある                             |
+| `Step <step> does not run before <step>`                                                                    | 前に実行しないステップの `outputs` を参照している          |
+| `Step <step> does not declare the output <name>`、`Step <step> does not declare the input <name>`           | 宣言していない値を参照している                             |
+| `Can reference only <参照できるもの>`                                                                       | その場所では参照できない値を参照している                   |
+| `Cannot reference a field of an output value`                                                               | 値の中の項目を参照している                                 |
+| `Invalid expression: <式>. <理由>`、`Unterminated expression: <式>`                                         | 式の書き方が正しくない                                     |
 
 実行したときのエラー:
 
@@ -76,3 +102,4 @@
 | ------------------------------------- | ---------------------------------------- |
 | `Script exited with code <code>`      | スクリプトが 0 以外の終了ステータスで終わった |
 | `Script timed out after <ms> ms`      | スクリプトが `timeout` を過ぎた          |
+| `... bytes, which exceeds the limit of 524288 bytes` | ステップが受け取る値か出す値が、512 KiB を超えた |

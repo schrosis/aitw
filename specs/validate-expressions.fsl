@@ -1,0 +1,127 @@
+fsl 5
+// Design of the reference check of expressions. validateExpressions
+// (packages/core/src/intermediate/expressions.ts) checks each reference in turn: the roots that
+// the place may use, a field of a value, the steps that run before, and the declared names.
+//
+// It refines the requirements of step-references.fsl.
+spec ValidateExpressions {
+  entity Reference
+  enum CheckPhase { Unread, Parsed, RootChecked, ShapeChecked, OrderChecked, Passed, Failed }
+  enum Site { Inputs, Run, Outputs }
+  enum Target { Step, Own, Result, Other }
+  enum Message { NoMessage, CanReferenceOnly, FieldOfValue, NotBefore, NotDeclared }
+
+  state {
+    phase: Map<Reference, CheckPhase>,
+    site: Map<Reference, Site>,
+    target: Map<Reference, Target>,
+    declared: Map<Reference, Bool>,
+    earlier: Map<Reference, Bool>,
+    nested: Map<Reference, Bool>,
+    message: Map<Reference, Message>
+  }
+
+  init {
+    forall r: Reference {
+      phase[r] = Unread
+      site[r] = Inputs
+      target[r] = Step
+      declared[r] = false
+      earlier[r] = false
+      nested[r] = false
+      message[r] = NoMessage
+    }
+  }
+
+  // The roots of each place: step outputs everywhere, inputs in run and outputs, and result only
+  // in outputs.
+  def rootAllowed(s: Site, t: Target) =
+    t == Step or (t == Own and s != Inputs) or (t == Result and s == Outputs)
+
+  @requirement("REQ-REF-001", "式は、${{ }} で囲んで、ほかの値を参照する")
+  action read(r: Reference, s: Site, t: Target, d: Bool, e: Bool, n: Bool) {
+    requires phase[r] == Unread
+    phase[r] = Parsed
+    site[r] = s
+    target[r] = t
+    declared[r] = d
+    earlier[r] = e
+    nested[r] = n
+  }
+
+  @requirement("REQ-REF-004", "スクリプトの結果は、outputs だけが参照できる")
+  action rootFails(r: Reference) {
+    requires phase[r] == Parsed
+    requires not rootAllowed(site[r], target[r])
+    phase[r] = Failed
+    message[r] = CanReferenceOnly
+  }
+
+  @requirement("REQ-REF-003", "inputs は自分の inputs を参照できない。run と outputs は自分の inputs を参照できる")
+  action rootPasses(r: Reference) {
+    requires phase[r] == Parsed
+    requires rootAllowed(site[r], target[r])
+    phase[r] = RootChecked
+  }
+
+  @requirement("REQ-REF-005", "宣言していない値と、値の中の項目は参照できない")
+  action shapeFails(r: Reference) {
+    requires phase[r] == RootChecked
+    requires nested[r]
+    phase[r] = Failed
+    message[r] = FieldOfValue
+  }
+
+  @requirement("MODEL-VEX-001", "値の中の項目を参照していなければ、次を確かめる")
+  action shapePasses(r: Reference) {
+    requires phase[r] == RootChecked
+    requires not nested[r]
+    phase[r] = ShapeChecked
+  }
+
+  @requirement("REQ-REF-002", "どの式でも、前に実行するステップが宣言した outputs を参照できる")
+  action orderFails(r: Reference) {
+    requires phase[r] == ShapeChecked
+    requires target[r] == Step and not earlier[r]
+    phase[r] = Failed
+    message[r] = NotBefore
+  }
+
+  @requirement("MODEL-VEX-002", "前に実行するステップか、ステップ以外の値なら、次を確かめる")
+  action orderPasses(r: Reference) {
+    requires phase[r] == ShapeChecked
+    requires target[r] != Step or earlier[r]
+    phase[r] = OrderChecked
+  }
+
+  @requirement("MODEL-VEX-003", "宣言していない名前は拒む")
+  action declarationFails(r: Reference) {
+    requires phase[r] == OrderChecked
+    requires not declared[r]
+    phase[r] = Failed
+    message[r] = NotDeclared
+  }
+
+  @requirement("REQ-REF-006", "参照できる値は、受け付ける")
+  action declarationPasses(r: Reference) {
+    requires phase[r] == OrderChecked
+    requires declared[r]
+    phase[r] = Passed
+  }
+
+  @requirement("MODEL-VEX-004", "確かめ終わったあとは、何も起きない")
+  action rest(r: Reference) {
+    requires phase[r] == Passed or phase[r] == Failed
+    phase[r] = phase[r]
+  }
+
+  @requirement("MODEL-VEX-005", "拒んだ参照には、理由のメッセージがある")
+  invariant FailedHasMessage {
+    forall r: Reference { (phase[r] == Failed) == (message[r] != NoMessage) }
+  }
+
+  terminal { forall r: Reference { phase[r] == Passed or phase[r] == Failed } }
+}
+verify {
+  instances Reference = 1
+}

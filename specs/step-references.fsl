@@ -1,0 +1,99 @@
+fsl 5
+// Requirements for the references of expressions in a step: which values a step may reference,
+// which ugoke validate and ugoke run check before they run anything.
+// Source: docs/reference/workflow-definition.md
+//
+// MODEL-REF-001: one reference is checked at a time. Where it is written, what it names, and
+//                whether the named value is declared are given when it is written.
+// MODEL-REF-002: whether the step it names runs before comes from the transitions of the
+//                definition (workflow-transitions.fsl).
+requirements StepReferences {
+  enum Place { InInputs, InRun, InOutputs }
+  enum Root { StepOutput, OwnInput, ScriptResult, Unknown }
+  actor Author, Ugoke
+
+  entity Reference {
+    place: Place = InInputs
+    root: Root = StepOutput
+    declared: Bool = false
+    earlier: Bool = false
+    nested: Bool = false
+    lifecycle Unwritten -> Written -> Accepted
+    lifecycle Written -> Rejected
+  }
+
+  // A reference that the place may use: a step output from anywhere, an own input from run and
+  // outputs, and the script result from outputs.
+  def placeAllows(p: Place, r: Root) =
+    r == StepOutput or (r == OwnInput and p != InInputs) or (r == ScriptResult and p == InOutputs)
+
+  def allowed(p: Place, r: Root, d: Bool, e: Bool, n: Bool) = placeAllows(p, r) and d and not n and (r != StepOutput or e)
+
+  event write = Author writes Reference with place, root, declared, earlier, nested (Unwritten -> Written)
+    covers REQ-REF-001 "式は、${{ }} で囲んで、ほかの値を参照する"
+  event accept = Ugoke accepts Reference (Written -> Accepted)
+  event reject = Ugoke rejects Reference (Written -> Rejected)
+
+  rule REQ-REF-002 "どの式でも、前に実行するステップが宣言した outputs を参照できる" {
+    never Ugoke accepts Reference when root == StepOutput and not earlier
+  }
+  rule REQ-REF-003 "inputs は自分の inputs を参照できない。run と outputs は自分の inputs を参照できる" {
+    never Ugoke accepts Reference when root == OwnInput and place == InInputs
+  }
+  rule REQ-REF-004 "スクリプトの結果は、outputs だけが参照できる" {
+    never Ugoke accepts Reference when root == ScriptResult and place != InOutputs
+  }
+  rule REQ-REF-005 "宣言していない値と、値の中の項目は参照できない" {
+    never Ugoke accepts Reference when not declared or nested
+    never Ugoke accepts Reference when root == Unknown
+  }
+  rule REQ-REF-006 "参照できる値は、受け付ける" {
+    allow Ugoke accepts Reference only when allowed(place, root, declared, earlier, nested)
+    allow Ugoke rejects Reference only when not allowed(place, root, declared, earlier, nested)
+  }
+
+  scenario AC-REF-001 "前のステップの outputs を inputs で受け取る" {
+    Author writes r1 with place InInputs, root StepOutput, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then r1 is Accepted
+  }
+  scenario AC-REF-002 "run で自分の inputs を使う" {
+    Author writes r1 with place InRun, root OwnInput, declared true, earlier false, nested false
+    Ugoke accepts r1
+    then r1 is Accepted
+  }
+  scenario AC-REF-003 "outputs でスクリプトの結果を使う" {
+    Author writes r1 with place InOutputs, root ScriptResult, declared true, earlier false, nested false
+    Ugoke accepts r1
+    then r1 is Accepted
+  }
+
+  forbidden FB-REF-001 "あとに実行するステップの outputs を受け付けない" {
+    Author writes r1 with place InInputs, root StepOutput, declared true, earlier false, nested false
+    Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-002 "inputs で自分の inputs を受け付けない" {
+    Author writes r1 with place InInputs, root OwnInput, declared true, earlier false, nested false
+    Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-003 "run でスクリプトの結果を受け付けない" {
+    Author writes r1 with place InRun, root ScriptResult, declared true, earlier false, nested false
+    Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-004 "値の中の項目を受け付けない" {
+    Author writes r1 with place InInputs, root StepOutput, declared true, earlier true, nested true
+    Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-005 "参照できる値を拒まない" {
+    Author writes r1 with place InOutputs, root OwnInput, declared true, earlier false, nested false
+    Ugoke rejects r1
+    then rejected
+  }
+}
+verify {
+  instances Reference = 1
+}

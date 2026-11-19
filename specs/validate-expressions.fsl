@@ -6,9 +6,9 @@ fsl 5
 // It refines the requirements of step-references.fsl.
 spec ValidateExpressions {
   entity Reference
-  enum CheckPhase { Unread, Parsed, RootChecked, ShapeChecked, OrderChecked, Passed, Failed }
-  enum Site { Inputs, Run, Outputs }
-  enum Target { Step, Own, Result, Other }
+  enum CheckPhase { Unchecked, Lexed, RootChecked, ShapeChecked, OrderChecked, RefsPassed, RefsFailed }
+  enum Site { AtInputs, AtRun, AtOutputs }
+  enum Target { ToStep, ToOwn, ToResult, ToOther }
   enum Message { NoMessage, CanReferenceOnly, FieldOfValue, NotBefore, NotDeclared }
 
   state {
@@ -23,9 +23,9 @@ spec ValidateExpressions {
 
   init {
     forall r: Reference {
-      phase[r] = Unread
-      site[r] = Inputs
-      target[r] = Step
+      phase[r] = Unchecked
+      site[r] = AtInputs
+      target[r] = ToStep
       declared[r] = false
       earlier[r] = false
       nested[r] = false
@@ -36,12 +36,12 @@ spec ValidateExpressions {
   // The roots of each place: step outputs everywhere, inputs in run and outputs, and result only
   // in outputs.
   def rootAllowed(s: Site, t: Target) =
-    t == Step or (t == Own and s != Inputs) or (t == Result and s == Outputs)
+    t == ToStep or (t == ToOwn and s != AtInputs) or (t == ToResult and s == AtOutputs)
 
   @requirement("REQ-REF-001", "式は、${{ }} で囲んで、ほかの値を参照する")
   action read(r: Reference, s: Site, t: Target, d: Bool, e: Bool, n: Bool) {
-    requires phase[r] == Unread
-    phase[r] = Parsed
+    requires phase[r] == Unchecked
+    phase[r] = Lexed
     site[r] = s
     target[r] = t
     declared[r] = d
@@ -51,15 +51,15 @@ spec ValidateExpressions {
 
   @requirement("REQ-REF-004", "スクリプトの結果は、outputs だけが参照できる")
   action rootFails(r: Reference) {
-    requires phase[r] == Parsed
+    requires phase[r] == Lexed
     requires not rootAllowed(site[r], target[r])
-    phase[r] = Failed
+    phase[r] = RefsFailed
     message[r] = CanReferenceOnly
   }
 
   @requirement("REQ-REF-003", "inputs は自分の inputs を参照できない。run と outputs は自分の inputs を参照できる")
   action rootPasses(r: Reference) {
-    requires phase[r] == Parsed
+    requires phase[r] == Lexed
     requires rootAllowed(site[r], target[r])
     phase[r] = RootChecked
   }
@@ -68,7 +68,7 @@ spec ValidateExpressions {
   action shapeFails(r: Reference) {
     requires phase[r] == RootChecked
     requires nested[r]
-    phase[r] = Failed
+    phase[r] = RefsFailed
     message[r] = FieldOfValue
   }
 
@@ -82,15 +82,15 @@ spec ValidateExpressions {
   @requirement("REQ-REF-002", "どの式でも、前に実行するステップが宣言した outputs を参照できる")
   action orderFails(r: Reference) {
     requires phase[r] == ShapeChecked
-    requires target[r] == Step and not earlier[r]
-    phase[r] = Failed
+    requires target[r] == ToStep and not earlier[r]
+    phase[r] = RefsFailed
     message[r] = NotBefore
   }
 
   @requirement("MODEL-VEX-002", "前に実行するステップか、ステップ以外の値なら、次を確かめる")
   action orderPasses(r: Reference) {
     requires phase[r] == ShapeChecked
-    requires target[r] != Step or earlier[r]
+    requires target[r] != ToStep or earlier[r]
     phase[r] = OrderChecked
   }
 
@@ -98,7 +98,7 @@ spec ValidateExpressions {
   action declarationFails(r: Reference) {
     requires phase[r] == OrderChecked
     requires not declared[r]
-    phase[r] = Failed
+    phase[r] = RefsFailed
     message[r] = NotDeclared
   }
 
@@ -106,21 +106,21 @@ spec ValidateExpressions {
   action declarationPasses(r: Reference) {
     requires phase[r] == OrderChecked
     requires declared[r]
-    phase[r] = Passed
+    phase[r] = RefsPassed
   }
 
   @requirement("MODEL-VEX-004", "確かめ終わったあとは、何も起きない")
   action rest(r: Reference) {
-    requires phase[r] == Passed or phase[r] == Failed
+    requires phase[r] == RefsPassed or phase[r] == RefsFailed
     phase[r] = phase[r]
   }
 
   @requirement("MODEL-VEX-005", "拒んだ参照には、理由のメッセージがある")
   invariant FailedHasMessage {
-    forall r: Reference { (phase[r] == Failed) == (message[r] != NoMessage) }
+    forall r: Reference { (phase[r] == RefsFailed) == (message[r] != NoMessage) }
   }
 
-  terminal { forall r: Reference { phase[r] == Passed or phase[r] == Failed } }
+  terminal { forall r: Reference { phase[r] == RefsPassed or phase[r] == RefsFailed } }
 }
 verify {
   instances Reference = 1

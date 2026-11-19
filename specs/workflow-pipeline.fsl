@@ -1,8 +1,8 @@
 fsl 5
 // ugoke run from the name of a workflow to the end of its run: resolveWorkflow finds the
-// definition file, parseDefinition checks its shape, the transition check of compileDefinition
-// accepts or rejects it, ugoke run starts an accepted one and follows it, and the interpreter of
-// the engine runs it. The shape is a necessary condition of acceptance, and only an accepted
+// definition file, parseDefinition checks its shape, the transition check and the reference check
+// of compileDefinition accept or reject it, ugoke run starts an accepted one and follows it, and
+// the interpreter of the engine runs it. The shape is a necessary condition of acceptance, and only an accepted
 // definition runs.
 //
 // A command that could not finish, or a run that could not end, would stop here with nothing left
@@ -16,6 +16,9 @@ fsl 5
 //                file, and only whether the name is valid varies.
 // MODEL-PIP-005: follow-run.fsl checks every combination of server options on its own. Here only
 //                --dev, --dev-db and whether the resident process runs vary.
+// MODEL-PIP-006: validate-expressions.fsl checks every place and kind of reference on its own.
+//                Here the definition has one reference to the output of a step, and only whether
+//                that step runs before varies.
 // MODEL-PIP-004: a step that exits with a nonzero status stands for every failure of a step. A
 //                step that passes its timeout fails the same way in interpret-workflow.fsl, so
 //                run.timeOut is internal and never synchronized here.
@@ -25,6 +28,7 @@ compose WorkflowPipeline {
   use ValidateTransitions as links from "validate-transitions.fsl"
   use InterpretWorkflow as run from "interpret-workflow.fsl"
   use FollowRun as cmd from "follow-run.fsl"
+  use ValidateExpressions as refs from "validate-expressions.fsl"
 
   state {
     // ghost: ugoke run detached while the run had two or more steps before end
@@ -89,10 +93,21 @@ compose WorkflowPipeline {
     links.validateFails(d) || cmd.run(d, false, false, dv, dv and db, false, dr, true) {
   }
 
-  // Only an accepted definition is handed to the interpreter, and ugoke run follows it.
+  // A definition whose transitions are valid has its references checked next.
   @requirement("REQ-TRN-005", "つながりの決まりを満たす定義は受け付ける")
+  fair action checkReferences(d: parse.Definition, e: Bool) =
+    links.validateOk(d) || refs.read(d, AtInputs, ToStep, true, e, false) {
+  }
+
+  @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")
+  fair action rejectReferences(d: parse.Definition, dv: Bool, db: Bool, dr: Bool) =
+    refs.orderFails(d) || cmd.run(d, false, false, dv, dv and db, false, dr, true) {
+  }
+
+  // Only an accepted definition is handed to the interpreter, and ugoke run follows it.
+  @requirement("REQ-REF-006", "参照できる値は、受け付ける")
   fair action launch(d: parse.Definition, dv: Bool, db: Bool, dr: Bool) =
-    links.validateOk(d) || run.aim(d, links.start[d]) || cmd.run(d, true, false, dv, dv and db, false, dr, true) {
+    refs.declarationPasses(d) || run.aim(d, links.start[d]) || cmd.run(d, true, false, dv, dv and db, false, dr, true) {
   }
 
   @requirement("REQ-TRN-008", "ワークフローは start のステップから始まる")
@@ -167,6 +182,9 @@ compose WorkflowPipeline {
   internal run.timeOut
   internal run.withdraw
   internal run.loseWorker
+  internal refs.read
+  internal refs.orderFails
+  internal refs.declarationPasses
   internal cmd.run
   internal cmd.stepStarts
   internal cmd.begin
@@ -190,7 +208,7 @@ compose WorkflowPipeline {
   @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")
   invariant OnlyAcceptedDefinitionsRun {
     forall d: parse.Definition {
-      run.phase[d] != Idle and run.phase[d] != Aimed => links.phase[d] == Valid
+      run.phase[d] != Idle and run.phase[d] != Aimed => (links.phase[d] == Valid and refs.phase[d] == RefsPassed)
     }
   }
 

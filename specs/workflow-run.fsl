@@ -1,0 +1,90 @@
+fsl 5
+// Requirements for running an accepted workflow definition.
+// Source: docs/guide/workflow-definition.md ("script ステップの実行", "ステップの ID").
+//
+// MODEL-RUN-001: a run is described by the steps it has left before end, which the run of an
+//                accepted definition knows when it starts. workflow-transitions.fsl decides
+//                which definitions are accepted, and workflow-pipeline.fsl checks that their runs
+//                have one to three steps before end.
+// MODEL-RUN-002: whether a script succeeds is not decided by ugoke, so a failure is a fault event.
+requirements WorkflowRun {
+  number Count
+  actor Ugoke, Script
+
+  entity Run {
+    remaining: Count = 0
+    executed: Count = 0
+    lifecycle Waiting -> Running -> Completed
+    lifecycle Running -> Failed
+  }
+
+  event start = Ugoke starts Run with remaining (Waiting -> Running)
+    covers REQ-TRN-008 "ワークフローは start のステップから始まる"
+  event advance = Ugoke advances Run in Running
+    set remaining = remaining - 1, executed = executed + 1
+  event complete = Ugoke completes Run (Running -> Completed)
+    set executed = executed + 1
+  fault event fail = Script fails Run (Running -> Failed)
+    set executed = executed + 1
+    covers REQ-RUN-001 "ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する"
+
+  rule REQ-RUN-005 "受け付けた定義の実行は、end までのステップを 1 つ以上持つ" {
+    allow Ugoke starts Run only when input remaining >= 1 and input remaining <= 3
+  }
+  rule REQ-TRN-006 "ステップが成功すると、その next に進む" {
+    allow Ugoke advances Run only when remaining >= 2
+  }
+  rule REQ-TRN-007 "next に end を書いたステップが成功すると、ワークフローが終わる" {
+    allow Ugoke completes Run only when remaining == 1
+  }
+  rule REQ-RUN-002 "失敗したステップは、やり直さない" {
+    RunsEachStepOnce: always Run in Failed, Completed has executed <= 3
+  }
+  rule REQ-RUN-003 "失敗しなければ、ワークフローは end で終わる" {
+    NoStepAfterEnd: always Run in Running has remaining >= 1
+    CompletedRunsEveryStep: always Run in Completed has remaining == 1
+  }
+
+  scenario AC-RUN-001 "ステップが全部成功すると、end で終わる" {
+    Ugoke starts r1 with remaining 2
+    Ugoke advances r1
+    Ugoke completes r1
+    then r1 is Completed
+  }
+  scenario AC-RUN-002 "途中のステップが失敗すると、ワークフローは失敗する" {
+    Ugoke starts r1 with remaining 2
+    Script fails r1
+    then r1 is Failed
+  }
+
+  forbidden FB-RUN-001 "失敗したあとは、次のステップに進まない" {
+    Ugoke starts r1 with remaining 2
+    Script fails r1
+    Ugoke advances r1
+    then rejected
+  }
+  forbidden FB-RUN-002 "失敗したあとは、終わりにしない" {
+    Ugoke starts r1 with remaining 1
+    Script fails r1
+    Ugoke completes r1
+    then rejected
+  }
+  forbidden FB-RUN-003 "end の前のステップでは終わらない" {
+    Ugoke starts r1 with remaining 2
+    Ugoke completes r1
+    then rejected
+  }
+  forbidden FB-RUN-004 "最後のステップのあとには進まない" {
+    Ugoke starts r1 with remaining 1
+    Ugoke advances r1
+    then rejected
+  }
+  forbidden FB-RUN-005 "end までのステップのない実行は始めない" {
+    Ugoke starts r1 with remaining 0
+    then rejected
+  }
+}
+verify {
+  instances Run = 1
+  values Count = 0..4
+}

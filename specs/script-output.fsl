@@ -1,6 +1,6 @@
 fsl 5
 // Requirements for showing the output of a script step while it runs.
-// Source: docs/reference/commands/run.md
+// Source: the output of ugoke run (packages/cli/src/progress.ts)
 //
 // MODEL-OUT-001: each piece of output is shown as it arrives, so one piece stands for what the
 //                script wrote at one time.

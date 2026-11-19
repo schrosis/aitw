@@ -43,4 +43,4 @@ Workflow not found: deploy
 
 ## ワークフローを確かめる
 
-定義を書いたら、`ugoke validate` で確かめられます。書き方は「[ワークフローの定義](workflow-definition.md)」で、コマンドの詳細は「[ugoke validate](../reference/commands/validate.md)」で説明します。ugoke の版は `ugoke --version` で表示します（「[ugoke](../reference/commands/ugoke.md)」）。
+定義を書いたら、`ugoke validate` で確かめられます。書き方は「[ワークフローの定義](workflow-definition.md)」で、コマンドの詳細は「[ugoke validate](../reference/commands/validate.md)」で説明します。

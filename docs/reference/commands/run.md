@@ -36,7 +36,7 @@ ugoke run [options] <workflow>
 
 ## Temporal CLI
 
-`--dev` の一時的な Temporal Server は、Temporal CLI で起動します。`--temporal-bin` を指定しないときは、ugoke が決めた版の Temporal CLI を使います。
+`--dev` の一時的な Temporal Server と、常駐プロセスが起動する Temporal Server は、Temporal CLI で起動します。`--temporal-bin` を指定しないときは、ugoke が決めた版の Temporal CLI を使います。
 
 - キャッシュになければ、ダウンロードします。キャッシュは `$XDG_CACHE_HOME/ugoke/temporal-cli` で、`XDG_CACHE_HOME` がなければ `~/.cache/ugoke/temporal-cli` です
 - ダウンロードしたファイルは、決めたチェックサムと比べます。合わなければ、使わずに失敗します

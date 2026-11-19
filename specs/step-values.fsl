@@ -6,6 +6,8 @@ fsl 5
 // MODEL-SVL-001: whether the values that the step receives or gives are over 512 KiB, and how many
 //                newlines end the standard output of its script, are given when the step is
 //                written. More than two newlines behave as two.
+// MODEL-SVL-002: the values that the step receives are its inputs together with the values of
+//                earlier steps and of the workflow input that its run and outputs reference.
 requirements StepValues {
   type Newlines = 0..2
   actor Author, Worker

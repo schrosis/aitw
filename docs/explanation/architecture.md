@@ -19,7 +19,7 @@ flowchart LR
   worker <-->|タスクを取る<br/>結果を記録する| server
 ```
 
-常駐プロセスがないときは、`ugoke run` などのコマンドが、自分の中で一時的に Worker を動かします（「[Worker](#worker)」）。
+常駐プロセスがそのプロジェクトのステップを実行しないときは、`ugoke run` などのコマンドが、自分の中で一時的に Worker を動かします（「[Worker](#worker)」）。
 
 ugoke は、ワークフローを [Temporal](https://temporal.io/) の Workflow として実行します。Temporal Server が実行の記録を持ち、Worker がその記録に沿ってステップを進めます。このため、ugoke のコマンドが終わっても、Worker があればワークフローは続きます。
 
@@ -105,6 +105,7 @@ flowchart TD
   cli --> engine["@ugoke/engine"]
   cli --> adapters["@ugoke/adapter-*"]
   cli --> core["@ugoke/core"]
+  cli --> dotenv
   definition --> core
   engine --> core
   adapters --> core
@@ -117,7 +118,7 @@ flowchart TD
 | `@ugoke/core`       | 中間表現の型と、外の世界とのつなぎ目（Port）を持ちます。Temporal に依存しません                               |
 | `@ugoke/definition` | 定義の読み込み、検証、中間表現への変換を担当します                                                            |
 | `@ugoke/engine`     | Workflow、Activity、Worker を持ちます。`@ugoke/core` だけに依存し、定義の読み込みや具体的な Adapter に依存しません |
-| `@ugoke/dotenv`     | dotenv ファイルを読み込みます。Adapter から使います                                                            |
+| `@ugoke/dotenv`     | dotenv ファイルを読み込みます。Adapter と CLI から使います                                                            |
 | `@ugoke/adapter-*`  | Port の実装です。スクリプトの実行、イベントのログ、端末での待機、AI、GitHub の待機などがあります              |
 | `ugoke`             | CLI です。Adapter を組み立て、コマンドを提供します                                                            |
 

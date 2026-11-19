@@ -11,6 +11,7 @@ fsl 5
 // MODEL-CMD-002: whether the run succeeds is not decided by ugoke, so a failure is a fault event.
 requirements RunCommand {
   enum Exit { Running, Zero, One, Three, OneThirty }
+  enum Line { NoLine, OnStdout, OnStderr }
   actor User, Ugoke, Script
 
   entity Command {
@@ -24,6 +25,7 @@ requirements RunCommand {
     viaDaemon: Bool = false
     durable: Bool = false
     exitCode: Exit = Running
+    finalLine: Line = NoLine
     lifecycle Typed -> Issued -> Following -> Completed
     lifecycle Issued -> Refused
     lifecycle Issued -> NoServer
@@ -53,23 +55,23 @@ requirements RunCommand {
       durable = keepsRuns(input addressOpt, input devOpt, input devDb)
     covers REQ-CMD-010 "使う Temporal Server は、オプション、.ugoke/config.yaml の temporal.address、常駐プロセスのサーバーの順に決める"
   event refuse = Ugoke refuses Command (Issued -> Refused)
-    set exitCode = One
+    set exitCode = One, finalLine = OnStderr
   event noServer = Ugoke drops Command (Issued -> NoServer)
-    set exitCode = One
+    set exitCode = One, finalLine = OnStderr
   event start = Ugoke starts Command (Issued -> Following)
   event complete = Ugoke completes Command (Following -> Completed)
-    set exitCode = Zero
+    set exitCode = Zero, finalLine = OnStdout
     covers REQ-CMD-003 "終了ステータスは、完了で 0、失敗か定義の問題で 1、切り離しで 3、取り消しか 2 度目の Ctrl+C で 130"
   fault event fail = Script fails Command (Following -> Failed)
-    set exitCode = One
+    set exitCode = One, finalLine = OnStderr
     covers REQ-CMD-003 "ワークフローが失敗すると、終了ステータスは 1"
   event detach = User detaches Command (Following -> Detached)
-    set exitCode = Three
+    set exitCode = Three, finalLine = OnStderr
   event cancel = User cancels Command (Following -> Cancelled)
-    set exitCode = OneThirty
+    set exitCode = OneThirty, finalLine = OnStderr
   event drain = User drains Command (Following -> Draining)
   event settle = Ugoke settles Command (Draining -> Detached)
-    set exitCode = Three
+    set exitCode = Three, finalLine = OnStderr
     covers REQ-CMD-004 "実行の途中で Ctrl+C を押したときの動きは、どこでステップを実行しているかで変わる"
   event abandon = User abandons Command (Draining -> Abandoned)
     set exitCode = OneThirty
@@ -110,6 +112,16 @@ requirements RunCommand {
   }
   rule REQ-CMD-008 "実行の記録を残すサーバーでは、Ctrl+C でワークフローを取り消さない" {
     NoCancelWhenDurable: always Command in Cancelled has not durable
+  }
+
+  rule REQ-CMD-013 "最後の行は、完了なら標準出力に、失敗、定義の問題、サーバーがない、切り離し、取り消しなら標準エラーに表示する。2 度目の Ctrl+C では表示しない" {
+    CompletedOnStdout: always Command in Completed has finalLine == OnStdout
+    FailedOnStderr: always Command in Failed has finalLine == OnStderr
+    RefusedOnStderr: always Command in Refused has finalLine == OnStderr
+    NoServerOnStderr: always Command in NoServer has finalLine == OnStderr
+    DetachedOnStderr: always Command in Detached has finalLine == OnStderr
+    CancelledOnStderr: always Command in Cancelled has finalLine == OnStderr
+    AbandonedWithoutLine: always Command in Abandoned has finalLine == NoLine
   }
 
   scenario AC-CMD-001 "常駐プロセスで完了する" {

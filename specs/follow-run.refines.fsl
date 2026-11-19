@@ -29,6 +29,8 @@ refinement FollowRunRefinesRunCommand {
   map command_viaDaemon[c: Command] = viaDaemon[c]
   map command_durable[c: Command] = durable[c]
   map command_exitCode[c: Command] = exitCode[c]
+  map command_finalLine[c: Command] =
+    if finalLine[c] == ToStdout then OnStdout else if finalLine[c] == ToStderr then OnStderr else NoLine
 
   action run(c, ok, a, dv, db, cfg, dr, dm) -> issue(c, ok, a, dv, db, cfg, dr, dm)
   action unserved(c) -> noServer(c)

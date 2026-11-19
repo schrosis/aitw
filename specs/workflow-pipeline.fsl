@@ -14,6 +14,9 @@ fsl 5
 // MODEL-PIP-003: resolve-workflow.fsl checks every layout of directories and files on its own.
 //                Here .ugoke is in the directory where the command runs and the name has a .yaml
 //                file, and only whether the name is valid varies.
+// MODEL-PIP-004: a step that exits with a nonzero status stands for every failure of a step. A
+//                step that passes its timeout fails the same way in interpret-workflow.fsl, so
+//                run.timeOut is internal and never synchronized here.
 compose WorkflowPipeline {
   use ResolveWorkflow as find from "resolve-workflow.fsl"
   use ParseDefinition as parse from "parse-definition.fsl"

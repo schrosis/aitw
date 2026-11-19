@@ -7,7 +7,7 @@ fsl 5
 // It refines the requirements of script-output.fsl.
 spec PrintProgress {
   entity StepRun
-  enum PrintPhase { Idle, Streaming, Closed }
+  enum PrintPhase { Idle, Streaming, Closing, Closed }
   enum Stream { NoStream, Stdout, Stderr }
 
   state {
@@ -48,14 +48,21 @@ spec PrintProgress {
     openErr[s] = if st == Stderr then not endsLine else openErr[s]
   }
 
-  // writeStep ends the open line of each stream before it writes the line of the end.
+  // Before the line of the end, writeStep ends the open line of each stream, on that stream.
   @requirement("REQ-OUT-002", "改行で終わらない出力のあとも、ステップの結果の行は新しい行から始める")
-  action end(s: StepRun) {
+  action closeLines(s: StepRun) {
     requires phase[s] == Streaming
-    phase[s] = Closed
+    phase[s] = Closing
     openOut[s] = false
     openErr[s] = false
-    endAtLineStart[s] = true
+  }
+
+  // Then it writes the line of the end, which starts a line only when no line is open.
+  @requirement("MODEL-PRT-004", "開いている行を閉じてから、結果の行を書く")
+  action end(s: StepRun) {
+    requires phase[s] == Closing
+    phase[s] = Closed
+    endAtLineStart[s] = not openOut[s] and not openErr[s]
   }
 
   @requirement("MODEL-PRT-002", "ステップが終わったあとは、何も起きない")

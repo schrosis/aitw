@@ -8,13 +8,16 @@ refinement PrintProgressRefinesScriptOutput {
   abs ScriptOutput
 
   map steprun_stage[s: StepRun] =
-    if phase[s] == Idle then Pending else if phase[s] == Streaming then Running else Ended
+    if phase[s] == Idle then Pending
+    else if phase[s] == Streaming or phase[s] == Closing then Running
+    else Ended
   map steprun_written[s: StepRun] = written[s]
   map steprun_shown[s: StepRun] = target[s]
   map steprun_endAtLineStart[s: StepRun] = endAtLineStart[s]
 
   action begin(s) -> start(s)
   action output(s, st, endsLine) -> print(s, st)
+  action closeLines(s) -> stutter
   action end(s) -> finish(s)
   action rest(s) -> stutter
 }

@@ -7,17 +7,19 @@
 ```mermaid
 flowchart LR
   user([利用者・AI]) -->|ugoke run など| cli[CLI]
-  cli -->|プロジェクトを登録する<br/>状態を問い合わせる| daemon[常駐プロセス]
-  daemon -->|起動する| server[(Temporal Server)]
-  cli -->|ワークフローを始める<br/>進み方を問い合わせる| server
-  subgraph daemon_box [常駐プロセスの中]
-    worker[Worker<br/>プロジェクトごと]
+  subgraph daemon [常駐プロセス]
+    subgraph worker [Worker（プロジェクトごと）]
+      workflow[Workflow<br/>インタプリタ]
+      activity[Activity<br/>スクリプト、AI、待機]
+    end
   end
-  daemon --- worker
-  worker -->|タスクを取りに行く| server
-  worker --> workflow[Workflow<br/>インタプリタ]
-  worker --> activity[Activity<br/>スクリプト、AI、待機]
+  cli -->|プロジェクトを登録する<br/>状態を問い合わせる| daemon
+  daemon -->|子プロセスとして起動する| server[(Temporal Server)]
+  cli -->|ワークフローを始める<br/>進み方を問い合わせる| server
+  worker <-->|タスクを取る<br/>結果を記録する| server
 ```
+
+常駐プロセスがないときは、`ugoke run` などのコマンドが、自分の中で一時的に Worker を動かします（「[Worker](#worker)」）。
 
 ugoke は、ワークフローを [Temporal](https://temporal.io/) の Workflow として実行します。Temporal Server が実行の記録を持ち、Worker がその記録に沿ってステップを進めます。このため、ugoke のコマンドが終わっても、Worker があればワークフローは続きます。
 

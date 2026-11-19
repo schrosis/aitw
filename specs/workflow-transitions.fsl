@@ -113,6 +113,10 @@ requirements WorkflowTransitions {
       targetsKnown(p0, p1, p2, n0, n1, n2, start)
         and allReachable(p0, p1, p2, n0, n1, n2, start)
         and allCanEnd(p0, p1, p2, n0, n1, n2))
+    RejectedBreaksARule: always Definition in Rejected has not (
+      targetsKnown(p0, p1, p2, n0, n1, n2, start)
+        and allReachable(p0, p1, p2, n0, n1, n2, start)
+        and allCanEnd(p0, p1, p2, n0, n1, n2))
   }
 
   scenario AC-TRN-001 "start から next をたどって end に着く定義を受け付ける" {

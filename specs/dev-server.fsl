@@ -78,6 +78,9 @@ requirements DevServer {
   event kill = User kills DevRun (Running -> Ended)
     set process = false, forced = true, interrupted = true, exitCode = OneThirty
     covers REQ-DEV-004 "一時的な Temporal Server は、コマンドがどう終わっても止まる。2 度目の Ctrl+C でも止まる"
+  event rush = User rushes DevRun (Stopping -> Ended)
+    set process = false, forced = true, interrupted = true, exitCode = OneThirty
+    covers REQ-DEV-004 "一時的な Temporal Server は、コマンドがどう終わっても止まる。2 度目の Ctrl+C でも止まる"
 
   rule REQ-DEV-002 "--dev-db、--dev-ui、--temporal-bin は、--dev と使う。--dev がなければ、終了ステータス 1 で終わる" {
     allow Ugoke refuses DevRun only when needsDev(dbOpt, uiOpt, bin) and not devOpt
@@ -101,12 +104,16 @@ requirements DevServer {
     EndedHasExit: always DevRun in Ended has exitCode != Pending
     RunningHasNoExit: always DevRun in Running has exitCode == Pending
     NotBegunEnds: always DevRun in Ended has (began or (interrupted == (exitCode == OneThirty) and (exitCode == One or exitCode == OneThirty)))
+    InterruptedExits130: always DevRun in Ended has (not interrupted or exitCode == OneThirty)
+    SecondInterruptForces: always DevRun in Ended has (not (began and interrupted) or forced)
   }
   rule REQ-DEV-006 "サーバーが起動する前に終わったときは、1 度だけ起動し直す" {
     allow Ugoke retries DevRun only when not retried
   }
   rule REQ-DEV-007 "サーバーを止めるときは、まず終了を求める。5 秒たっても残っていれば、強制的に止める" {
     allow Ugoke forces DevRun only when graceOver
+    allow Ugoke halts DevRun only when not graceOver
+    ForcedAfterGrace: always DevRun in Ended has (not graceOver or forced)
     AskedBeforeForced: always DevRun in Ended has (not forced or asked or interrupted)
   }
   rule REQ-DEV-008 "Web UI は、--dev-ui を付けたときだけ起動する" {
@@ -187,6 +194,21 @@ requirements DevServer {
     User types r1 with devOpt false, dbOpt false, uiOpt true, bin NoBin
     Ugoke refuses r1
     then r1 is Errored
+  }
+  scenario AC-DEV-011 "起動中に Ctrl+C を 2 度押すと、サーバーをすぐに止めて 130 で終わる" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    User aborts r1
+    User rushes r1
+    then r1 is Ended
+  }
+  scenario AC-DEV-012 "止めている途中の 2 度目の Ctrl+C でも、サーバーをすぐに止める" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke serves r1 with uiUp false, dbPrivate false
+    Ugoke finishes r1 with exitCode Zero
+    User rushes r1
+    then r1 is Ended
   }
 
   forbidden FB-DEV-001 "--dev がないのに --temporal-bin を受け付けない" {
@@ -312,7 +334,7 @@ requirements DevServer {
     Ugoke serves r1 with uiUp false, dbPrivate false
     then rejected
   }
-  forbidden FB-DEV-023 "サーバーが起動する前に、2 度目の Ctrl+C で止めたことにしない" {
+  forbidden FB-DEV-023 "1 度目の Ctrl+C の前に、起動中のサーバーを強制的に止めたことにしない" {
     User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
     Ugoke launches r1 with lookup Pinned, local true
     User kills r1
@@ -323,6 +345,15 @@ requirements DevServer {
     Ugoke launches r1 with lookup Pinned, local true
     Ugoke serves r1 with uiUp false, dbPrivate false
     Ugoke leaves r1 with exitCode Zero
+    then rejected
+  }
+  forbidden FB-DEV-025 "5 秒の猶予が過ぎたら、終わるのを待ち続けない" {
+    User types r1 with devOpt true, dbOpt false, uiOpt false, bin NoBin
+    Ugoke launches r1 with lookup Pinned, local true
+    Ugoke serves r1 with uiUp false, dbPrivate false
+    Ugoke finishes r1 with exitCode Zero
+    Clock lapses r1
+    Ugoke halts r1
     then rejected
   }
 }

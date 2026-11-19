@@ -66,16 +66,21 @@ describe("ugoke executable", () => {
   ])(
     "exits after %s fails outside a project",
     async (...args) => {
-      await expect(execute(args, outside)).resolves.toMatchObject({ exitCode: 1 });
+      const { exitCode, output } = await execute(args, outside);
+
+      expect(exitCode, output).toBe(1);
     },
     20_000,
   );
 
   it("exits when the Temporal Server cannot be reached", async () => {
     // Port 1 is reserved and nothing listens on it.
-    await expect(
-      execute(["run", "valid", "--address", "127.0.0.1:1"], fixtureProject),
-    ).resolves.toMatchObject({ exitCode: 1 });
+    const { exitCode, output } = await execute(
+      ["run", "valid", "--address", "127.0.0.1:1"],
+      fixtureProject,
+    );
+
+    expect(exitCode, output).toBe(1);
   }, 20_000);
 
   it("exits after validate succeeds", async () => {

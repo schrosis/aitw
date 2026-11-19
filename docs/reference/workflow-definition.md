@@ -52,7 +52,7 @@
 - 宣言していない値は参照できません。参照した値の中の項目（`steps.fetch.outputs.title.text` など）も参照できません
 - 式だけで書いた値は、参照した値の型のままです。ほかの文字と続けて書いた値は、文字列になります。そのとき、`null` は空の文字列に、オブジェクトと配列は JSON になります
 - `result.stdout` と `result.stderr` は、最後の改行を 1 つ取り除いた値です
-- ステップが受け取る値と出す値は、それぞれ JSON で 512 KiB までです
+- ステップが受け取る値と出す値は、それぞれ JSON で 512 KiB までです。受け取る値が超えるとスクリプトを実行せずに、出す値が超えると実行したあとに、ステップは失敗します
 
 `ugoke validate` と `ugoke run` は、実行する前に式を確かめます。
 
@@ -93,7 +93,7 @@
 | `Step <step> does not run before <step>`                                                                    | 前に実行しないステップの `outputs` を参照している          |
 | `Step <step> does not declare the output <name>`、`Step <step> does not declare the input <name>`           | 宣言していない値を参照している                             |
 | `Can reference only <参照できるもの>`                                                                       | その場所では参照できない値を参照している                   |
-| `Cannot reference a field of an output value`                                                               | 値の中の項目を参照している                                 |
+| `Cannot reference a field of an output value`、`Cannot reference a field of an input value`                 | 値の中の項目を参照している                                 |
 | `Invalid expression: <式>. <理由>`、`Unterminated expression: <式>`                                         | 式の書き方が正しくない                                     |
 
 実行したときのエラー:

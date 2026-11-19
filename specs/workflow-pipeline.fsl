@@ -107,7 +107,7 @@ compose WorkflowPipeline {
   // Only an accepted definition is handed to the interpreter, and ugoke run follows it.
   @requirement("REQ-REF-006", "参照できる値は、受け付ける")
   fair action launch(d: parse.Definition, dv: Bool, db: Bool, dr: Bool) =
-    refs.declarationPasses(d) || run.aim(d, links.start[d]) || cmd.run(d, true, false, dv, dv and db, false, dr, true) {
+    refs.shapePasses(d) || run.aim(d, links.start[d]) || cmd.run(d, true, false, dv, dv and db, false, dr, true) {
   }
 
   @requirement("REQ-TRN-008", "ワークフローは start のステップから始まる")
@@ -184,7 +184,7 @@ compose WorkflowPipeline {
   internal run.loseWorker
   internal refs.read
   internal refs.orderFails
-  internal refs.declarationPasses
+  internal refs.shapePasses
   internal cmd.run
   internal cmd.stepStarts
   internal cmd.begin

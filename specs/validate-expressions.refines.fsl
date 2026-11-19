@@ -2,7 +2,7 @@ fsl 5
 // refine: validate-expressions.fsl step-references.fsl
 //
 // The reference check keeps the requirements of the references: it accepts a reference exactly
-// when the place may use it, the value is declared, the step runs before, and no field of a value
+// when the place may use it, the step runs before, the value is declared, and no field of a value
 // is read.
 refinement ValidateExpressionsRefinesStepReferences {
   impl ValidateExpressions
@@ -31,11 +31,11 @@ refinement ValidateExpressionsRefinesStepReferences {
     d, e, n)
   action rootFails(r) -> reject(r)
   action rootPasses(r) -> stutter
-  action shapeFails(r) -> reject(r)
-  action shapePasses(r) -> stutter
   action orderFails(r) -> reject(r)
   action orderPasses(r) -> stutter
   action declarationFails(r) -> reject(r)
-  action declarationPasses(r) -> accept(r)
+  action declarationPasses(r) -> stutter
+  action shapeFails(r) -> reject(r)
+  action shapePasses(r) -> accept(r)
   action rest(r) -> stutter
 }

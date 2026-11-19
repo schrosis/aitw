@@ -1,12 +1,12 @@
 fsl 5
 // Design of the reference check of expressions. validateExpressions
 // (packages/core/src/intermediate/expressions.ts) checks each reference in turn: the roots that
-// the place may use, a field of a value, the steps that run before, and the declared names.
+// the place may use, the steps that run before, the declared names, and a field of a value.
 //
 // It refines the requirements of step-references.fsl.
 spec ValidateExpressions {
   entity Reference
-  enum CheckPhase { Unchecked, Lexed, RootChecked, ShapeChecked, OrderChecked, RefsPassed, RefsFailed }
+  enum CheckPhase { Unchecked, Lexed, RootChecked, OrderChecked, NameChecked, RefsPassed, RefsFailed }
   enum Site { AtInputs, AtRun, AtOutputs }
   enum Target { ToStep, ToOwn, ToResult, ToOther }
   enum Message { NoMessage, CanReferenceOnly, FieldOfValue, NotBefore, NotDeclared }
@@ -64,37 +64,22 @@ spec ValidateExpressions {
     phase[r] = RootChecked
   }
 
-  @requirement("REQ-REF-005", "宣言していない値と、値の中の項目は参照できない")
-  action shapeFails(r: Reference) {
-    requires phase[r] == RootChecked
-    requires nested[r]
-    phase[r] = RefsFailed
-    message[r] = FieldOfValue
-  }
-
-  @requirement("MODEL-VEX-001", "値の中の項目を参照していなければ、次を確かめる")
-  action shapePasses(r: Reference) {
-    requires phase[r] == RootChecked
-    requires not nested[r]
-    phase[r] = ShapeChecked
-  }
-
   @requirement("REQ-REF-002", "どの式でも、前に実行するステップが宣言した outputs を参照できる")
   action orderFails(r: Reference) {
-    requires phase[r] == ShapeChecked
+    requires phase[r] == RootChecked
     requires target[r] == ToStep and not earlier[r]
     phase[r] = RefsFailed
     message[r] = NotBefore
   }
 
-  @requirement("MODEL-VEX-002", "前に実行するステップか、ステップ以外の値なら、次を確かめる")
+  @requirement("MODEL-VEX-001", "前に実行するステップか、ステップ以外の値なら、次を確かめる")
   action orderPasses(r: Reference) {
-    requires phase[r] == ShapeChecked
+    requires phase[r] == RootChecked
     requires target[r] != ToStep or earlier[r]
     phase[r] = OrderChecked
   }
 
-  @requirement("MODEL-VEX-003", "宣言していない名前は拒む")
+  @requirement("MODEL-VEX-002", "宣言していない名前は拒む")
   action declarationFails(r: Reference) {
     requires phase[r] == OrderChecked
     requires not declared[r]
@@ -102,10 +87,25 @@ spec ValidateExpressions {
     message[r] = NotDeclared
   }
 
-  @requirement("REQ-REF-006", "参照できる値は、受け付ける")
+  @requirement("MODEL-VEX-003", "宣言した名前なら、次を確かめる")
   action declarationPasses(r: Reference) {
     requires phase[r] == OrderChecked
     requires declared[r]
+    phase[r] = NameChecked
+  }
+
+  @requirement("REQ-REF-005", "宣言していない値と、値の中の項目は参照できない")
+  action shapeFails(r: Reference) {
+    requires phase[r] == NameChecked
+    requires nested[r]
+    phase[r] = RefsFailed
+    message[r] = FieldOfValue
+  }
+
+  @requirement("REQ-REF-006", "参照できる値は、受け付ける")
+  action shapePasses(r: Reference) {
+    requires phase[r] == NameChecked
+    requires not nested[r]
     phase[r] = RefsPassed
   }
 
@@ -118,6 +118,13 @@ spec ValidateExpressions {
   @requirement("MODEL-VEX-005", "拒んだ参照には、理由のメッセージがある")
   invariant FailedHasMessage {
     forall r: Reference { (phase[r] == RefsFailed) == (message[r] != NoMessage) }
+  }
+
+  @requirement("MODEL-VEX-006", "値の中の項目で拒むのは、前に実行するかと宣言を確かめたあとだけ")
+  invariant FieldCheckedLast {
+    forall r: Reference {
+      message[r] == FieldOfValue => ((target[r] != ToStep or earlier[r]) and declared[r])
+    }
   }
 
   terminal { forall r: Reference { phase[r] == RefsPassed or phase[r] == RefsFailed } }

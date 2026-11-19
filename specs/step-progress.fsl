@@ -57,6 +57,12 @@ requirements StepProgress {
     Worker fails s1
     then s1 is Failed
   }
+  scenario AC-PRG-003 "外から止めたステップは ■ の行で終わる" {
+    Worker starts s1 with result Stopped
+    Worker prints s1
+    Worker cancels s1
+    then s1 is Cancelled
+  }
 
   forbidden FB-PRG-001 "結果の行のあとに、ステップの出力を表示しない" {
     Worker starts s1 with result Ok
@@ -82,6 +88,22 @@ requirements StepProgress {
   }
   forbidden FB-PRG-005 "始まりの行より前に、結果の行を表示しない" {
     Worker succeeds s1
+    then rejected
+  }
+  forbidden FB-PRG-006 "始めたステップを、もう一度始めない" {
+    Worker starts s1 with result Ok
+    Worker starts s1 with result Ok
+    then rejected
+  }
+  forbidden FB-PRG-007 "失敗したステップを、成功と表示しない" {
+    Worker starts s1 with result Error
+    Worker succeeds s1
+    then rejected
+  }
+  forbidden FB-PRG-008 "■ の行を 2 度表示しない" {
+    Worker starts s1 with result Stopped
+    Worker cancels s1
+    Worker cancels s1
     then rejected
   }
 }

@@ -98,12 +98,15 @@ requirements WorkflowTransitions {
   }
   rule REQ-TRN-001 "start と next が指すステップは、定義になければならない" {
     never Ugoke accepts Definition when not targetsKnown(p0, p1, p2, n0, n1, n2, start)
+    AcceptedTargetsKnown: always Definition in Accepted has targetsKnown(p0, p1, p2, n0, n1, n2, start)
   }
   rule REQ-TRN-002 "どのステップも、start からたどれなければならない" {
     never Ugoke accepts Definition when not allReachable(p0, p1, p2, n0, n1, n2, start)
+    AcceptedAllReachable: always Definition in Accepted has allReachable(p0, p1, p2, n0, n1, n2, start)
   }
   rule REQ-TRN-003 "どのステップからも、end までたどれなければならない" {
     never Ugoke accepts Definition when not allCanEnd(p0, p1, p2, n0, n1, n2)
+    AcceptedAllCanEnd: always Definition in Accepted has allCanEnd(p0, p1, p2, n0, n1, n2)
   }
   rule REQ-TRN-005 "つながりの決まりを満たす定義は受け付ける" {
     allow Ugoke rejects Definition only when not (
@@ -120,14 +123,63 @@ requirements WorkflowTransitions {
     Ugoke accepts d1
     then d1 is Accepted
   }
-
-  forbidden FB-TRN-008 "4 つ目のステップは書けない（モデルのステップは 3 つまで）" {
+  scenario AC-TRN-002 "3 つのステップを順にたどって end に着く定義を受け付ける" {
+    Author fills d1 with p true, n 1
+    Author fills d1 with p true, n 2
     Author fills d1 with p true, n 3
-    Author fills d1 with p false, n 3
-    Author fills d1 with p false, n 3
-    Author fills d1 with p false, n 3
-    then rejected
+    Author writes d1 with start 0
+    Ugoke accepts d1
+    then d1 is Accepted
   }
+  scenario AC-TRN-003 "最初のステップから始まらない定義を受け付ける" {
+    Author fills d1 with p true, n 3
+    Author fills d1 with p true, n 0
+    Author fills d1 with p false, n 3
+    Author writes d1 with start 1
+    Ugoke accepts d1
+    then d1 is Accepted
+  }
+  scenario AC-TRN-004 "後ろのステップから前へたどる定義を受け付ける" {
+    Author fills d1 with p true, n 3
+    Author fills d1 with p true, n 0
+    Author fills d1 with p true, n 1
+    Author writes d1 with start 2
+    Ugoke accepts d1
+    then d1 is Accepted
+  }
+  scenario AC-TRN-005 "間のステップを飛ばしてたどる定義を受け付ける" {
+    Author fills d1 with p true, n 2
+    Author fills d1 with p false, n 3
+    Author fills d1 with p true, n 3
+    Author writes d1 with start 0
+    Ugoke accepts d1
+    then d1 is Accepted
+  }
+  scenario AC-TRN-006 "最後のステップだけの定義を受け付ける" {
+    Author fills d1 with p false, n 3
+    Author fills d1 with p false, n 3
+    Author fills d1 with p true, n 3
+    Author writes d1 with start 2
+    Ugoke accepts d1
+    then d1 is Accepted
+  }
+  scenario AC-TRN-007 "最後のステップから戻ってたどる定義を受け付ける" {
+    Author fills d1 with p true, n 2
+    Author fills d1 with p true, n 3
+    Author fills d1 with p true, n 1
+    Author writes d1 with start 0
+    Ugoke accepts d1
+    then d1 is Accepted
+  }
+  scenario AC-TRN-008 "2 つ目のステップから始まり、前後へたどる定義を受け付ける" {
+    Author fills d1 with p true, n 2
+    Author fills d1 with p true, n 0
+    Author fills d1 with p true, n 3
+    Author writes d1 with start 1
+    Ugoke accepts d1
+    then d1 is Accepted
+  }
+
   forbidden FB-TRN-001 "存在しないステップを指す定義を受け付けない" {
     Author fills d1 with p true, n 1
     Author fills d1 with p false, n 3
@@ -158,6 +210,36 @@ requirements WorkflowTransitions {
     Author fills d1 with p false, n 3
     Author writes d1 with start 0
     Ugoke rejects d1
+    then rejected
+  }
+  forbidden FB-TRN-008 "4 つ目のステップは書けない（モデルのステップは 3 つまで）" {
+    Author fills d1 with p true, n 3
+    Author fills d1 with p false, n 3
+    Author fills d1 with p false, n 3
+    Author fills d1 with p false, n 3
+    then rejected
+  }
+  forbidden FB-TRN-009 "ステップを書き終える前に、start を書かない" {
+    Author fills d1 with p true, n 3
+    Author fills d1 with p false, n 3
+    Author writes d1 with start 0
+    then rejected
+  }
+  forbidden FB-TRN-010 "start を 2 度書かない" {
+    Author fills d1 with p true, n 3
+    Author fills d1 with p false, n 3
+    Author fills d1 with p false, n 3
+    Author writes d1 with start 0
+    Author writes d1 with start 0
+    then rejected
+  }
+  forbidden FB-TRN-011 "受け付けた定義を、もう一度受け付けない" {
+    Author fills d1 with p true, n 3
+    Author fills d1 with p false, n 3
+    Author fills d1 with p false, n 3
+    Author writes d1 with start 0
+    Ugoke accepts d1
+    Ugoke accepts d1
     then rejected
   }
 }

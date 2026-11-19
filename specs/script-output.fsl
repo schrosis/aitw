@@ -45,6 +45,15 @@ requirements ScriptOutput {
     Ugoke prints s1 with written Stdout
     then rejected
   }
+  forbidden FB-OUT-002 "始めたステップを、もう一度始めない" {
+    Ugoke starts s1
+    Ugoke starts s1
+    then rejected
+  }
+  forbidden FB-OUT-003 "始めていないステップを、終えない" {
+    Ugoke ends s1
+    then rejected
+  }
 }
 verify {
   instances StepRun = 1

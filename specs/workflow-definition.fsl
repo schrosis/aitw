@@ -140,6 +140,27 @@ requirements WorkflowDefinition {
     Ugoke fails d1
     then rejected
   }
+  forbidden FB-DEF-011 "書いた定義を、もう一度書かない" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField false, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField false, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    then rejected
+  }
+  forbidden FB-DEF-012 "形のチェックを通った定義を、もう一度通さない" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField false, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    Ugoke passes d1
+    Ugoke passes d1
+    then rejected
+  }
+  forbidden FB-DEF-013 "形のチェックで落とした定義を、もう一度落とさない" {
+    Author writes d1
+      with unsupportedVersion false, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField true, duplicateKey false, multipleDocuments false, anchorOrAlias false
+    Ugoke fails d1
+    Ugoke fails d1
+    then rejected
+  }
 }
 verify {
   instances Definition = 1

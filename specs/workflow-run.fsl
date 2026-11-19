@@ -60,13 +60,25 @@ requirements WorkflowRun {
     Script fails r1
     then r1 is Failed
   }
-
-  forbidden FB-RUN-006 "取り消したあとは、次のステップに進まない" {
+  scenario AC-RUN-003 "3 つのステップを 1 度ずつ実行して、end で終わる" {
+    Ugoke starts r1 with remaining 3
+    Ugoke advances r1
+    Ugoke advances r1
+    Ugoke completes r1
+    then stage(r1) == Completed and r1.executed == 3
+  }
+  scenario AC-RUN-004 "途中のステップが失敗すると、そのステップまでを実行する" {
+    Ugoke starts r1 with remaining 3
+    Ugoke advances r1
+    Script fails r1
+    then stage(r1) == Failed and r1.executed == 2
+  }
+  scenario AC-RUN-005 "取り消すと、そのときのステップまでを実行して止まる" {
     Ugoke starts r1 with remaining 2
     User cancels r1
-    Ugoke advances r1
-    then rejected
+    then stage(r1) == Cancelled and r1.executed == 1
   }
+
   forbidden FB-RUN-001 "失敗したあとは、次のステップに進まない" {
     Ugoke starts r1 with remaining 2
     Script fails r1
@@ -91,6 +103,12 @@ requirements WorkflowRun {
   }
   forbidden FB-RUN-005 "end までのステップのない実行は始めない" {
     Ugoke starts r1 with remaining 0
+    then rejected
+  }
+  forbidden FB-RUN-006 "取り消したあとは、次のステップに進まない" {
+    Ugoke starts r1 with remaining 2
+    User cancels r1
+    Ugoke advances r1
     then rejected
   }
 }

@@ -11,6 +11,7 @@ fsl 5
 // MODEL-CMD-002: whether the run succeeds is not decided by ugoke, so a failure is a fault event.
 requirements RunCommand {
   enum Exit { Running, Zero, One, Three, OneThirty }
+  enum Line { NoLine, OnStdout, OnStderr }
   actor User, Ugoke, Script
 
   entity Command {
@@ -24,6 +25,7 @@ requirements RunCommand {
     viaDaemon: Bool = false
     durable: Bool = false
     exitCode: Exit = Running
+    finalLine: Line = NoLine
     lifecycle Typed -> Issued -> Following -> Completed
     lifecycle Issued -> Refused
     lifecycle Issued -> NoServer
@@ -53,23 +55,23 @@ requirements RunCommand {
       durable = keepsRuns(input addressOpt, input devOpt, input devDb)
     covers REQ-CMD-010 "使う Temporal Server は、オプション、.ugoke/config.yaml の temporal.address、常駐プロセスのサーバーの順に決める"
   event refuse = Ugoke refuses Command (Issued -> Refused)
-    set exitCode = One
+    set exitCode = One, finalLine = OnStderr
   event noServer = Ugoke drops Command (Issued -> NoServer)
-    set exitCode = One
+    set exitCode = One, finalLine = OnStderr
   event start = Ugoke starts Command (Issued -> Following)
   event complete = Ugoke completes Command (Following -> Completed)
-    set exitCode = Zero
+    set exitCode = Zero, finalLine = OnStdout
     covers REQ-CMD-003 "終了ステータスは、完了で 0、失敗か定義の問題で 1、切り離しで 3、取り消しか 2 度目の Ctrl+C で 130"
   fault event fail = Script fails Command (Following -> Failed)
-    set exitCode = One
+    set exitCode = One, finalLine = OnStderr
     covers REQ-CMD-003 "ワークフローが失敗すると、終了ステータスは 1"
   event detach = User detaches Command (Following -> Detached)
-    set exitCode = Three
+    set exitCode = Three, finalLine = OnStderr
   event cancel = User cancels Command (Following -> Cancelled)
-    set exitCode = OneThirty
+    set exitCode = OneThirty, finalLine = OnStderr
   event drain = User drains Command (Following -> Draining)
   event settle = Ugoke settles Command (Draining -> Detached)
-    set exitCode = Three
+    set exitCode = Three, finalLine = OnStderr
     covers REQ-CMD-004 "実行の途中で Ctrl+C を押したときの動きは、どこでステップを実行しているかで変わる"
   event abandon = User abandons Command (Draining -> Abandoned)
     set exitCode = OneThirty
@@ -112,6 +114,16 @@ requirements RunCommand {
     NoCancelWhenDurable: always Command in Cancelled has not durable
   }
 
+  rule REQ-CMD-013 "最後の行は、完了なら標準出力に、失敗、定義の問題、サーバーがない、切り離し、取り消しなら標準エラーに表示する。2 度目の Ctrl+C では表示しない" {
+    CompletedOnStdout: always Command in Completed has finalLine == OnStdout
+    FailedOnStderr: always Command in Failed has finalLine == OnStderr
+    RefusedOnStderr: always Command in Refused has finalLine == OnStderr
+    NoServerOnStderr: always Command in NoServer has finalLine == OnStderr
+    DetachedOnStderr: always Command in Detached has finalLine == OnStderr
+    CancelledOnStderr: always Command in Cancelled has finalLine == OnStderr
+    AbandonedWithoutLine: always Command in Abandoned has finalLine == NoLine
+  }
+
   scenario AC-CMD-001 "常駐プロセスで完了する" {
     User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches true
     Ugoke starts c1
@@ -138,18 +150,26 @@ requirements RunCommand {
     Ugoke drops c1
     then c1 is NoServer
   }
+  scenario AC-CMD-005 "問題のある定義は、エラーを表示して終わる" {
+    User runs c1 with definitionOk false, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches true
+    Ugoke refuses c1
+    then c1 is Refused
+  }
+  scenario AC-CMD-006 "temporal.address のサーバーで完了する" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress true, daemonRunning false, daemonMatches false
+    Ugoke starts c1
+    Ugoke completes c1
+    then c1 is Completed
+  }
+  scenario AC-CMD-007 "--address のサーバーでは、Ctrl+C でステップを待ってから切り離れる" {
+    User runs c1 with definitionOk true, addressOpt true, devOpt false, devDb false, configAddress false, daemonRunning false, daemonMatches false
+    Ugoke starts c1
+    User drains c1
+    Ugoke settles c1
+    then c1 is Detached
+  }
   forbidden FB-CMD-001 "--address と --dev は同時に使えない" {
     User runs c1 with definitionOk true, addressOpt true, devOpt true, devDb false, configAddress false, daemonRunning false, daemonMatches false
-    then rejected
-  }
-  forbidden FB-CMD-008 "常駐プロセスが動いていれば、サーバーがないことにしない" {
-    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches false
-    Ugoke drops c1
-    then rejected
-  }
-  forbidden FB-CMD-009 "オプションも temporal.address もなく、常駐プロセスが動いていなければ、実行しない" {
-    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning false, daemonMatches false
-    Ugoke starts c1
     then rejected
   }
   forbidden FB-CMD-002 "問題のある定義は実行しない" {
@@ -174,16 +194,48 @@ requirements RunCommand {
     User cancels c1
     then rejected
   }
+  forbidden FB-CMD-006 "記録を残さないサーバーでの Ctrl+C で、切り離さない" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt true, devDb false, configAddress false, daemonRunning false, daemonMatches false
+    Ugoke starts c1
+    User detaches c1
+    then rejected
+  }
   forbidden FB-CMD-007 "常駐プロセスでの Ctrl+C で、ステップを待たない" {
     User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches true
     Ugoke starts c1
     User drains c1
     then rejected
   }
-  forbidden FB-CMD-006 "記録を残さないサーバーでの Ctrl+C で、切り離さない" {
-    User runs c1 with definitionOk true, addressOpt false, devOpt true, devDb false, configAddress false, daemonRunning false, daemonMatches false
+  forbidden FB-CMD-008 "常駐プロセスが動いていれば、サーバーがないことにしない" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches false
+    Ugoke drops c1
+    then rejected
+  }
+  forbidden FB-CMD-009 "オプションも temporal.address もなく、常駐プロセスが動いていなければ、実行しない" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning false, daemonMatches false
     Ugoke starts c1
-    User detaches c1
+    then rejected
+  }
+  forbidden FB-CMD-010 "定義の問題を、2 度表示しない" {
+    User runs c1 with definitionOk false, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches true
+    Ugoke refuses c1
+    Ugoke refuses c1
+    then rejected
+  }
+  forbidden FB-CMD-011 "サーバーがないことを、2 度表示しない" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning false, daemonMatches false
+    Ugoke drops c1
+    Ugoke drops c1
+    then rejected
+  }
+  forbidden FB-CMD-012 "問題のある定義で、サーバーがないことにしない" {
+    User runs c1 with definitionOk false, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning false, daemonMatches false
+    Ugoke drops c1
+    then rejected
+  }
+  forbidden FB-CMD-013 "実行を始める前に、完了にしない" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches true
+    Ugoke completes c1
     then rejected
   }
 }

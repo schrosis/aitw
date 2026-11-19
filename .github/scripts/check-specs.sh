@@ -5,6 +5,12 @@
 #
 # A file named *.refines.fsl maps one specification onto another. Its line
 # `// refine: <impl>.fsl <abs>.fsl` names the two, relative to specs/, and fslc refine checks it.
+#
+# fslc mutate is not run here, because it takes too long. Run it by hand on a requirements file
+# that you change, if it has up to about 500 mutants:
+#   fslc mutate --depth 6 --max-mutants 100000 specs/<file>.fsl
+# Without --max-mutants, it tries only the first 200 mutants. A heavier file, such as
+# specs/workflow-transitions.fsl, is not mutated; check it with copies that you break on purpose.
 set -euo pipefail
 
 shopt -s nullglob

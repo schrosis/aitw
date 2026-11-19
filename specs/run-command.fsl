@@ -168,6 +168,25 @@ requirements RunCommand {
     Ugoke settles c1
     then c1 is Detached
   }
+  scenario AC-CMD-008 "ワークフローが失敗すると、失敗で終わる" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches true
+    Ugoke starts c1
+    Script fails c1
+    then c1 is Failed
+  }
+  scenario AC-CMD-009 "常駐プロセスでの Ctrl+C で、切り離す" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches true
+    Ugoke starts c1
+    User detaches c1
+    then c1 is Detached
+  }
+  scenario AC-CMD-010 "記録を残さないサーバーでの Ctrl+C で、取り消す" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt true, devDb false, configAddress false, daemonRunning false, daemonMatches false
+    Ugoke starts c1
+    User cancels c1
+    then c1 is Cancelled
+  }
+
   forbidden FB-CMD-001 "--address と --dev は同時に使えない" {
     User runs c1 with definitionOk true, addressOpt true, devOpt true, devDb false, configAddress false, daemonRunning false, daemonMatches false
     then rejected
@@ -236,6 +255,54 @@ requirements RunCommand {
   forbidden FB-CMD-013 "実行を始める前に、完了にしない" {
     User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches true
     Ugoke completes c1
+    then rejected
+  }
+  forbidden FB-CMD-014 "打つ前に、失敗にしない" {
+    Script fails c1
+    then rejected
+  }
+  forbidden FB-CMD-015 "実行を始める前に、失敗にしない" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches true
+    Script fails c1
+    then rejected
+  }
+  forbidden FB-CMD-016 "完了したあとに、失敗にしない" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches true
+    Ugoke starts c1
+    Ugoke completes c1
+    Script fails c1
+    then rejected
+  }
+  forbidden FB-CMD-017 "打つ前に、切り離しにしない" {
+    User detaches c1
+    then rejected
+  }
+  forbidden FB-CMD-018 "実行を始める前に、切り離しにしない" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches true
+    User detaches c1
+    then rejected
+  }
+  forbidden FB-CMD-019 "完了したあとに、切り離しにしない" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches true
+    Ugoke starts c1
+    Ugoke completes c1
+    User detaches c1
+    then rejected
+  }
+  forbidden FB-CMD-020 "打つ前に、取り消しにしない" {
+    User cancels c1
+    then rejected
+  }
+  forbidden FB-CMD-021 "実行を始める前に、取り消しにしない" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt true, devDb false, configAddress false, daemonRunning false, daemonMatches false
+    User cancels c1
+    then rejected
+  }
+  forbidden FB-CMD-022 "完了したあとに、取り消しにしない" {
+    User runs c1 with definitionOk true, addressOpt false, devOpt true, devDb false, configAddress false, daemonRunning false, daemonMatches false
+    Ugoke starts c1
+    Ugoke completes c1
+    User cancels c1
     then rejected
   }
 }

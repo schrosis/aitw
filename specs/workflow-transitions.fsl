@@ -9,6 +9,10 @@ fsl 5
 // MODEL-TRN-001: a definition has at most three steps, numbered 0 to 2. Node 3 is end.
 // MODEL-TRN-002: next names one node. Branches with if are outside this spec.
 // MODEL-TRN-003: a step that next names but the definition does not have is an unknown step.
+//
+// This file has about 2,500 mutants, and fslc mutate takes about 30 minutes, so it is not
+// mutated. Check a change with copies that break it on purpose
+// (see .github/scripts/check-specs.sh).
 requirements WorkflowTransitions {
   number Node
   number Count
@@ -110,6 +114,10 @@ requirements WorkflowTransitions {
   }
   rule REQ-TRN-005 "つながりの決まりを満たす定義は受け付ける" {
     allow Ugoke rejects Definition only when not (
+      targetsKnown(p0, p1, p2, n0, n1, n2, start)
+        and allReachable(p0, p1, p2, n0, n1, n2, start)
+        and allCanEnd(p0, p1, p2, n0, n1, n2))
+    RejectedBreaksARule: always Definition in Rejected has not (
       targetsKnown(p0, p1, p2, n0, n1, n2, start)
         and allReachable(p0, p1, p2, n0, n1, n2, start)
         and allCanEnd(p0, p1, p2, n0, n1, n2))

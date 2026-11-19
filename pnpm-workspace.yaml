@@ -2,7 +2,7 @@ packages:
   - "packages/*"
 
 catalog:
-  "@anthropic-ai/claude-agent-sdk": 0.3.322
+  "@anthropic-ai/claude-agent-sdk": 0.3.325
   "@inquirer/confirm": ^6.3.0
   "@inquirer/editor": ^5.3.0
   "@inquirer/input": ^5.1.0

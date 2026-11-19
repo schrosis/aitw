@@ -13,8 +13,8 @@ spec InterpretWorkflow {
   const END = 3
   type Node = 0..3
   type Count = 0..4
-  enum InterpretPhase { Idle, Aimed, Executing, Succeeded, Aborted, Refused }
-  enum Cause { NoCause, NonzeroExit, TimedOut }
+  enum InterpretPhase { Idle, Aimed, Executing, Succeeded, Aborted, Withdrawn, Refused }
+  enum Cause { NoCause, NonzeroExit, TimedOut, WorkerLost }
 
   state {
     phase: Map<Definition, InterpretPhase>,
@@ -193,6 +193,24 @@ spec InterpretWorkflow {
     executed[d] = executed[d] + 1
   }
 
+  // The Worker that runs the step exits before the step ends, for example at the second Ctrl+C of
+  // ugoke run. The step fails, and the run cannot be continued.
+  @requirement("REQ-RUN-001", "ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
+  action loseWorker(d: Definition) {
+    requires phase[d] == Executing
+    phase[d] = Aborted
+    cause[d] = WorkerLost
+    executed[d] = executed[d] + 1
+  }
+
+  // The run is cancelled, for example by Ctrl+C on a development server that keeps no runs.
+  @requirement("REQ-RUN-006", "取り消すと、ワークフローはそれ以降のステップを実行しない")
+  action withdraw(d: Definition) {
+    requires phase[d] == Executing
+    phase[d] = Withdrawn
+    executed[d] = executed[d] + 1
+  }
+
   @requirement("MODEL-INT-003", "受け取った中間表現の、end までのステップの数を覚える")
   invariant RemainingMatchesNext {
     forall d: Definition {
@@ -210,13 +228,14 @@ spec InterpretWorkflow {
   @requirement("REQ-RUN-002", "失敗したステップは、やり直さない")
   trans FailedRunStaysFailed {
     forall d: Definition {
-      old(phase[d]) == Aborted => (phase[d] == Aborted and executed[d] == old(executed[d]))
+      (old(phase[d]) == Aborted => (phase[d] == Aborted and executed[d] == old(executed[d])))
+        and (old(phase[d]) == Withdrawn => (phase[d] == Withdrawn and executed[d] == old(executed[d])))
     }
   }
 
   terminal {
     forall d: Definition {
-      phase[d] == Succeeded or phase[d] == Aborted or phase[d] == Refused
+      phase[d] == Succeeded or phase[d] == Aborted or phase[d] == Withdrawn or phase[d] == Refused
     }
   }
 }

@@ -11,6 +11,7 @@ refinement InterpretWorkflowRefinesWorkflowRun {
     if phase[d] == Executing then Running
     else if phase[d] == Succeeded then Completed
     else if phase[d] == Aborted then Failed
+    else if phase[d] == Withdrawn then Cancelled
     else Waiting
   map run_remaining[d: Run] = if phase[d] == Idle or phase[d] == Aimed or phase[d] == Refused then 0 else remaining[d]
   map run_executed[d: Run] = executed[d]
@@ -23,4 +24,6 @@ refinement InterpretWorkflowRefinesWorkflowRun {
   action succeedLast(d) -> complete(d)
   action exitNonzero(d) -> fail(d)
   action timeOut(d) -> fail(d)
+  action loseWorker(d) -> fail(d)
+  action withdraw(d) -> cancel(d)
 }

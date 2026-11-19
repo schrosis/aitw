@@ -1,0 +1,70 @@
+fsl 5
+// Requirements for ugoke validate: it finds the definition of a workflow, checks it, and reports
+// the result with its exit status.
+// Source: docs/reference/commands/validate.md
+//
+// MODEL-VAL-003: whether the definition file is found (project-files.fsl) and whether the
+//                definition passes the checks (workflow-definition.fsl, workflow-transitions.fsl)
+//                are given when the command starts.
+requirements ValidateCommand {
+  enum Exit { Running, Zero, One }
+  enum Stream { Nowhere, Stdout, Stderr }
+  actor User, Ugoke
+
+  entity Check {
+    found: Bool = false
+    definitionOk: Bool = false
+    exitCode: Exit = Running
+    stream: Stream = Nowhere
+    lifecycle Typed -> Issued -> Valid
+    lifecycle Issued -> Invalid
+    lifecycle Issued -> NotFound
+  }
+
+  event issue = User validates Check with found, definitionOk (Typed -> Issued)
+    covers REQ-PRJ-004 "ワークフローは、名前で指定する"
+  event pass = Ugoke passes Check (Issued -> Valid)
+    set exitCode = Zero, stream = Stdout
+  event flag = Ugoke flags Check (Issued -> Invalid)
+    set exitCode = One, stream = Stderr
+  event miss = Ugoke misses Check (Issued -> NotFound)
+    set exitCode = One, stream = Stderr
+
+  rule REQ-VAL-001 "定義が正しいときは、標準出力に表示し、終了ステータスは 0" {
+    allow Ugoke passes Check only when found and definitionOk
+    ValidExitsZero: always Check in Valid has exitCode == Zero and stream == Stdout
+  }
+  rule REQ-VAL-002 "定義に問題があるときは、標準エラーに問題を表示し、終了ステータスは 1" {
+    allow Ugoke flags Check only when found and not definitionOk
+    InvalidExitsOne: always Check in Invalid has exitCode == One and stream == Stderr
+  }
+  rule REQ-VAL-003 "定義が見つからないときは、標準エラーに表示し、終了ステータスは 1" {
+    allow Ugoke misses Check only when not found
+    NotFoundExitsOne: always Check in NotFound has exitCode == One and stream == Stderr
+  }
+
+  scenario AC-VAL-001 "正しい定義は valid と表示する" {
+    User validates k1 with found true, definitionOk true
+    Ugoke passes k1
+    then k1 is Valid
+  }
+
+  forbidden FB-VAL-001 "問題のある定義を、正しいと表示しない" {
+    User validates k1 with found true, definitionOk false
+    Ugoke passes k1
+    then rejected
+  }
+  forbidden FB-VAL-002 "正しい定義を、問題があると表示しない" {
+    User validates k1 with found true, definitionOk true
+    Ugoke flags k1
+    then rejected
+  }
+  forbidden FB-VAL-003 "見つかった定義を、見つからないと表示しない" {
+    User validates k1 with found true, definitionOk true
+    Ugoke misses k1
+    then rejected
+  }
+}
+verify {
+  instances Check = 1
+}

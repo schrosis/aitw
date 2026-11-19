@@ -1,0 +1,191 @@
+fsl 5
+// Design of ugoke run (packages/cli/src/commands/run.ts and packages/cli/src/follow.ts). It
+// starts a run of a checked definition and follows it. At Ctrl+C, it detaches at once when the
+// resident process runs the steps; it cancels the run when the Temporal Server keeps no runs; and
+// otherwise it stops its own Worker, which waits for the running step, and detaches. A second
+// Ctrl+C exits at once (packages/cli/src/program.ts).
+//
+// openCommandServer (packages/cli/src/daemon/connect.ts) chooses the server: the options of the
+// command, then temporal.address of the configuration file, then the server of the resident
+// process. The resident process runs the steps only without options, when it runs this version of
+// ugoke and, with temporal.address, serves that address.
+//
+// It refines the requirements of run-command.fsl.
+spec FollowRun {
+  entity Command
+  enum FollowPhase { Unstarted, Launched, Watching, Stopping, Finished, Broke, Left, Withdrew, Quit, Rejected, Unserved }
+  enum Exit { Running, Zero, One, Three, OneThirty }
+
+  state {
+    phase: Map<Command, FollowPhase>,
+    definitionOk: Map<Command, Bool>,
+    addressOpt: Map<Command, Bool>,
+    devOpt: Map<Command, Bool>,
+    devDb: Map<Command, Bool>,
+    configAddress: Map<Command, Bool>,
+    daemonRunning: Map<Command, Bool>,
+    daemonMatches: Map<Command, Bool>,
+    viaDaemon: Map<Command, Bool>,
+    durable: Map<Command, Bool>,
+    stepRunning: Map<Command, Bool>,
+    exitCode: Map<Command, Exit>
+  }
+
+  init {
+    forall c: Command {
+      phase[c] = Unstarted
+      definitionOk[c] = false
+      addressOpt[c] = false
+      devOpt[c] = false
+      devDb[c] = false
+      configAddress[c] = false
+      daemonRunning[c] = false
+      daemonMatches[c] = false
+      viaDaemon[c] = false
+      durable[c] = false
+      stepRunning[c] = false
+      exitCode[c] = Running
+    }
+  }
+
+  @requirement("REQ-CMD-010", "使う Temporal Server は、オプション、.ugoke/config.yaml の temporal.address、常駐プロセスのサーバーの順に決める")
+  action run(c: Command, ok: Bool, a: Bool, dv: Bool, db: Bool, cfg: Bool, dr: Bool, dm: Bool) {
+    requires phase[c] == Unstarted
+    requires not (a and dv)
+    requires not db or dv
+    phase[c] = Launched
+    definitionOk[c] = ok
+    addressOpt[c] = a
+    devOpt[c] = dv
+    devDb[c] = db
+    configAddress[c] = cfg
+    daemonRunning[c] = dr
+    daemonMatches[c] = dm
+    // With options, the command opens the server itself and the resident process is not used.
+    viaDaemon[c] = not a and not dv and dr and dm
+    // A development server without --dev-db is the only server that keeps no runs.
+    durable[c] = not dv or db
+  }
+
+  // DaemonUnavailableError: no options, no temporal.address, and no resident process.
+  @requirement("REQ-CMD-011", "オプションも temporal.address もなく、常駐プロセスが動いていないときは、終了ステータス 1")
+  action unserved(c: Command) {
+    requires phase[c] == Launched
+    requires definitionOk[c]
+    requires not addressOpt[c] and not devOpt[c] and not configAddress[c] and not daemonRunning[c]
+    phase[c] = Unserved
+    exitCode[c] = One
+  }
+
+  @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")
+  action reject(c: Command) {
+    requires phase[c] == Launched
+    requires not definitionOk[c]
+    phase[c] = Rejected
+    exitCode[c] = One
+  }
+
+  @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")
+  action begin(c: Command) {
+    requires phase[c] == Launched
+    requires definitionOk[c]
+    requires addressOpt[c] or devOpt[c] or configAddress[c] or daemonRunning[c]
+    phase[c] = Watching
+  }
+
+  // A step starts or ends on the Worker. Only the steps matter for the Ctrl+C that waits.
+  @requirement("MODEL-FOL-001", "ステップの実行が始まり、終わる")
+  action stepStarts(c: Command) {
+    requires phase[c] == Watching
+    requires not stepRunning[c]
+    stepRunning[c] = true
+  }
+
+  @requirement("MODEL-FOL-001", "ステップの実行が始まり、終わる")
+  action stepEnds(c: Command) {
+    requires phase[c] == Watching or phase[c] == Stopping
+    requires stepRunning[c]
+    stepRunning[c] = false
+  }
+
+  @requirement("REQ-CMD-003", "終了ステータスは、完了で 0、失敗か定義の問題で 1、切り離しで 3、取り消しか 2 度目の Ctrl+C で 130")
+  action finish(c: Command) {
+    requires phase[c] == Watching
+    requires not stepRunning[c]
+    phase[c] = Finished
+    exitCode[c] = Zero
+  }
+
+  @requirement("REQ-CMD-003", "終了ステータスは、完了で 0、失敗か定義の問題で 1、切り離しで 3、取り消しか 2 度目の Ctrl+C で 130")
+  action breaks(c: Command) {
+    requires phase[c] == Watching
+    phase[c] = Broke
+    stepRunning[c] = false
+    exitCode[c] = One
+  }
+
+  // handleInterrupt: the first Ctrl+C.
+  @requirement("REQ-CMD-005", "常駐プロセスで実行しているときは、すぐに切り離れ、ワークフローは続く")
+  action interruptDaemon(c: Command) {
+    requires phase[c] == Watching
+    requires viaDaemon[c]
+    phase[c] = Left
+    exitCode[c] = Three
+  }
+
+  @requirement("REQ-CMD-007", "実行の記録を残さないサーバーでは、ワークフローを取り消す")
+  action interruptEphemeral(c: Command) {
+    requires phase[c] == Watching
+    requires not viaDaemon[c]
+    requires not durable[c]
+    phase[c] = Withdrew
+    stepRunning[c] = false
+    exitCode[c] = OneThirty
+  }
+
+  @requirement("REQ-CMD-006", "実行中のステップが終わるのを待ってから切り離れる")
+  action interruptOwnWorker(c: Command) {
+    requires phase[c] == Watching
+    requires not viaDaemon[c]
+    requires durable[c]
+    phase[c] = Stopping
+  }
+
+  // The Worker has stopped after the running step.
+  @requirement("REQ-CMD-006", "実行中のステップが終わるのを待ってから切り離れる")
+  action stopped(c: Command) {
+    requires phase[c] == Stopping
+    requires not stepRunning[c]
+    phase[c] = Left
+    exitCode[c] = Three
+  }
+
+  // The second Ctrl+C exits the process at once.
+  @requirement("REQ-CMD-009", "待っているあいだにもう 1 度 Ctrl+C を押すと、すぐに終了し、実行中のステップは失敗する")
+  action interruptAgain(c: Command) {
+    requires phase[c] == Stopping
+    phase[c] = Quit
+    stepRunning[c] = false
+    exitCode[c] = OneThirty
+  }
+
+  @requirement("MODEL-FOL-002", "ugoke run が自分の Worker を止めるのは、記録を残すサーバーのときだけ")
+  invariant StoppingOnlyOwnDurable {
+    forall c: Command { phase[c] == Stopping => (not viaDaemon[c] and durable[c]) }
+  }
+
+  @requirement("REQ-CMD-006", "実行中のステップが終わるのを待ってから切り離れる")
+  invariant DetachesWithoutRunningStep {
+    forall c: Command { (phase[c] == Left and not viaDaemon[c]) => not stepRunning[c] }
+  }
+
+  terminal {
+    forall c: Command {
+      phase[c] == Finished or phase[c] == Broke or phase[c] == Left or phase[c] == Withdrew
+        or phase[c] == Quit or phase[c] == Rejected or phase[c] == Unserved
+    }
+  }
+}
+verify {
+  instances Command = 1
+}

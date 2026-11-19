@@ -41,6 +41,35 @@ steps:
 
 実行が必ず `end` で終わるように、`start` と `next` が指すステップは定義になければならず、どのステップも `start` からたどれて、`end` に着ける必要があります。このため、行き先を 1 つだけ書いた `next` では、輪を作れません。行き先を条件で分ける書き方は、このガイドではまだ説明していません。
 
+## ステップ間で値を渡す
+
+前のステップが `outputs` した値は、`${{ }}` で囲んだ式で、あとのステップから使えます。
+
+```yaml
+version: v0.1
+start: fetch
+steps:
+  fetch:
+    type: script
+    run: echo hello
+    outputs:
+      title: ${{ result.stdout }}
+    next: report
+  report:
+    type: script
+    inputs:
+      title: ${{ steps.fetch.outputs.title }}
+    run: echo "title is ${{ inputs.title }}"
+    next: end
+```
+
+- `fetch` の `outputs` で、スクリプトの標準出力を `title` という値にします。標準出力の最後の改行は、1 つ取り除きます
+- `report` の `inputs` で `fetch` の `title` を受け取り、`run` の中で `${{ inputs.title }}` として使います
+
+この定義を実行すると、`report` は `echo "title is hello"` を実行します。
+
+式で参照できる値は、書く場所ごとに決まっています。`ugoke validate` は、参照できない値を参照していないかも確かめます。詳しくは、[リファレンスの式](../reference/workflow-definition.md#式)を見てください。
+
 ## 定義を確かめる
 
 `ugoke validate` で、定義を実行する前に確かめられます。

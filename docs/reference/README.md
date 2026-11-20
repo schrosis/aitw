@@ -9,6 +9,8 @@ ugoke のコマンドとファイルの形式を、項目ごとに引けるよ�
 | [`ugoke`](commands/ugoke.md)             | 全体のオプションと終了ステータス             |
 | [`ugoke run`](commands/run.md)           | ワークフローを実行する                       |
 | [`ugoke validate`](commands/validate.md) | ワークフローの定義を検証する                 |
+| [`ugoke attach`](commands/attach.md)     | 実行に戻って追いかける                       |
+| [`ugoke cancel`](commands/cancel.md)     | 実行を取り消す                               |
 
 ## ファイルの形式
 

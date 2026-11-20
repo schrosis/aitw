@@ -74,3 +74,26 @@ wait: cancelled. A development server without --dev-db keeps no runs to attach t
 Waiting for the running step to finish, so that you can attach to the run later.
 Press Ctrl+C again to exit now. The running step will fail, and the run cannot be continued.
 ```
+
+## 実行に戻る、取り消す
+
+切り離した実行には、`ugoke attach` で戻れます。実行の ID を書かなければ、プロジェクトの実行を一覧にして、選んでもらいます。
+
+```console
+$ ugoke attach
+1. deploy  waiting at approve: Deploy to production?  started 5m ago
+Select a run (1-1): 1
+```
+
+戻ると、`ugoke run` と同じように、終わるまで追いかけます。待機ステップが答えを待っていれば、ここで答えられます。1 つの実行を追いかけられるのは、1 つのプロセスだけです。
+
+実行を止めるときは、`ugoke cancel` で取り消します。待機ステップの待ちと、実行中のスクリプトを止めます。
+
+```console
+$ ugoke cancel
+1. deploy  waiting at approve: Deploy to production?  started 5m ago
+Select a run (1-1): 1
+deploy: cancelled
+```
+
+`--dev` で実行したときは、`ugoke run` と同じ `--dev --dev-db <path>` を、`ugoke attach` と `ugoke cancel` にも付けます。オプションは、リファレンスの「[ugoke attach](../reference/commands/attach.md)」と「[ugoke cancel](../reference/commands/cancel.md)」にあります。

@@ -43,7 +43,7 @@ ugoke は、ワークフローを [Temporal](https://temporal.io/) の Workflow 
 - `ugoke run --dev` が、その実行のあいだだけ起動する開発サーバー。`--dev-db` を付けない限り、記録を残しません
 - `--address` や `.ugoke/config.yaml` の `temporal.address` で指定した、外の Temporal Server
 
-開発サーバーは、ugoke が版を決めて取得した Temporal CLI で起動します。
+開発サーバーは、ugoke がバージョンを決めて取得した Temporal CLI で起動します。
 
 ### Worker
 

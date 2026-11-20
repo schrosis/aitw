@@ -88,7 +88,7 @@ requirements DevServer {
     allow Ugoke launches DevRun only when devOpt
     ErroredExitsOne: always DevRun in Errored has exitCode == One
   }
-  rule REQ-DEV-003 "--temporal-bin は、パスなら今のディレクトリから、/ を含まない名前なら PATH から探す。指定しなければ、ugoke が決めた版を使う" {
+  rule REQ-DEV-003 "--temporal-bin は、パスなら今のディレクトリから、/ を含まない名前なら PATH から探す。指定しなければ、ugoke が決めたバージョンを使う" {
     allow Ugoke launches DevRun only when input lookup == lookupOf(bin)
     LookupFollowsBin: always DevRun in Running has (not devOpt or lookup == lookupOf(bin))
   }
@@ -241,7 +241,7 @@ requirements DevServer {
     Ugoke launches r1 with lookup FromPath, local true
     then rejected
   }
-  forbidden FB-DEV-007 "--temporal-bin を指定したのに、決めた版を使わない" {
+  forbidden FB-DEV-007 "--temporal-bin を指定したのに、決めたバージョンを使わない" {
     User types r1 with devOpt true, dbOpt false, uiOpt false, bin NameBin
     Ugoke launches r1 with lookup Pinned, local true
     then rejected

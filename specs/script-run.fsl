@@ -7,8 +7,9 @@ fsl 5
 // MODEL-SCR-001: the script fails at most at one command, whose position is given when it fails.
 // MODEL-SCR-002: the time that a stopped script gets to end is one tick of the clock. The length of
 //                the tick (5 seconds) and the time limit itself are not modeled.
-// MODEL-SCR-003: a cancelled run aborts the script, and the end of the process of ugoke, such as
-//                by a second Ctrl+C, kills it.
+// MODEL-SCR-003: a cancelled run aborts the script, and so does a terminated run, at the next
+//                heartbeat of the script. The end of the process of ugoke, such as by a second
+//                Ctrl+C, kills it.
 requirements ScriptRun {
   enum Limit { NoLimit, GivenLimit, DefaultLimit }
   enum EnvSource { NoEnv, OwnProcess, DaemonStart }

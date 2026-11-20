@@ -138,7 +138,7 @@ requirements RunCommand {
     then c1 is Abandoned
   }
 
-  scenario AC-CMD-003 "版の違う常駐プロセスでは、そのサーバーで自分の Worker が実行し、Ctrl+C でステップを待つ" {
+  scenario AC-CMD-003 "バージョンの違う常駐プロセスでは、そのサーバーで自分の Worker が実行し、Ctrl+C でステップを待つ" {
     User runs c1 with definitionOk true, addressOpt false, devOpt false, devDb false, configAddress false, daemonRunning true, daemonMatches false
     Ugoke starts c1
     User drains c1

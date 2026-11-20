@@ -10,8 +10,12 @@ fsl 5
 // - ugoke cancel ends the run from another process, and the process that follows it then sees the
 //   end and releases the lock
 //
-// It is checked against itself. The resident process, which runs the steps without following
-// the run, is outside this design.
+// - when the resident process runs the steps of the run, no process that follows it runs them,
+//   and the run goes on in the resident process after every process detaches. This holds also
+//   when the resident process has another ugoke version and the same workflow code version, because
+//   it still serves the task queue of the run (packages/cli/src/daemon/connect.ts, pollingQueue)
+//
+// It is checked against itself.
 spec FollowLock {
   entity Process
   entity Run
@@ -20,12 +24,16 @@ spec FollowLock {
   state {
     phase: Map<Run, RunPhase>,
     holds: Map<Process, Bool>,
-    stepsIn: Map<Process, Bool>
+    stepsIn: Map<Process, Bool>,
+    inDaemon: Map<Run, Bool>,
+    endedAlone: Map<Run, Bool>
   }
 
   init {
     forall r: Run {
       phase[r] = NotStarted
+      inDaemon[r] = false
+      endedAlone[r] = false
     }
     forall p: Process {
       holds[p] = false
@@ -34,11 +42,12 @@ spec FollowLock {
   }
 
   @requirement("MODEL-LCK-001", "ugoke run は、実行を始めてロックを取り、ステップを実行する")
-  action start(p: Process, r: Run) {
+  action start(p: Process, r: Run, d: Bool) {
     requires phase[r] == NotStarted
     phase[r] = Going
+    inDaemon[r] = d
     holds[p] = true
-    stepsIn[p] = true
+    stepsIn[p] = not d
   }
 
   @requirement("MODEL-LCK-002", "切り離したプロセスはロックを放し、実行はステップを動かすプロセスなしで続く")
@@ -60,16 +69,24 @@ spec FollowLock {
     requires phase[r] == Going
     requires forall q: Process { not holds[q] }
     holds[p] = true
-    stepsIn[p] = forall q: Process { not stepsIn[q] }
+    stepsIn[p] = not inDaemon[r] and forall q: Process { not stepsIn[q] }
   }
 
   @requirement("REQ-ATT-006", "attach の終わり方と終了ステータスは、ugoke run と同じ")
   action finish(p: Process, r: Run) {
     requires holds[p] and phase[r] == Going
-    requires exists q: Process { stepsIn[q] }
+    requires inDaemon[r] or exists q: Process { stepsIn[q] }
     phase[r] = Over
     holds[p] = false
     stepsIn[p] = false
+  }
+
+  @requirement("REQ-DMN-006", "常駐プロセスがステップを実行する実行は、どのプロセスも追いかけていなくても進む")
+  action daemonFinish(r: Run) {
+    requires phase[r] == Going and inDaemon[r]
+    requires forall q: Process { not holds[q] }
+    phase[r] = Over
+    endedAlone[r] = true
   }
 
   @requirement("REQ-ATT-007", "cancel は、ほかのプロセスが追いかけている実行も取り消し、終了ステータス 0 で終わる")
@@ -102,7 +119,22 @@ spec FollowLock {
 
   @requirement("REQ-ATT-005", "実行のステップを動かしているプロセスがなければ、attach がステップを実行する")
   invariant FollowedRunHasSteps {
-    forall r: Run { forall p: Process { (holds[p] and phase[r] == Going) => (exists q: Process { stepsIn[q] }) } }
+    forall r: Run { forall p: Process { (holds[p] and phase[r] == Going) => (inDaemon[r] or exists q: Process { stepsIn[q] }) } }
+  }
+
+  @requirement("REQ-DMN-006", "常駐プロセスがステップを実行する実行は、どのプロセスも追いかけていなくても進む")
+  invariant StepsInOnePlace {
+    forall r: Run { inDaemon[r] => forall p: Process { not stepsIn[p] } }
+  }
+
+  @requirement("MODEL-LCK-001", "ugoke run は、実行を始めてロックを取り、ステップを実行する")
+  invariant NoDaemonBeforeStart {
+    forall r: Run { phase[r] == NotStarted => not inDaemon[r] }
+  }
+
+  @requirement("REQ-DMN-006", "常駐プロセスがステップを実行する実行は、どのプロセスも追いかけていなくても進む")
+  reachable DetachedRunEndsInDaemon {
+    exists r: Run { endedAlone[r] }
   }
 
   @requirement("MODEL-LCK-004", "取り消された実行を追いかけていたプロセスは、終わりを見てロックを放す")

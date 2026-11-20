@@ -11,6 +11,7 @@ ugoke のコマンドとファイルの形式を、項目ごとに引けるよ�
 | [`ugoke validate`](commands/validate.md) | ワークフローの定義を検証する                 |
 | [`ugoke attach`](commands/attach.md)     | 実行に戻って追いかける                       |
 | [`ugoke cancel`](commands/cancel.md)     | 実行を取り消す                               |
+| [`ugoke daemon`](commands/daemon.md)     | 常駐プロセスを起動、停止し、状態を表示する   |
 
 ## ファイルの形式
 

@@ -30,7 +30,7 @@ ugoke daemon status
 
 ## ugoke daemon stop
 
-常駐プロセスを止めます。常駐プロセスは、実行中のスクリプトが終わるのを待ってから止まります。
+常駐プロセスを止めます。常駐プロセスは、実行中のスクリプトが終わるのを待ってから止まります。SIGTERM か SIGINT を受けたときも、同じように止まります。
 
 ## ugoke daemon status
 

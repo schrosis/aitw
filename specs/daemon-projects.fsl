@@ -8,6 +8,8 @@ fsl 5
 //                restarts.
 // MODEL-PRJ-003: the command that asks ends with 1 when the project is refused, as run-command.fsl
 //                and attach-cancel.fsl end a command whose server cannot be prepared.
+// MODEL-PRJ-004: the resident process stops in the same way when it receives SIGTERM or SIGINT,
+//                so stop also stands for those signals.
 // MODEL-PRJ-002: whether a script of the project is running is given when the resident process
 //                is asked to stop.
 requirements DaemonProjects {

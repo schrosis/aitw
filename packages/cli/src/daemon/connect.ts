@@ -5,7 +5,7 @@ import { loadProjectConfig } from "../config.js";
 import { openServer } from "../server.js";
 import type { OpenedServer, ServerOptions } from "../server.js";
 import { getDaemonStatus, registerProject } from "./client.js";
-import type { DaemonProject } from "./client.js";
+import type { DaemonProject, DaemonStatus } from "./client.js";
 import { daemonPaths } from "./paths.js";
 
 /** Thrown when a command needs the resident process, and it does not run or cannot be reached. */
@@ -37,6 +37,25 @@ export interface DaemonUse {
 const withoutDaemon = ({ detach = false }: DaemonUse): string =>
   detach ? "so it cannot run a detached run" : "so this command runs its own Worker";
 
+/**
+ * Says that the resident process has another version, and what the command does without it.
+ *
+ * @param pollingTaskQueue Task queue that the resident process still serves for the project, whose
+ *   runs go on there.
+ */
+const otherVersion = (
+  status: DaemonStatus,
+  version: string,
+  use: DaemonUse,
+  pollingTaskQueue: string | undefined,
+): string => {
+  const what =
+    pollingTaskQueue === undefined
+      ? withoutDaemon(use)
+      : `so it goes on with only the runs on its task queue, and ${use.detach === true ? "it cannot run a detached run" : "this command runs its own Worker for other runs"}`;
+  return `ugoke daemon: runs ugoke ${status.version}, and this is ugoke ${version}, ${what}. Run "ugoke daemon stop" and start it again to use it\n`;
+};
+
 /** The Temporal Server of the resident process, for a command. */
 export interface DaemonConnection {
   /** Temporal Server of the resident process. The command does not stop it. */
@@ -46,7 +65,32 @@ export interface DaemonConnection {
    * another version, so that the command runs its own Worker on the same server.
    */
   project?: DaemonProject | undefined;
+  /**
+   * Task queue that a resident process of another ugoke version still serves for the project,
+   * because it has the same workflow code version. A run on it goes on there.
+   */
+  pollingTaskQueue?: string | undefined;
 }
+
+/**
+ * Returns the task queue of a project that a resident process serves at an address, when it has
+ * the workflow code version of this ugoke and the Worker of the project runs.
+ *
+ * Its Worker keeps serving the runs on that queue even when the command does not hand new runs to
+ * it, so the command must not run a second Worker for them.
+ */
+const pollingQueue = (status: DaemonStatus, root: string, address: string): string | undefined => {
+  if (status.workflowCodeVersion !== workflowCodeVersion) {
+    return undefined;
+  }
+  const project = status.projects.find(
+    (candidate) =>
+      candidate.root === root &&
+      candidate.running !== false &&
+      (candidate.address ?? status.address) === address,
+  );
+  return project?.taskQueue;
+};
 
 /**
  * Asks the resident process of this host to serve a project.
@@ -82,10 +126,9 @@ export const connectDaemon = async (
     stop: async () => {},
   };
   if (status.version !== version || status.workflowCodeVersion !== workflowCodeVersion) {
-    context.stderr(
-      `ugoke daemon: runs ugoke ${status.version}, and this is ugoke ${version}, ${withoutDaemon(use)}. Run "ugoke daemon stop" and start it again to use it\n`,
-    );
-    return { server };
+    const pollingTaskQueue = pollingQueue(status, root, status.address);
+    context.stderr(otherVersion(status, version, use, pollingTaskQueue));
+    return { pollingTaskQueue, server };
   }
   return { project: await registerProject(paths, root), server };
 };
@@ -95,7 +138,12 @@ export interface CommandServer {
   server: OpenedServer;
   /** Task queue that the resident process serves for the project, when it runs the steps. */
   servedTaskQueue?: string | undefined;
+  /** See {@link DaemonConnection.pollingTaskQueue}. */
+  pollingTaskQueue?: string | undefined;
 }
+
+/** Task queues of a project in the resident process, as {@link CommandServer} has them. */
+type DaemonQueues = Pick<CommandServer, "pollingTaskQueue" | "servedTaskQueue">;
 
 /**
  * Asks the resident process to serve a project on the server that the project names, when it runs
@@ -105,7 +153,7 @@ export interface CommandServer {
  * server, so the command runs its own Worker without the resident process. When the resident
  * process runs but is not used, the command says why, because a run then stops with the command.
  *
- * @returns The task queue that it serves, or `undefined` when the command runs its own Worker.
+ * @returns The task queue that it serves, which is missing when the command runs its own Worker.
  */
 const daemonOn = async (
   address: string,
@@ -113,7 +161,7 @@ const daemonOn = async (
   version: string,
   context: CommandContext,
   use: DaemonUse,
-): Promise<string | undefined> => {
+): Promise<DaemonQueues> => {
   const paths = daemonPaths();
   let status;
   try {
@@ -122,7 +170,7 @@ const daemonOn = async (
     context.stderr(
       `ugoke daemon: cannot be reached, ${withoutDaemon(use)}: ${error instanceof Error ? error.message : String(error)}\n`,
     );
-    return undefined;
+    return {};
   }
   if (status === undefined) {
     // A run without the resident process is usual for a project that names its server.
@@ -131,13 +179,12 @@ const daemonOn = async (
         `ugoke daemon: is not running, ${withoutDaemon(use)}. Run "ugoke daemon start"\n`,
       );
     }
-    return undefined;
+    return {};
   }
   if (status.version !== version || status.workflowCodeVersion !== workflowCodeVersion) {
-    context.stderr(
-      `ugoke daemon: runs ugoke ${status.version}, and this is ugoke ${version}, ${withoutDaemon(use)}. Run "ugoke daemon stop" and start it again to use it\n`,
-    );
-    return undefined;
+    const pollingTaskQueue = pollingQueue(status, root, address);
+    context.stderr(otherVersion(status, version, use, pollingTaskQueue));
+    return { pollingTaskQueue };
   }
   const project = await registerProject(paths, root);
   // The resident process reads the configuration file again, which may have changed since.
@@ -145,9 +192,9 @@ const daemonOn = async (
     context.stderr(
       `ugoke daemon: serves the project at ${project.address ?? status.address}, and temporal.address of the project is ${address}, ${withoutDaemon(use)}\n`,
     );
-    return undefined;
+    return {};
   }
-  return project.taskQueue;
+  return { servedTaskQueue: project.taskQueue };
 };
 
 /**
@@ -177,12 +224,18 @@ export const openCommandServer = async (
   const address = (await loadProjectConfig(root, context.cwd)).temporal?.address;
   if (address !== undefined) {
     const opened = await openServer({ address, type: "address" }, context, signal);
+    const queues = await daemonOn(address, root, version, context, { detach });
     return {
+      pollingTaskQueue: queues.pollingTaskQueue,
       // Later commands read the configuration file again.
       server: { ...opened, options: "" },
-      servedTaskQueue: await daemonOn(address, root, version, context, { detach }),
+      servedTaskQueue: queues.servedTaskQueue,
     };
   }
   const daemon = await connectDaemon(root, version, context, { detach });
-  return { server: daemon.server, servedTaskQueue: daemon.project?.taskQueue };
+  return {
+    pollingTaskQueue: daemon.pollingTaskQueue,
+    server: daemon.server,
+    servedTaskQueue: daemon.project?.taskQueue,
+  };
 };

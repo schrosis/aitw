@@ -17,6 +17,7 @@ import { acquireRunLock, RunLockedError } from "../lock.js";
 import { chooseRun, listProjectRuns } from "../runs.js";
 import type { ProjectRun } from "../runs.js";
 import { openCommandServer } from "../daemon/connect.js";
+import type { CommandServer } from "../daemon/connect.js";
 import type { OpenedServer, ServerOptions } from "../server.js";
 import { projectLockDirectory, projectLogDirectory } from "../state.js";
 import { ugokeDirectory, findProjectRoot, resolveWorkflow } from "../workflows.js";
@@ -87,6 +88,19 @@ const findRoot = async (
 };
 
 /**
+ * Returns the task queue whose runs the resident process runs, for a run on a task queue.
+ *
+ * A resident process of another ugoke version still serves the task queue of the project when it
+ * has the same workflow code version, so a run on that queue goes on there, and the command must
+ * not run a second Worker for it.
+ */
+const daemonQueueOf = (
+  { pollingTaskQueue, servedTaskQueue }: CommandServer,
+  taskQueue: string,
+): string | undefined =>
+  servedTaskQueue ?? (taskQueue === pollingTaskQueue ? pollingTaskQueue : undefined);
+
+/**
  * Selects a running run of the project, by its ID or by asking in the terminal.
  *
  * @param action What the command does with the run, such as `attach`, for messages.
@@ -136,7 +150,6 @@ export const attach = async (options: AttachOptions, context: CommandContext): P
   try {
     const opened = await openCommandServer(options, root, context, signal);
     server = opened.server;
-    const { servedTaskQueue } = opened;
     const selected = await selectRun(
       "attach",
       { address: server.address, root },
@@ -148,6 +161,12 @@ export const attach = async (options: AttachOptions, context: CommandContext): P
       return selected.exitCode;
     }
     const { run } = selected;
+    const servedTaskQueue = daemonQueueOf(opened, run.taskQueue);
+    if (opened.servedTaskQueue === undefined && servedTaskQueue !== undefined) {
+      context.stderr(
+        `${run.name}: ugoke daemon goes on running the steps of this run, because the run is on its task queue, so this command follows it without its own Worker\n`,
+      );
+    }
     let lock;
     try {
       lock = acquireRunLock(projectLockDirectory(root), run.workflowId);
@@ -211,7 +230,6 @@ export const cancel = async (options: AttachOptions, context: CommandContext): P
   try {
     const opened = await openCommandServer(options, root, context, signal);
     server = opened.server;
-    const { servedTaskQueue } = opened;
     const selected = await selectRun(
       "cancel",
       { address: server.address, root },
@@ -248,7 +266,7 @@ export const cancel = async (options: AttachOptions, context: CommandContext): P
       encryptionKey: loadEncryptionKey(),
       // The end of the cancelled step is recorded in the same log as the rest of the run.
       eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
-      servedTaskQueue,
+      servedTaskQueue: daemonQueueOf(opened, run.taskQueue),
       scriptRunner: createLocalScriptRunner({ cwd: root }),
       workflowId: run.workflowId,
     }).catch((error: unknown) => {

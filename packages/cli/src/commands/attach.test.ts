@@ -1,15 +1,31 @@
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
 import { PassThrough, Readable } from "node:stream";
 
+import { createFileEventLog } from "@ugoke/adapter-event-log-file";
+import { createLocalScriptRunner } from "@ugoke/adapter-script-local";
 import { intermediateVersion } from "@ugoke/core";
-import { workflowCodeVersionMemoKey } from "@ugoke/engine";
+import {
+  startWorker,
+  startWorkflow,
+  workflowCodeVersion,
+  workflowCodeVersionMemoKey,
+} from "@ugoke/engine";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
+import { daemonPaths } from "../daemon/paths.ts";
+import { loadEncryptionKey } from "../encryption.ts";
 import { acquireRunLock } from "../lock.ts";
 import { listProjectRuns } from "../runs.ts";
-import { projectHash, projectLockDirectory, projectMemoKey, workflowMemoKey } from "../state.ts";
+import {
+  projectHash,
+  projectLockDirectory,
+  projectLogDirectory,
+  projectMemoKey,
+  workflowMemoKey,
+} from "../state.ts";
 import { createOutput, fixtureProject } from "../testing.ts";
 import { attach, cancel } from "./attach.ts";
 import { run } from "./run.ts";
@@ -174,6 +190,91 @@ describe("attach and cancel", () => {
         "old: terminated instead of cancelled, because workflow code version 0 started it. Its running script, if any, stops at its next heartbeat\n",
     });
     await expect(handle.describe()).resolves.toMatchObject({ status: { name: "TERMINATED" } });
+  }, 60_000);
+
+  it("leaves a run to a resident process of another ugoke version that still serves its queue", async () => {
+    // A short directory keeps the socket path within the limit of the platform.
+    const state = mkdtempSync("/tmp/ugoke-attach-");
+    const previous = process.env.XDG_STATE_HOME;
+    process.env.XDG_STATE_HOME = state;
+    const taskQueue = `ugoke-project-${randomUUID()}`;
+    // The Worker of the resident process, which has the same workflow code version.
+    const worker = await startWorker({
+      address: environment.address,
+      encryptionKey: loadEncryptionKey(),
+      eventLog: createFileEventLog({ directory: projectLogDirectory(root) }),
+      scriptRunner: createLocalScriptRunner({ cwd: root }),
+      taskQueue,
+    });
+    // The resident process has another ugoke version, and serves the project on that queue.
+    const paths = daemonPaths();
+    mkdirSync(paths.directory, { recursive: true });
+    const daemon = createServer((_incoming, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          address: environment.address,
+          pid: 1,
+          projects: [{ root, running: true, taskQueue }],
+          serverOptions: "",
+          startedAt: "",
+          version: "9.9.9",
+          workflowCodeVersion,
+        }),
+      );
+    });
+    await new Promise<void>((resolve) => daemon.listen(paths.socket, resolve));
+    try {
+      // ugoke run --detach starts a run like this, on the task queue of the resident process.
+      const workflowId = await startWorkflow({
+        address: environment.address,
+        encryptionKey: loadEncryptionKey(),
+        intermediate: {
+          inputs: {},
+          start: "wait",
+          steps: {
+            wait: {
+              answers: {},
+              inputs: {},
+              method: "terminal",
+              next: { type: "end" },
+              outputs: {},
+              type: "wait",
+              with: { message: "Continue?" },
+            },
+          },
+          version: intermediateVersion,
+        },
+        memo: { [projectMemoKey]: projectHash(root), [workflowMemoKey]: "queued" },
+        name: "queued",
+        taskQueue,
+      });
+      const output = createOutput();
+      const exitCode = await attach(
+        { signal: new AbortController().signal, version: "0.0.0", workflowId },
+        {
+          cwd: fixtureProject,
+          stderr: output.stderr,
+          stdin: () => Readable.from(["\n"]),
+          stdout: output.stdout,
+        },
+      );
+
+      expect(exitCode, `${output.written.stdout}${output.written.stderr}`).toBe(0);
+      expect(output.written.stderr).toContain(
+        "queued: ugoke daemon goes on running the steps of this run, because the run is on its task queue, so this command follows it without its own Worker\n",
+      );
+      expect(output.written.stdout).toContain("queued: completed (wait)\n");
+    } finally {
+      await new Promise<void>((resolve) => daemon.close(() => resolve()));
+      await worker.stop();
+      if (previous === undefined) {
+        delete process.env.XDG_STATE_HOME;
+      } else {
+        process.env.XDG_STATE_HOME = previous;
+      }
+      rmSync(state, { force: true, recursive: true });
+    }
   }, 60_000);
 
   it("reports a run that is not running in the project", async () => {

@@ -53,7 +53,7 @@ requirements TemporalCli {
     GivenDownloadsNothing: always Fetch in Ready has (not binGiven or (source == GivenBin and not downloaded))
     SourceFollowsBin: always Fetch in Ready has (binGiven == (source == GivenBin) and source != NoSource)
   }
-  rule REQ-TCL-003 "指定しないときは、ugoke が決めた版を使う。キャッシュにあれば、ダウンロードしない" {
+  rule REQ-TCL-003 "指定しないときは、ugoke が決めたバージョンを使う。キャッシュにあれば、ダウンロードしない" {
     allow Ugoke reuses Fetch only when needsPinned(binGiven) and supported and cacheSafe and cached
     allow Ugoke downloads Fetch only when needsPinned(binGiven) and supported and cacheSafe and not cached
     CachedDownloadsNothing: always Fetch in Ready has (not cached or binGiven or not downloaded)

@@ -32,7 +32,7 @@ requirements CliEntry {
   event refuse = Ugoke refuses Invocation with helpShown (Typed -> Errored)
     set exitCode = One
 
-  rule REQ-CLI-002 "--help と --version は、ヘルプか版を表示し、終了ステータスは 0" {
+  rule REQ-CLI-002 "--help と --version は、ヘルプかバージョンを表示し、終了ステータスは 0" {
     allow Ugoke answers Invocation only when answers(given)
     AnsweredExitsZero: always Invocation in Answered has exitCode == Zero
   }
@@ -45,7 +45,7 @@ requirements CliEntry {
     allow Ugoke delegates Invocation only when given == KnownCommand and argumentsComplete
   }
 
-  scenario AC-CLI-001 "--version は版を表示して 0 で終わる" {
+  scenario AC-CLI-001 "--version はバージョンを表示して 0 で終わる" {
     User types i1 with given VersionOption, argumentsComplete true
     Ugoke answers i1
     then i1 is Answered

@@ -36,7 +36,7 @@ requirements WorkflowDefinition {
   event pass = Ugoke passes Definition (Written -> Passed)
   event fail = Ugoke fails Definition (Written -> Failed)
 
-  rule REQ-DEF-001 "version は定義の形式の版で、v0.1 だけを受け付ける" {
+  rule REQ-DEF-001 "version は定義の形式のバージョンで、v0.1 だけを受け付ける" {
     never Ugoke passes Definition when unsupportedVersion
   }
   rule REQ-DEF-002 "version、start、steps は必須" {
@@ -80,7 +80,7 @@ requirements WorkflowDefinition {
     then d1 is Failed
   }
 
-  forbidden FB-DEF-001 "版が v0.1 でない定義は、形のチェックを通らない" {
+  forbidden FB-DEF-001 "バージョンが v0.1 でない定義は、形のチェックを通らない" {
     Author writes d1
       with unsupportedVersion true, missingTopLevelField false, invalidStepId false, missingScriptField false, invalidTimeout false, unknownField false, duplicateKey false, multipleDocuments false, anchorOrAlias false
     Ugoke passes d1

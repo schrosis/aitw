@@ -97,7 +97,7 @@ requirements AttachCancel {
     allow Ugoke follows Command only when input startDefinition
     KeepsStartDefinition: always Command in Following has startDefinition
   }
-  rule REQ-ATT-012 "別の版の ugoke が始めた実行には、--force なしでは戻らず、終了ステータス 1 で終わる。cancel は、取り消す代わりに強制終了し、終了ステータス 0 で終わる" {
+  rule REQ-ATT-012 "別のバージョンの ugoke が始めた実行には、--force なしでは戻らず、終了ステータス 1 で終わる。cancel は、取り消す代わりに強制終了し、終了ステータス 0 で終わる" {
     allow Ugoke follows Command only when compatible or force
     allow Ugoke cancels Command only when compatible
     allow Ugoke terminates Command only when which == Cancel and not devWithoutDb
@@ -165,17 +165,17 @@ requirements AttachCancel {
     then c1 is Refused
   }
 
-  scenario AC-ATT-010 "別の版が始めた実行には、--force なしでは戻らない" {
+  scenario AC-ATT-010 "別のバージョンが始めた実行には、--force なしでは戻らない" {
     User types c1 with which Attach, devWithoutDb false, idGiven true, idKnown true, runsExist true, selected false, locked false, workerRuns false, compatible false, force false
     Ugoke refuses c1
     then c1 is Refused
   }
-  scenario AC-ATT-011 "--force で、別の版が始めた実行に戻る" {
+  scenario AC-ATT-011 "--force で、別のバージョンが始めた実行に戻る" {
     User types c1 with which Attach, devWithoutDb false, idGiven true, idKnown true, runsExist true, selected false, locked false, workerRuns false, compatible false, force true
     Ugoke follows c1 with runsSteps true, fromStart true, startDefinition true
     then c1 is Following
   }
-  scenario AC-ATT-012 "別の版が始めた実行は、強制終了する" {
+  scenario AC-ATT-012 "別のバージョンが始めた実行は、強制終了する" {
     User types c1 with which Cancel, devWithoutDb false, idGiven true, idKnown true, runsExist true, selected false, locked false, workerRuns false, compatible false, force false
     Ugoke terminates c1
     then c1 is Terminated
@@ -256,17 +256,17 @@ requirements AttachCancel {
     Ugoke follows c1 with runsSteps true, fromStart true, startDefinition false
     then rejected
   }
-  forbidden FB-ATT-016 "別の版が始めた実行に、--force なしで戻らない" {
+  forbidden FB-ATT-016 "別のバージョンが始めた実行に、--force なしで戻らない" {
     User types c1 with which Attach, devWithoutDb false, idGiven true, idKnown true, runsExist true, selected false, locked false, workerRuns false, compatible false, force false
     Ugoke follows c1 with runsSteps true, fromStart true, startDefinition true
     then rejected
   }
-  forbidden FB-ATT-017 "別の版が始めた実行を、ふつうに取り消さない" {
+  forbidden FB-ATT-017 "別のバージョンが始めた実行を、ふつうに取り消さない" {
     User types c1 with which Cancel, devWithoutDb false, idGiven true, idKnown true, runsExist true, selected false, locked false, workerRuns false, compatible false, force false
     Ugoke cancels c1
     then rejected
   }
-  forbidden FB-ATT-018 "同じ版の実行を、強制終了しない" {
+  forbidden FB-ATT-018 "同じバージョンの実行を、強制終了しない" {
     User types c1 with which Cancel, devWithoutDb false, idGiven true, idKnown true, runsExist true, selected false, locked false, workerRuns false, compatible true, force false
     Ugoke terminates c1
     then rejected

@@ -35,6 +35,7 @@ requirements AttachCancel {
     lifecycle Typed -> Refused
     lifecycle Typed -> Empty
     lifecycle Typed -> Cancelled
+    lifecycle Typed -> Interrupted
   }
 
   def chosen(i: Bool, k: Bool, r: Bool, s: Bool) = if i then k else r and s
@@ -50,6 +51,9 @@ requirements AttachCancel {
   event finish = Ugoke finishes Command with exitCode (Following -> Ended)
   event cancel = Ugoke cancels Command (Typed -> Cancelled)
     set exitCode = Zero
+  event interrupt = User interrupts Command (Typed -> Interrupted)
+    set exitCode = OneThirty
+    covers REQ-ATT-009 "実行を選ぶ前や、サーバーにつないでいるあいだに Ctrl+C を押すと、終了ステータス 130 で終わる"
 
   rule REQ-ATT-002 "--dev は --dev-db と使う。指定した ID の実行がないとき、実行を選ばなかったときは、終了ステータス 1 で終わる" {
     allow Ugoke refuses Command only when devWithoutDb or (not nothing(idGiven, runsExist) and not chosen(idGiven, idKnown, runsExist, selected))
@@ -70,6 +74,9 @@ requirements AttachCancel {
   rule REQ-ATT-008 "attach で戻ると、実行の始めからの進捗を表示する" {
     allow Ugoke follows Command only when input fromStart
     ShownFromStart: always Command in Following has fromStart
+  }
+  rule REQ-ATT-009 "実行を選ぶ前や、サーバーにつないでいるあいだに Ctrl+C を押すと、終了ステータス 130 で終わる" {
+    InterruptedExits130: always Command in Interrupted has exitCode == OneThirty
   }
   rule REQ-ATT-006 "attach の終わり方と終了ステータスは、ugoke run と同じ" {
     allow Ugoke finishes Command only when input exitCode != Pending
@@ -117,6 +124,12 @@ requirements AttachCancel {
     User types c1 with which Attach, devWithoutDb true, idGiven false, idKnown false, runsExist false, selected false, locked false, workerRuns false
     Ugoke refuses c1
     then c1 is Refused
+  }
+
+  scenario AC-ATT-008 "選ぶ前の Ctrl+C で、130 で終わる" {
+    User types c1 with which Cancel, devWithoutDb false, idGiven false, idKnown false, runsExist true, selected false, locked false, workerRuns false
+    User interrupts c1
+    then c1 is Interrupted
   }
 
   forbidden FB-ATT-001 "ほかのプロセスが追いかけている実行を、追いかけない" {

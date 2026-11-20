@@ -54,8 +54,13 @@ describe("connectDaemon", () => {
    * Serves a fake resident process that reports a version.
    *
    * @param projectAddress Server that it reports for the projects that it serves.
+   * @param reported What its status reports besides the version.
    */
-  const serve = async (version: string, projectAddress = "127.0.0.1:7233"): Promise<void> => {
+  const serve = async (
+    version: string,
+    projectAddress = "127.0.0.1:7233",
+    reported: { projects?: unknown[]; workflowCodeVersion?: number } = {},
+  ): Promise<void> => {
     const paths = daemonPaths();
     mkdirSync(paths.directory, { recursive: true });
     server = createServer((incoming, response) => {
@@ -72,11 +77,11 @@ describe("connectDaemon", () => {
               ? {
                   address: "127.0.0.1:7233",
                   pid: 1,
-                  projects: [],
+                  projects: reported.projects ?? [],
                   serverOptions: "",
                   startedAt: "",
                   version,
-                  workflowCodeVersion,
+                  workflowCodeVersion: reported.workflowCodeVersion ?? workflowCodeVersion,
                 }
               : { address: projectAddress, root: "/project", taskQueue: "ugoke-host-hash" },
           ),
@@ -114,6 +119,43 @@ describe("connectDaemon", () => {
       'ugoke daemon: runs ugoke 0.9.0, and this is ugoke 1.2.3, so this command runs its own Worker. Run "ugoke daemon stop" and start it again to use it\n',
     );
     expect(requests.map(({ url }) => url)).toEqual(["/status"]);
+  });
+
+  it("tells the task queue that a resident process of another ugoke version still serves", async () => {
+    await serve("0.9.0", "127.0.0.1:7233", {
+      projects: [{ root: "/project", running: true, taskQueue: "ugoke-host-hash" }],
+    });
+    const output = createOutput();
+
+    await expect(
+      connectDaemon("/project", "1.2.3", { cwd: "/", ...output }),
+    ).resolves.toMatchObject({ pollingTaskQueue: "ugoke-host-hash" });
+    expect(output.written.stderr).toBe(
+      'ugoke daemon: runs ugoke 0.9.0, and this is ugoke 1.2.3, so it goes on with only the runs on its task queue, and this command runs its own Worker for other runs. Run "ugoke daemon stop" and start it again to use it\n',
+    );
+    // It does not register the project, because the command does not hand new runs to it.
+    expect(requests.map(({ url }) => url)).toEqual(["/status"]);
+  });
+
+  it("tells no task queue when the resident process has another workflow code version", async () => {
+    await serve("0.9.0", "127.0.0.1:7233", {
+      projects: [{ root: "/project", running: true, taskQueue: "ugoke-host-hash" }],
+      workflowCodeVersion: workflowCodeVersion - 1,
+    });
+
+    await expect(
+      connectDaemon("/project", "1.2.3", { cwd: "/", ...createOutput() }),
+    ).resolves.not.toHaveProperty("pollingTaskQueue", expect.anything());
+  });
+
+  it("tells no task queue when the Worker of the project does not run", async () => {
+    await serve("0.9.0", "127.0.0.1:7233", {
+      projects: [{ root: "/project", running: false, taskQueue: "ugoke-host-hash" }],
+    });
+
+    await expect(
+      connectDaemon("/project", "1.2.3", { cwd: "/", ...createOutput() }),
+    ).resolves.not.toHaveProperty("pollingTaskQueue", expect.anything());
   });
 
   it("says that a detached run needs the resident process of the same version", async () => {

@@ -10,6 +10,8 @@ fsl 5
 //                when the command is typed. A run is chosen when the ID names a running run, or,
 //                without an ID, when one is selected. A run is locked when a running process
 //                follows it. The lock that a stopped process left is taken over.
+//                A project is told apart by its real path, so a project reached through a
+//                symbolic link has the same runs.
 // MODEL-ATT-002: how a followed run ends (completed, failed, detached, cancelled) is described in
 //                run-command.fsl. Here, every ending is one event with its exit code.
 // MODEL-ATT-003: the processes that follow a run and the lock between them are designed in

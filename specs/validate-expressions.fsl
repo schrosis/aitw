@@ -46,7 +46,8 @@ spec ValidateExpressions {
   @requirement("REQ-REF-001", "式は、${{ }} で囲んで、ほかの値を参照する")
   action read(r: Reference, s: Site, w: Bool, t: Target, d: Bool, e: Bool, n: Bool) {
     requires phase[r] == Unchecked
-    // A wait step has with and no run, and a script step has run and no with.
+    // A wait step has with and no run, and a script step has run, env, and no with. env of the
+    // workflow belongs to no step.
     requires (s != AtWith or w) and (s != AtRun or not w) and (s != AtStepEnv or not w)
       and (s != AtWorkflowEnv or not w)
     phase[r] = Lexed
@@ -66,14 +67,14 @@ spec ValidateExpressions {
     message[r] = CanReferenceOnly
   }
 
-  @requirement("REQ-REF-003", "inputs は自分の inputs を参照できない。run と outputs は自分の inputs を参照できる")
+  @requirement("REQ-REF-003", "inputs は自分の inputs を参照できない。run、with、ステップの env、outputs は自分の inputs を参照できる")
   action rootPasses(r: Reference) {
     requires phase[r] == Lexed
     requires rootAllowed(site[r], inWait[r], target[r])
     phase[r] = RootChecked
   }
 
-  @requirement("REQ-REF-002", "どの式でも、前に実行するステップが宣言した outputs を参照できる")
+  @requirement("REQ-REF-002", "ワークフローの env を除くどの式でも、前に実行するステップが宣言した outputs を参照できる")
   action orderFails(r: Reference) {
     requires phase[r] == RootChecked
     requires target[r] == ToStep and not earlier[r]

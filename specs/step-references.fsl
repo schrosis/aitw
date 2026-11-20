@@ -26,9 +26,10 @@ requirements StepReferences {
     lifecycle Written -> Rejected
   }
 
-  // A reference that the place may use: a step output and a workflow input from anywhere, an own
-  // input from run, with, and outputs, the script result from the outputs of a script step, and
-  // the answers from the outputs of a wait step.
+  // A reference that the place may use: a step output from anywhere but env of the workflow, a
+  // workflow input from anywhere, an own input from run, with, env of a step, and outputs, the
+  // script result from the outputs of a script step, and the answers from the outputs of a wait
+  // step.
   def placeAllows(p: Place, r: Root, w: Bool) =
     (r == StepOutput and p != InWorkflowEnv) or r == WorkflowValue
       or (r == OwnInput and p != InInputs and p != InWorkflowEnv)
@@ -41,10 +42,10 @@ requirements StepReferences {
   event accept = Ugoke accepts Reference (Written -> Accepted)
   event reject = Ugoke rejects Reference (Written -> Rejected)
 
-  rule REQ-REF-002 "どの式でも、前に実行するステップが宣言した outputs を参照できる" {
+  rule REQ-REF-002 "ワークフローの env を除くどの式でも、前に実行するステップが宣言した outputs を参照できる" {
     never Ugoke accepts Reference when root == StepOutput and not earlier
   }
-  rule REQ-REF-003 "inputs は自分の inputs を参照できない。run と outputs は自分の inputs を参照できる" {
+  rule REQ-REF-003 "inputs は自分の inputs を参照できない。run、with、ステップの env、outputs は自分の inputs を参照できる" {
     never Ugoke accepts Reference when root == OwnInput and place == InInputs
   }
   rule REQ-REF-004 "スクリプトの結果は、outputs だけが参照できる" {

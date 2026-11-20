@@ -148,7 +148,7 @@
 | `Must be one of <options>` | `choice` の `default` が `options` にない |
 | `Invalid input: expected <型>, received <型>` | `default` が `type` に合わない |
 | `Must be a decimal number such as 1.5, without exponent notation` | `number` の `default` を、`1e3`、`0x10`、`.inf` のような、10 進数でない書き方で書いた |
-| `Unknown wait method: <method>. Available methods: <methods>` | 使えない待ち方を書いた |
+| `Unknown wait method: <method>. <案内>` | 使えない待ち方を書いた。案内は、使える待ち方の一覧などです |
 | `Step <step> does not declare the answer <name>` | 待ち方が宣言していない答えを参照している |
 | `Invalid expression: <式>. <理由>`、`Unterminated expression: <式>`                                         | 式の書き方が正しくない                                     |
 

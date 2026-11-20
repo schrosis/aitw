@@ -15,7 +15,8 @@ refinement ValidateExpressionsRefinesStepReferences {
     else Written
   map reference_place[r: Reference] =
     if site[r] == AtInputs then InInputs else if site[r] == AtRun then InRun
-    else if site[r] == AtWith then InWith else InOutputs
+    else if site[r] == AtWith then InWith else if site[r] == AtStepEnv then InStepEnv
+    else if site[r] == AtWorkflowEnv then InWorkflowEnv else InOutputs
   map reference_waitStep[r: Reference] = inWait[r]
   map reference_root[r: Reference] =
     if target[r] == ToStep then StepOutput
@@ -30,7 +31,7 @@ refinement ValidateExpressionsRefinesStepReferences {
 
   action read(r, s, w, t, d, e, n) -> write(
     r,
-    if s == AtInputs then InInputs else if s == AtRun then InRun else if s == AtWith then InWith else InOutputs,
+    if s == AtInputs then InInputs else if s == AtRun then InRun else if s == AtWith then InWith else if s == AtStepEnv then InStepEnv else if s == AtWorkflowEnv then InWorkflowEnv else InOutputs,
     w,
     if t == ToStep then StepOutput else if t == ToWorkflow then WorkflowValue else if t == ToOwn then OwnInput else if t == ToResult then ScriptResult else if t == ToAnswer then Answer else Unknown,
     d, e, n)

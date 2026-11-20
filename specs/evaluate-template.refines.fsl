@@ -10,6 +10,7 @@ refinement EvaluateTemplateRefinesTemplateValues {
   map template_stage[t: Template] =
     if phase[t] == Empty then Unwritten else if phase[t] == Parsed then Written else Evaluated
   map template_whole[t: Template] = single[t]
+  map template_textOnly[t: Template] = textOnly[t]
   map template_kind[t: Template] =
     if referenced[t] == Str then TextKind
     else if referenced[t] == Num then NumberKind
@@ -30,9 +31,10 @@ refinement EvaluateTemplateRefinesTemplateValues {
     else if form[t] == Json then AsJson
     else NoEmbedding
 
-  action parse(t, s, v) -> write(
+  action parse(t, s, x, v) -> write(
     t,
     s,
+    x,
     if v == Str then TextKind else if v == Num then NumberKind else if v == Bool then BooleanKind
       else if v == Null then NullKind else ObjectKind)
   action returnValue(t, r) -> evaluate(

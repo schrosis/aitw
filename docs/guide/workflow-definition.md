@@ -172,3 +172,32 @@ slow: failed: Script timed out after 2000 ms
 ## 環境変数
 
 script ステップは、ステップを実行するプロセスの環境変数を引き継ぎます。常駐プロセスで実行するときは、常駐プロセスを起動したときの環境変数です。
+
+ワークフローに渡したい値は、定義の `env` と `dotenv` で渡します。
+
+```yaml
+version: v0.1
+env:
+  STAGE: production
+dotenv: .env
+start: build
+steps:
+  build:
+    type: script
+    run: echo 1.2.0
+    outputs:
+      version: ${{ result.stdout }}
+    next: deploy
+  deploy:
+    type: script
+    env:
+      RELEASE: ${{ steps.build.outputs.version }}
+    run: echo "deploy $RELEASE to $STAGE"
+    next: end
+```
+
+- 一番上の `env` は、すべての script ステップの環境変数です
+- ステップの `env` は、そのステップだけの環境変数です。値には式を書けます
+- `dotenv` には、プロジェクトのルートからの相対パスで、dotenv のファイルを書きます
+
+同じ名前の環境変数は、`dotenv`、引き継いだ環境変数、一番上の `env`、ステップの `env` の順に、あとのものが使われます。

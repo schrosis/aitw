@@ -6,6 +6,8 @@ fsl 5
 // MODEL-PRJ-001: one project is modeled. Whether it has .ugoke and whether its Worker can start
 //                are given when a command registers it, and again when the resident process
 //                restarts.
+// MODEL-PRJ-003: the command that asks ends with 1 when the project is refused, as run-command.fsl
+//                and attach-cancel.fsl end a command whose server cannot be prepared.
 // MODEL-PRJ-002: whether a script of the project is running is given when the resident process
 //                is asked to stop.
 requirements DaemonProjects {
@@ -43,7 +45,7 @@ requirements DaemonProjects {
   event drop = Daemon drops Project (Asked -> Dropped)
     set listed = false
 
-  rule REQ-PRJ-002 ".ugoke のないプロジェクトは登録しない。Worker が起動できなくても登録は残し、次の登録で起動し直す" {
+  rule REQ-PRJ-002 ".ugoke のないプロジェクトは登録せず、登録を頼んだコマンドは 1 で終わる。Worker が起動できなくても登録は残し、次の登録で起動し直す" {
     allow Daemon refuses Project only when not hasUgoke and not listed
     allow Daemon registers Project only when hasUgoke and input serving == workerStarts
     RegisteredIsListed: always Project in Registered has listed

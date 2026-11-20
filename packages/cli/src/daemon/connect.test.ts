@@ -130,6 +130,9 @@ describe("connectDaemon", () => {
     await expect(
       connectDaemon("/project", "1.2.3", { cwd: "/", ...output }),
     ).resolves.toMatchObject({ pollingTaskQueue: "ugoke-host-hash" });
+    expect(output.written.stderr).toBe(
+      'ugoke daemon: runs ugoke 0.9.0, and this is ugoke 1.2.3, so it goes on with only the runs on its task queue, and this command runs its own Worker for other runs. Run "ugoke daemon stop" and start it again to use it\n',
+    );
     // It does not register the project, because the command does not hand new runs to it.
     expect(requests.map(({ url }) => url)).toEqual(["/status"]);
   });

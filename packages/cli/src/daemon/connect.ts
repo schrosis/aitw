@@ -37,6 +37,25 @@ export interface DaemonUse {
 const withoutDaemon = ({ detach = false }: DaemonUse): string =>
   detach ? "so it cannot run a detached run" : "so this command runs its own Worker";
 
+/**
+ * Says that the resident process has another version, and what the command does without it.
+ *
+ * @param pollingTaskQueue Task queue that the resident process still serves for the project, whose
+ *   runs go on there.
+ */
+const otherVersion = (
+  status: DaemonStatus,
+  version: string,
+  use: DaemonUse,
+  pollingTaskQueue: string | undefined,
+): string => {
+  const what =
+    pollingTaskQueue === undefined
+      ? withoutDaemon(use)
+      : `so it goes on with only the runs on its task queue, and ${use.detach === true ? "it cannot run a detached run" : "this command runs its own Worker for other runs"}`;
+  return `ugoke daemon: runs ugoke ${status.version}, and this is ugoke ${version}, ${what}. Run "ugoke daemon stop" and start it again to use it\n`;
+};
+
 /** The Temporal Server of the resident process, for a command. */
 export interface DaemonConnection {
   /** Temporal Server of the resident process. The command does not stop it. */
@@ -107,10 +126,9 @@ export const connectDaemon = async (
     stop: async () => {},
   };
   if (status.version !== version || status.workflowCodeVersion !== workflowCodeVersion) {
-    context.stderr(
-      `ugoke daemon: runs ugoke ${status.version}, and this is ugoke ${version}, ${withoutDaemon(use)}. Run "ugoke daemon stop" and start it again to use it\n`,
-    );
-    return { pollingTaskQueue: pollingQueue(status, root, status.address), server };
+    const pollingTaskQueue = pollingQueue(status, root, status.address);
+    context.stderr(otherVersion(status, version, use, pollingTaskQueue));
+    return { pollingTaskQueue, server };
   }
   return { project: await registerProject(paths, root), server };
 };
@@ -164,10 +182,9 @@ const daemonOn = async (
     return {};
   }
   if (status.version !== version || status.workflowCodeVersion !== workflowCodeVersion) {
-    context.stderr(
-      `ugoke daemon: runs ugoke ${status.version}, and this is ugoke ${version}, ${withoutDaemon(use)}. Run "ugoke daemon stop" and start it again to use it\n`,
-    );
-    return { pollingTaskQueue: pollingQueue(status, root, address) };
+    const pollingTaskQueue = pollingQueue(status, root, address);
+    context.stderr(otherVersion(status, version, use, pollingTaskQueue));
+    return { pollingTaskQueue };
   }
   const project = await registerProject(paths, root);
   // The resident process reads the configuration file again, which may have changed since.

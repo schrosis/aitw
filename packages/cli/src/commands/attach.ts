@@ -88,11 +88,6 @@ const findRoot = async (
 };
 
 /**
- * Selects a running run of the project, by its ID or by asking in the terminal.
- *
- * @param action What the command does with the run, such as `attach`, for messages.
- */
-/**
  * Returns the task queue whose runs the resident process runs, for a run on a task queue.
  *
  * A resident process of another ugoke version still serves the task queue of the project when it
@@ -105,6 +100,11 @@ const daemonQueueOf = (
 ): string | undefined =>
   servedTaskQueue ?? (taskQueue === pollingTaskQueue ? pollingTaskQueue : undefined);
 
+/**
+ * Selects a running run of the project, by its ID or by asking in the terminal.
+ *
+ * @param action What the command does with the run, such as `attach`, for messages.
+ */
 const selectRun = async (
   action: "cancel" | "attach",
   { address, root }: { address: string; root: string },

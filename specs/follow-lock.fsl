@@ -11,7 +11,9 @@ fsl 5
 //   end and releases the lock
 //
 // - when the resident process runs the steps of the run, no process that follows it runs them,
-//   and the run goes on in the resident process after every process detaches
+//   and the run goes on in the resident process after every process detaches. This holds also
+//   when the resident process has another ugoke version and the same workflow code version, because
+//   it still serves the task queue of the run (packages/cli/src/daemon/connect.ts, pollingQueue)
 //
 // It is checked against itself.
 spec FollowLock {

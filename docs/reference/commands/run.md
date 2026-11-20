@@ -34,6 +34,8 @@ ugoke run [options] <workflow>
 2. `.ugoke/config.yaml` に `temporal.address` があるときは、そのサーバー
 3. それ以外は、`ugoke daemon start` で起動した常駐プロセスのサーバー
 
+常駐プロセスのサーバーを使うときは、常駐プロセスがステップを実行します。常駐プロセスと ugoke のバージョンが違うときは、そのことを表示して、`ugoke run` が自分でステップを実行します。
+
 ## Temporal CLI
 
 `--dev` の一時的な Temporal Server と、常駐プロセスが起動する Temporal Server は、Temporal CLI で起動します。`--temporal-bin` を指定しないときは、ugoke が決めたバージョンの Temporal CLI を使います。

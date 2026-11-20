@@ -1,0 +1,127 @@
+fsl 5
+// Requirements for ugoke daemon start, stop, and status: how each ends, and that one resident
+// process runs on a host.
+// Source: docs/reference/commands/daemon.md
+//
+// MODEL-DMN-001: whether a resident process runs, whether its ugoke version and server options
+//                are the ones that start asks for, and whether it answers or stops within 60
+//                seconds are given when the command is typed.
+requirements DaemonCommand {
+  enum Verb { StartVerb, StopVerb, StatusVerb }
+  enum Exit { Pending, Zero, One }
+  actor User, Ugoke
+
+  entity DaemonCall {
+    verb: Verb = StartVerb
+    running: Bool = false
+    sameSettings: Bool = false
+    inTime: Bool = false
+    started: Bool = false
+    warned: Bool = false
+    exitCode: Exit = Pending
+    lifecycle Untyped -> Typed -> Done
+  }
+
+  event type = User types DaemonCall with verb, running, sameSettings, inTime (Untyped -> Typed)
+    covers REQ-DMN-001 "ugoke daemon は、常駐プロセスを起動、停止し、状態を表示する"
+  event launch = Ugoke launches DaemonCall (Typed -> Done)
+    set started = true, exitCode = Zero
+  event reuse = Ugoke reuses DaemonCall with warned (Typed -> Done)
+    set exitCode = Zero
+  event giveUp = Ugoke givesUp DaemonCall (Typed -> Done)
+    set exitCode = One
+  event stop = Ugoke stops DaemonCall (Typed -> Done)
+    set exitCode = Zero
+  event report = Ugoke reports DaemonCall with exitCode (Typed -> Done)
+
+  rule REQ-DMN-002 "常駐プロセスはホストに 1 つだけ。すでに動いていれば、start は新しく起動せずに 0 で終わり、バージョンやサーバーのオプションが違えばそのことを表示する" {
+    allow Ugoke launches DaemonCall only when verb == StartVerb and not running and inTime
+    allow Ugoke reuses DaemonCall only when verb == StartVerb and running and input warned == not sameSettings
+    NoSecondDaemon: always DaemonCall in Done has not (running and started)
+  }
+  rule REQ-DMN-003 "start は、60 秒たっても常駐プロセスが答えなければ、1 で終わる。stop は、60 秒たっても止まらなければ、1 で終わる" {
+    allow Ugoke givesUp DaemonCall only when not inTime and running == (verb == StopVerb) and verb != StatusVerb
+  }
+  rule REQ-DMN-004 "stop は、常駐プロセスを止めるか、動いていなければ、0 で終わる" {
+    allow Ugoke stops DaemonCall only when verb == StopVerb and (not running or inTime)
+  }
+  rule REQ-DMN-005 "status は、動いていれば 0、動いていなければ 1 で終わる" {
+    allow Ugoke reports DaemonCall only when verb == StatusVerb and input exitCode == (if running then Zero else One)
+    DoneHasExit: always DaemonCall in Done has exitCode != Pending
+  }
+
+  scenario AC-DMN-001 "動いていなければ、起動する" {
+    User types d1 with verb StartVerb, running false, sameSettings false, inTime true
+    Ugoke launches d1
+    then d1 is Done
+  }
+  scenario AC-DMN-002 "設定の違う常駐プロセスが動いていれば、そのことを表示して 0 で終わる" {
+    User types d1 with verb StartVerb, running true, sameSettings false, inTime true
+    Ugoke reuses d1 with warned true
+    then d1 is Done
+  }
+  scenario AC-DMN-003 "答えない常駐プロセスは、1 で終わる" {
+    User types d1 with verb StartVerb, running false, sameSettings false, inTime false
+    Ugoke givesUp d1
+    then d1 is Done
+  }
+  scenario AC-DMN-004 "動いていない常駐プロセスの stop は、0 で終わる" {
+    User types d1 with verb StopVerb, running false, sameSettings false, inTime false
+    Ugoke stops d1
+    then d1 is Done
+  }
+  scenario AC-DMN-005 "止まらない常駐プロセスの stop は、1 で終わる" {
+    User types d1 with verb StopVerb, running true, sameSettings false, inTime false
+    Ugoke givesUp d1
+    then d1 is Done
+  }
+  scenario AC-DMN-006 "動いていない常駐プロセスの status は、1 で終わる" {
+    User types d1 with verb StatusVerb, running false, sameSettings false, inTime false
+    Ugoke reports d1 with exitCode One
+    then d1 is Done
+  }
+
+  forbidden FB-DMN-001 "動いているのに、もう 1 つ起動しない" {
+    User types d1 with verb StartVerb, running true, sameSettings true, inTime true
+    Ugoke launches d1
+    then rejected
+  }
+  forbidden FB-DMN-002 "設定が違うのに、黙って使わない" {
+    User types d1 with verb StartVerb, running true, sameSettings false, inTime true
+    Ugoke reuses d1 with warned false
+    then rejected
+  }
+  forbidden FB-DMN-003 "設定が同じなのに、違うと表示しない" {
+    User types d1 with verb StartVerb, running true, sameSettings true, inTime true
+    Ugoke reuses d1 with warned true
+    then rejected
+  }
+  forbidden FB-DMN-004 "動いていない常駐プロセスの status を、0 にしない" {
+    User types d1 with verb StatusVerb, running false, sameSettings false, inTime false
+    Ugoke reports d1 with exitCode Zero
+    then rejected
+  }
+  forbidden FB-DMN-005 "動いている常駐プロセスの status を、1 にしない" {
+    User types d1 with verb StatusVerb, running true, sameSettings false, inTime true
+    Ugoke reports d1 with exitCode One
+    then rejected
+  }
+  forbidden FB-DMN-006 "止まらない常駐プロセスを、止めたことにしない" {
+    User types d1 with verb StopVerb, running true, sameSettings false, inTime false
+    Ugoke stops d1
+    then rejected
+  }
+  forbidden FB-DMN-007 "答えた常駐プロセスで、あきらめない" {
+    User types d1 with verb StartVerb, running false, sameSettings false, inTime true
+    Ugoke givesUp d1
+    then rejected
+  }
+  forbidden FB-DMN-008 "status で、起動しない" {
+    User types d1 with verb StatusVerb, running false, sameSettings false, inTime true
+    Ugoke launches d1
+    then rejected
+  }
+}
+verify {
+  instances DaemonCall = 1
+}

@@ -10,6 +10,8 @@
 | `start`   | はい | 最初に実行するステップの ID です                          |
 | `steps`   | はい | ステップの一覧です。キーがステップの ID、値がステップです |
 | `inputs`  | いいえ | ワークフローの入力の宣言です。[ワークフローの入力](#ワークフローの入力)を見てください |
+| `env`     | いいえ | すべての script ステップの環境変数です。名前と値の組で書きます。値の[式](#式)は、`workflow.inputs` だけを参照できます |
+| `dotenv`  | いいえ | script ステップが読む dotenv のファイルです。プロジェクトのルートからの相対パスで書きます |
 
 ## ステップの ID
 
@@ -44,6 +46,7 @@
 | `timeout` | いいえ | ステップの最大の実行時間です。既定は `30m` です           |
 | `inputs`  | いいえ | ステップが受け取る値です。名前と[式](#式)の組で書きます |
 | `outputs` | いいえ | ステップが出す値です。名前と[式](#式)の組で書きます     |
+| `env`     | いいえ | このステップの環境変数です。名前と値の組で書きます。値には[式](#式)を書けます |
 
 `timeout` は、正の整数に単位 `s`（秒）、`m`（分）、`h`（時間）を付けて書きます。たとえば `30s`、`5m`、`1h` です。
 
@@ -51,6 +54,9 @@
 
 - 作業ディレクトリは、プロジェクトのルートです
 - 環境変数は、ステップを実行するプロセスのものを引き継ぎます。常駐プロセスで実行するときは、常駐プロセスを起動したときのものです
+- `dotenv` のファイルは、スクリプトを実行するたびに読みます。その値は、実行の記録に残りません。`env` の値は、実行の記録に残ります
+- 同じ名前の環境変数は、`dotenv` のファイル、引き継いだ環境変数、ワークフローの `env`、ステップの `env` の順に、あとのものが使われます
+- 環境変数の名前は、英字か `_` で始め、英字、数字、`_` だけで書きます。値は、文字列、数、真偽値で書き、数や真偽値は文字列にします
 - 途中のコマンドが失敗すると、スクリプトが止まります。パイプラインの途中のコマンドと、`if`、`&&`、`||` の条件として書いたコマンドは除きます
 - 0 以外の終了ステータスで終わるか、`timeout` を過ぎると、ステップは失敗します
 - ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗します。失敗したステップは、やり直しません
@@ -92,16 +98,17 @@
 
 | 参照できる値                                                              | 使える場所                   |
 | ------------------------------------------------------------------------- | ---------------------------- |
-| 前に実行するステップの `outputs`（`steps.<ステップ>.outputs.<名前>`）     | `inputs`、`run`、`with`、`outputs`   |
-| ワークフローの入力（`workflow.inputs.<名前>`）                            | `inputs`、`run`、`with`、`outputs`   |
-| 自分の `inputs`（`inputs.<名前>`）                                        | `run`、`with`、`outputs`             |
+| 前に実行するステップの `outputs`（`steps.<ステップ>.outputs.<名前>`）     | `inputs`、`run`、`with`、ステップの `env`、`outputs`   |
+| ワークフローの入力（`workflow.inputs.<名前>`）                            | `inputs`、`run`、`with`、ステップの `env`、`outputs`、ワークフローの `env`   |
+| 自分の `inputs`（`inputs.<名前>`）                                        | `run`、`with`、ステップの `env`、`outputs`             |
 | スクリプトの結果（`result.exitCode`、`result.stdout`、`result.stderr`）   | script ステップの `outputs`                    |
 | 待機ステップの答え（`result.<名前>`）                                     | wait ステップの `outputs`                      |
 
 - 宣言していない値は参照できません。参照した値の中の項目（`steps.fetch.outputs.title.text` など）も参照できません
 - 式だけで書いた値は、参照した値の型のままです。ほかの文字と続けて書いた値は、文字列になります。そのとき、`null` は空の文字列に、オブジェクトと配列は JSON になります
+- `run` と `env` の値は、式だけで書いても、いつも文字列です。`null` とオブジェクトと配列は、ほかの文字と続けて書いたときと同じように文字列にします
 - `result.stdout` と `result.stderr` は、最後の改行を 1 つ取り除いた値です
-- ステップが受け取る値（`inputs` と、`run` と `outputs` が参照する値）と出す値は、それぞれ JSON で 512 KiB までです。受け取る値が超えるとスクリプトを実行せずに、出す値が超えると実行したあとに、ステップは失敗します
+- ステップが受け取る値（`inputs`、`run`、`env`、`outputs` が参照する値と、ワークフローの `env`）と出す値は、それぞれ JSON で 512 KiB までです。受け取る値が超えるとスクリプトを実行せずに、出す値が超えると実行したあとに、ステップは失敗します
 
 `ugoke validate` と `ugoke run` は、実行する前に式を確かめます。
 
@@ -150,6 +157,10 @@
 | `Must be a decimal number such as 1.5, without exponent notation` | `number` の `default` を、`1e3`、`0x10`、`.inf` のような、10 進数でない書き方で書いた |
 | `Unknown wait method: <method>. <案内>` | 使えない待ち方を書いた。案内は、使える待ち方の一覧などです |
 | `Step <step> does not declare the answer <name>` | 待ち方が宣言していない答えを参照している |
+| `Invalid input` | `env` の値が、文字列、数、真偽値ではない |
+| `Must start with a letter or _ and contain only letters, digits, or _` | 環境変数の名前が決まりに合わない |
+| `Must be a path relative to the project root`、`Must not leave the project root` | `dotenv` のパスが決まりに合わない |
+| `The environment of the workflow can reference only workflow.inputs.<name>` | ワークフローの `env` で、`workflow.inputs` 以外を参照している |
 | `Invalid expression: <式>. <理由>`、`Unterminated expression: <式>`                                         | 式の書き方が正しくない                                     |
 
 実行したときのエラー:
@@ -158,5 +169,6 @@
 | ------------------------------------- | ---------------------------------------- |
 | `Script exited with code <code>`      | スクリプトが 0 以外の終了ステータスで終わった |
 | `Script timed out after <ms> ms`      | スクリプトが `timeout` を過ぎた          |
+| `Failed to read the dotenv file <path>: <理由>` | `dotenv` のファイルを読めなかった。プロジェクトのルートの外を指しているときも、このエラーになる |
 | `The input ended before the answer was entered` | `terminal` で答える前に、ターミナルの入力が終わった |
 | `... bytes, which exceeds the limit of 524288 bytes` | ステップが受け取る値か出す値が、512 KiB を超えた |

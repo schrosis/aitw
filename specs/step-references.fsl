@@ -8,9 +8,10 @@ fsl 5
 // MODEL-REF-002: whether the step it names runs before comes from the transitions of the
 //                definition (workflow-transitions.fsl).
 // MODEL-REF-003: whether the reference is in a wait step is given when it is written. A wait step
-//                has with and no run, and a script step has run and no with.
+//                has with and no run, and a script step has run, env, and no with. env of the
+//                workflow belongs to no step, and is written with waitStep false.
 requirements StepReferences {
-  enum Place { InInputs, InRun, InWith, InOutputs }
+  enum Place { InInputs, InRun, InWith, InStepEnv, InOutputs, InWorkflowEnv }
   enum Root { StepOutput, WorkflowValue, OwnInput, ScriptResult, Answer, Unknown }
   actor Author, Ugoke
 
@@ -25,11 +26,13 @@ requirements StepReferences {
     lifecycle Written -> Rejected
   }
 
-  // A reference that the place may use: a step output and a workflow input from anywhere, an own
-  // input from run, with, and outputs, the script result from the outputs of a script step, and
-  // the answers from the outputs of a wait step.
+  // A reference that the place may use: a step output from anywhere but env of the workflow, a
+  // workflow input from anywhere, an own input from run, with, env of a step, and outputs, the
+  // script result from the outputs of a script step, and the answers from the outputs of a wait
+  // step.
   def placeAllows(p: Place, r: Root, w: Bool) =
-    r == StepOutput or r == WorkflowValue or (r == OwnInput and p != InInputs)
+    (r == StepOutput and p != InWorkflowEnv) or r == WorkflowValue
+      or (r == OwnInput and p != InInputs and p != InWorkflowEnv)
       or (r == ScriptResult and p == InOutputs and not w) or (r == Answer and p == InOutputs and w)
 
   def allowed(p: Place, r: Root, w: Bool, d: Bool, e: Bool, n: Bool) = placeAllows(p, r, w) and d and not n and (r != StepOutput or e)
@@ -39,10 +42,10 @@ requirements StepReferences {
   event accept = Ugoke accepts Reference (Written -> Accepted)
   event reject = Ugoke rejects Reference (Written -> Rejected)
 
-  rule REQ-REF-002 "どの式でも、前に実行するステップが宣言した outputs を参照できる" {
+  rule REQ-REF-002 "ワークフローの env を除くどの式でも、前に実行するステップが宣言した outputs を参照できる" {
     never Ugoke accepts Reference when root == StepOutput and not earlier
   }
-  rule REQ-REF-003 "inputs は自分の inputs を参照できない。run と outputs は自分の inputs を参照できる" {
+  rule REQ-REF-003 "inputs は自分の inputs を参照できない。run、with、ステップの env、outputs は自分の inputs を参照できる" {
     never Ugoke accepts Reference when root == OwnInput and place == InInputs
   }
   rule REQ-REF-004 "スクリプトの結果は、outputs だけが参照できる" {
@@ -57,8 +60,12 @@ requirements StepReferences {
   }
   rule REQ-REF-008 "wait ステップの outputs は、待ち方が宣言した答えを result.<名前> で参照できる。with は、run と同じ値を参照できる" {
     allow Author writes Reference only when (input place != InWith or input waitStep) and (input place != InRun or not input waitStep)
+      and (input place != InStepEnv or not input waitStep) and (input place != InWorkflowEnv or not input waitStep)
     never Ugoke accepts Reference when root == Answer and not waitStep
     never Ugoke accepts Reference when root == ScriptResult and waitStep
+  }
+  rule REQ-REF-009 "ステップの env は、run と同じ値を参照できる。ワークフローの env は、workflow.inputs だけを参照できる" {
+    never Ugoke accepts Reference when place == InWorkflowEnv and root != WorkflowValue
   }
   rule REQ-REF-006 "参照できる値は、受け付ける" {
     allow Ugoke accepts Reference only when allowed(place, root, waitStep, declared, earlier, nested)
@@ -123,6 +130,22 @@ requirements StepReferences {
     Author writes r1 with place InInputs, waitStep true, root StepOutput, declared true, earlier true, nested false
     Ugoke accepts r1
     then r1 is Accepted
+  }
+
+  scenario AC-REF-012 "ステップの env で、自分の inputs を参照する" {
+    Author writes r1 with place InStepEnv, waitStep false, root OwnInput, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then r1 is Accepted
+  }
+  scenario AC-REF-013 "ワークフローの env で、ワークフローの入力を参照する" {
+    Author writes r1 with place InWorkflowEnv, waitStep false, root WorkflowValue, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then r1 is Accepted
+  }
+  scenario AC-REF-014 "ワークフローの env では、ステップの outputs を参照できない" {
+    Author writes r1 with place InWorkflowEnv, waitStep false, root StepOutput, declared true, earlier true, nested false
+    Ugoke rejects r1
+    then r1 is Rejected
   }
 
   forbidden FB-REF-001 "あとに実行するステップの outputs を受け付けない" {
@@ -207,6 +230,20 @@ requirements StepReferences {
   }
   forbidden FB-REF-017 "script ステップに、with を書かない" {
     Author writes r1 with place InWith, waitStep false, root StepOutput, declared true, earlier true, nested false
+    then rejected
+  }
+  forbidden FB-REF-018 "ワークフローの env で、自分の inputs を受け付けない" {
+    Author writes r1 with place InWorkflowEnv, waitStep false, root OwnInput, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-019 "ステップの env で、前のステップの outputs を拒まない" {
+    Author writes r1 with place InStepEnv, waitStep false, root StepOutput, declared true, earlier true, nested false
+    Ugoke rejects r1
+    then rejected
+  }
+  forbidden FB-REF-020 "wait ステップに、env を書かない" {
+    Author writes r1 with place InStepEnv, waitStep true, root StepOutput, declared true, earlier true, nested false
     then rejected
   }
 }

@@ -5,7 +5,9 @@ fsl 5
 //
 // MODEL-DMN-001: whether a resident process runs, whether its ugoke version and server options
 //                are the ones that start asks for, and whether it answers or stops within 60
-//                seconds are given when the command is typed. So are whether the options of start
+//                seconds are given when the command is typed. A resident process that exits before
+//                it answers, such as when its development server cannot start, does not answer in
+//                time. So are whether the options of start
 //                go together, whether the path of the socket is short enough, and whether a
 //                resident process that was killed left its socket or development server.
 requirements DaemonCommand {

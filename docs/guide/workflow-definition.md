@@ -97,6 +97,39 @@ $ ugoke run deploy --input '{"env": "staging"}'
 
 ステップの式からは、`${{ workflow.inputs.env }}` のように参照します。宣言に合わない値を渡すと、実行せずに失敗します。宣言の書き方は、[リファレンスのワークフローの入力](../reference/workflow-definition.md#ワークフローの入力)を見てください。
 
+## 人の判断を待つ
+
+`type: wait` のステップは、人の答えを待ちます。`method: terminal` は、`ugoke run` のターミナルで聞きます。
+
+```yaml
+version: v0.1
+start: ask
+steps:
+  ask:
+    type: wait
+    method: terminal
+    with:
+      message: Deploy to production?
+      schema:
+        decision:
+          type: choice
+          options: [approve, reject]
+          required: true
+    outputs:
+      decision: ${{ result.decision }}
+    next: report
+  report:
+    type: script
+    run: echo "decision is ${{ steps.ask.outputs.decision }}"
+    next: end
+```
+
+- `ask` は `message` を表示して、`schema` で宣言した `decision` を聞きます。宣言の書き方は、ワークフローの入力と同じです
+- 答えは、`outputs` で `${{ result.decision }}` として受け取り、あとのステップに渡します
+- 宣言に合わない答えは受け付けず、もう一度聞きます
+
+`schema` を書かなければ、Enter を押すまで待ちます。詳しくは、[リファレンスの wait ステップ](../reference/workflow-definition.md#wait-ステップ)を見てください。
+
 ## 定義を確かめる
 
 `ugoke validate` で、定義を実行する前に確かめられます。

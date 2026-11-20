@@ -56,6 +56,34 @@
 - ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗します。失敗したステップは、やり直しません
 - `timeout` を過ぎると、スクリプトと、スクリプトが起動したプロセスに終了を求め、5 秒たっても残っていれば強制的に止めます
 
+## wait ステップ
+
+人の答えを待つステップです。
+
+| 項目      | 必須   | 内容                                                                    |
+| --------- | ------ | ----------------------------------------------------------------------- |
+| `type`    | はい   | `wait` です                                                             |
+| `method`  | はい   | 待ち方です。`terminal` を使えます                                       |
+| `with`    | 待ち方による | 待ち方のオプションです。文字列には[式](#式)を書けます             |
+| `next`    | はい   | 次に実行するステップの ID か、`end` です                                |
+| `inputs`  | いいえ | ステップが受け取る値です。名前と[式](#式)の組で書きます                 |
+| `outputs` | いいえ | ステップが出す値です。答えを `result.<名前>` で参照できます             |
+
+- 答えが来るまで待ちます。待つ時間の上限はありません
+- 答えは、待ち方が宣言した値です。宣言に合わない答えは受け付けず、もう一度聞きます
+- 必須でない値を答えなかったときは、`default` を使います。`default` もなければ `null` です
+
+### terminal
+
+`ugoke run` のターミナルで聞きます。
+
+| 項目      | 必須   | 内容                                                                                                               |
+| --------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
+| `message` | はい   | 聞く前に表示する文です                                                                                             |
+| `schema`  | いいえ | 聞く値の宣言です。書き方は[ワークフローの入力](#ワークフローの入力)と同じです。書かなければ、Enter を押すまで待ちます |
+
+答える前にターミナルの入力が終わると、ワークフローは失敗します。
+
 ## 式
 
 `${{ <参照> }}` の形で、ほかの値を参照します。参照は、`steps.fetch.outputs.title` のように `.` で区切った名前です。
@@ -64,10 +92,11 @@
 
 | 参照できる値                                                              | 使える場所                   |
 | ------------------------------------------------------------------------- | ---------------------------- |
-| 前に実行するステップの `outputs`（`steps.<ステップ>.outputs.<名前>`）     | `inputs`、`run`、`outputs`   |
-| ワークフローの入力（`workflow.inputs.<名前>`）                            | `inputs`、`run`、`outputs`   |
-| 自分の `inputs`（`inputs.<名前>`）                                        | `run`、`outputs`             |
-| スクリプトの結果（`result.exitCode`、`result.stdout`、`result.stderr`）   | `outputs`                    |
+| 前に実行するステップの `outputs`（`steps.<ステップ>.outputs.<名前>`）     | `inputs`、`run`、`with`、`outputs`   |
+| ワークフローの入力（`workflow.inputs.<名前>`）                            | `inputs`、`run`、`with`、`outputs`   |
+| 自分の `inputs`（`inputs.<名前>`）                                        | `run`、`with`、`outputs`             |
+| スクリプトの結果（`result.exitCode`、`result.stdout`、`result.stderr`）   | script ステップの `outputs`                    |
+| 待機ステップの答え（`result.<名前>`）                                     | wait ステップの `outputs`                      |
 
 - 宣言していない値は参照できません。参照した値の中の項目（`steps.fetch.outputs.title.text` など）も参照できません
 - 式だけで書いた値は、参照した値の型のままです。ほかの文字と続けて書いた値は、文字列になります。そのとき、`null` は空の文字列に、オブジェクトと配列は JSON になります
@@ -119,6 +148,8 @@
 | `Must be one of <options>` | `choice` の `default` が `options` にない |
 | `Invalid input: expected <型>, received <型>` | `default` が `type` に合わない |
 | `Must be a decimal number such as 1.5, without exponent notation` | `number` の `default` を、`1e3`、`0x10`、`.inf` のような、10 進数でない書き方で書いた |
+| `Unknown wait method: <method>. <案内>` | 使えない待ち方を書いた。案内は、使える待ち方の一覧などです |
+| `Step <step> does not declare the answer <name>` | 待ち方が宣言していない答えを参照している |
 | `Invalid expression: <式>. <理由>`、`Unterminated expression: <式>`                                         | 式の書き方が正しくない                                     |
 
 実行したときのエラー:
@@ -127,4 +158,5 @@
 | ------------------------------------- | ---------------------------------------- |
 | `Script exited with code <code>`      | スクリプトが 0 以外の終了ステータスで終わった |
 | `Script timed out after <ms> ms`      | スクリプトが `timeout` を過ぎた          |
+| `The input ended before the answer was entered` | `terminal` で答える前に、ターミナルの入力が終わった |
 | `... bytes, which exceeds the limit of 524288 bytes` | ステップが受け取る値か出す値が、512 KiB を超えた |

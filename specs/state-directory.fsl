@@ -5,7 +5,8 @@ fsl 5
 // Source: packages/cli/src/private-directory.ts. The docs do not describe the state directory.
 // It is $XDG_STATE_HOME/ugoke, or ~/.local/state/ugoke without XDG_STATE_HOME. The resident
 // process keeps its socket, lock, and log in daemon/ there, and its development server keeps its
-// runs in temporal.db there. The message of the error says what is wrong and how to fix it.
+// runs in temporal.db there. The key of the encryption is in encryption.key there
+// (encryption.fsl). The message of the error says what is wrong and how to fix it.
 //
 // MODEL-SDR-001: whether the system has owners and permissions, whether the directory exists, and,
 //                when it does, whether it is a directory, whether the user owns it, whether others

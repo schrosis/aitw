@@ -9,6 +9,10 @@ fsl 5
 //                such as -1 or 1.5, true, false, and null. || binds loosest, then &&, then == and
 //                !=, and then !. == and != compare two values, so a == b == c is an error. Which
 //                values it may reference is in step-references.fsl.
+// MODEL-CND-004: missing tells whether a reference is null because it goes through null, reads
+//                an output of a step that did not run, or reads an env.<name> that is not set.
+//                unreadable tells whether a reference cannot be read otherwise, such as a field of
+//                result.data that the result does not have.
 // MODEL-CND-002: one comparison or one operand is modeled when the condition is evaluated. The
 //                kinds of the two values that == or != compares, whether they are equal, and, for
 //                objects and arrays, whether they are the same value, which an equal content is
@@ -37,8 +41,10 @@ requirements Condition {
     sameValue: Bool = false
     missing: Bool = false
     sameObject: Bool = false
+    unreadable: Bool = false
     holds: Bool = false
     lifecycle Unread -> Read -> Compared
+    lifecycle Unread -> Broken
   }
 
   entity Operand {
@@ -52,9 +58,11 @@ requirements Condition {
   event accept = Ugoke accepts ConditionText (Written -> Accepted)
   event reject = Ugoke rejects ConditionText (Written -> Invalid)
 
-  event read = Worker reads Comparison with leftKind, rightKind, sameValue, missing, sameObject (Unread -> Read)
-    covers REQ-CND-003 "値は、型を変えずに比べる。前に動かなかったステップの値など、ない値は null"
+  event read = Worker reads Comparison with leftKind, rightKind, sameValue, missing, sameObject, unreadable (Unread -> Read)
+    covers REQ-CND-003 "値は、型を変えずに比べる。動かなかったステップの値など、null になる参照は null と等しい"
   event compare = Worker compares Comparison with holds (Read -> Compared)
+  event miss = Worker misses Comparison with unreadable (Unread -> Broken)
+    covers REQ-CND-006 "動かなかったステップの outputs、設定されていない env.<名前>、null を通る参照だけが null。ほかに読めない参照は、ステップを失敗させる"
 
   event take = Worker takes Operand with boolean (Untaken -> Taken)
     covers REQ-CND-004 "!、&&、|| の値と、条件の値は、true か false でなければならない。そうでなければ、ステップは失敗する"
@@ -68,7 +76,11 @@ requirements Condition {
   rule REQ-CND-005 "オブジェクトと配列は、中身では比べない。中身が同じでも、別の値どうしは等しくない" {
     allow Worker reads Comparison only when input leftKind != ObjectKind or input rightKind != ObjectKind or not input sameValue or input sameObject
   }
-  rule REQ-CND-003 "値は、型を変えずに比べる。前に動かなかったステップの値など、ない値は null" {
+  rule REQ-CND-006 "動かなかったステップの outputs、設定されていない env.<名前>、null を通る参照だけが null。ほかに読めない参照は、ステップを失敗させる" {
+    allow Worker reads Comparison only when not input unreadable
+    allow Worker misses Comparison only when input unreadable
+  }
+  rule REQ-CND-003 "値は、型を変えずに比べる。動かなかったステップの値など、null になる参照は null と等しい" {
     allow Worker reads Comparison only when not input missing or input leftKind == NullKind
     allow Worker compares Comparison only when input holds == (leftKind == rightKind and sameValue)
     HoldsOnlyForSameKind: always Comparison in Compared has holds == (leftKind == rightKind and sameValue)
@@ -89,12 +101,12 @@ requirements Condition {
     then c1 is Invalid
   }
   scenario AC-CND-003 "同じ型の同じ値は、等しい" {
-    Worker reads m1 with leftKind TextKind, rightKind TextKind, sameValue true, missing false, sameObject false
+    Worker reads m1 with leftKind TextKind, rightKind TextKind, sameValue true, missing false, sameObject false, unreadable false
     Worker compares m1 with holds true
     then m1 is Compared
   }
-  scenario AC-CND-004 "ない値は null と等しい" {
-    Worker reads m1 with leftKind NullKind, rightKind NullKind, sameValue true, missing true, sameObject false
+  scenario AC-CND-004 "動かなかったステップの値など、null になる参照は null と等しい" {
+    Worker reads m1 with leftKind NullKind, rightKind NullKind, sameValue true, missing true, sameObject false, unreadable false
     Worker compares m1 with holds true
     then m1 is Compared
   }
@@ -105,13 +117,21 @@ requirements Condition {
   }
 
   forbidden FB-CND-007 "中身が同じでも、別のオブジェクトを等しいことにしない" {
-    Worker reads m1 with leftKind ObjectKind, rightKind ObjectKind, sameValue true, missing false, sameObject false
+    Worker reads m1 with leftKind ObjectKind, rightKind ObjectKind, sameValue true, missing false, sameObject false, unreadable false
     then rejected
   }
   scenario AC-CND-006 "同じ値を参照したオブジェクトは、等しい" {
-    Worker reads m1 with leftKind ObjectKind, rightKind ObjectKind, sameValue true, missing false, sameObject true
+    Worker reads m1 with leftKind ObjectKind, rightKind ObjectKind, sameValue true, missing false, sameObject true, unreadable false
     Worker compares m1 with holds true
     then m1 is Compared
+  }
+  scenario AC-CND-007 "結果にない result.data の項目は、ステップを失敗させる" {
+    Worker misses m1 with unreadable true
+    then m1 is Broken
+  }
+  forbidden FB-CND-008 "読めない参照を、null として比べない" {
+    Worker reads m1 with leftKind NullKind, rightKind NullKind, sameValue true, missing true, sameObject false, unreadable true
+    then rejected
   }
   forbidden FB-CND-001 "書き方の正しくない条件を、受け付けない" {
     Author writes c1 with single true, wellWritten false
@@ -119,12 +139,12 @@ requirements Condition {
     then rejected
   }
   forbidden FB-CND-002 "型の違う値を、等しいことにしない" {
-    Worker reads m1 with leftKind NumberKind, rightKind TextKind, sameValue true, missing false, sameObject false
+    Worker reads m1 with leftKind NumberKind, rightKind TextKind, sameValue true, missing false, sameObject false, unreadable false
     Worker compares m1 with holds true
     then rejected
   }
   forbidden FB-CND-003 "ない値を、null 以外にしない" {
-    Worker reads m1 with leftKind TextKind, rightKind TextKind, sameValue true, missing true, sameObject false
+    Worker reads m1 with leftKind TextKind, rightKind TextKind, sameValue true, missing true, sameObject false, unreadable false
     then rejected
   }
   forbidden FB-CND-004 "真偽値でない値を、成り立つことにしない" {

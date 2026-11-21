@@ -192,7 +192,7 @@ steps:
       - to: end
   commit:
     type: script
-    run: git commit --all --message "Update files"
+    run: git add --all && git commit --message "Update files"
     next: end
 ```
 

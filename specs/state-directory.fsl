@@ -8,9 +8,9 @@ fsl 5
 // MODEL-SDR-001: whether the system has owners and permissions, whether the directory exists, and,
 //                when it does, whether it is a directory, whether the user owns it, whether others
 //                can use it, and whether others can replace an ancestor are given when a command
-//                opens it. An ancestor that root owns, or a sticky one such as /tmp, is safe. A
-//                directory that does not exist is created with 700, so it is a private directory
-//                of the user. Symbolic links in the ancestors are followed before the check, so
+//                opens it. An ancestor is safe when the user or root owns it, and others cannot
+//                write to it unless it is sticky, such as /tmp. A directory that does not exist is
+//                created with 700, so it is a private directory of the user. Symbolic links in the ancestors are followed before the check, so
 //                that what is checked is what is used.
 requirements StateDirectory {
   enum Exit { Pending, Zero, One }

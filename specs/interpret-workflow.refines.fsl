@@ -13,15 +13,15 @@ refinement InterpretWorkflowRefinesWorkflowRun {
     else if phase[d] == Aborted then Failed
     else if phase[d] == Withdrawn then Cancelled
     else Waiting
-  map run_remaining[d: Run] = if phase[d] == Idle or phase[d] == Aimed or phase[d] == Refused then 0 else remaining[d]
   map run_executed[d: Run] = executed[d]
 
   action fill(d, p, n, c) -> stutter
-  action aim(d, s, j0, j1, j2) -> stutter
+  action aim(d, s) -> stutter
   action refuse(d) -> stutter
-  action load(d) -> start(d, remaining[d])
-  action succeed(d) -> advance(d)
-  action succeedLast(d) -> complete(d)
+  action load(d) -> start(d)
+  action succeed(d, k) -> advance(d)
+  action exceed(d, k) -> fail(d)
+  action succeedLast(d, k) -> complete(d)
   action exitNonzero(d) -> fail(d)
   action timeOut(d) -> fail(d)
   action loseWorker(d) -> fail(d)

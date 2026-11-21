@@ -39,7 +39,7 @@ steps:
 
 この定義は、`build`、`test` の順に実行して終わります。`timeout` は、ステップの最大の実行時間です。書かなければ `30m` です。
 
-実行が必ず `end` で終わるように、`start` と `next` が指すステップは定義になければならず、どのステップも `start` からたどれて、`end` に着ける必要があります。このため、行き先を 1 つだけ書いた `next` では、輪を作れません。行き先を条件で分ける書き方は、「[条件で分ける](#条件で分ける)」で説明します。
+どのステップも、`start` からたどれて、`end` に着ける必要があります。行き先を条件で分ける書き方は「[条件で分ける](#条件で分ける)」で、繰り返す書き方は「[繰り返す](#繰り返す)」で説明します。
 
 ## ステップ間で値を渡す
 
@@ -203,6 +203,38 @@ steps:
 - いくつかのステップから、同じステップに進めます
 
 別の分岐にあって動かなかったステップの `outputs` を参照すると、その値は `null` です。条件の書き方は、[リファレンスの分岐](../reference/workflow-definition.md#分岐)にあります。
+
+## 繰り返す
+
+分岐の `to` に前のステップを書くと、そこに戻って繰り返します。
+
+```yaml
+version: v0.1
+start: poll
+steps:
+  poll:
+    type: script
+    run: sleep 10 && ./build-status.sh
+    outputs:
+      status: ${{ result.stdout }}
+    maxVisits: 3
+    next:
+      - if: ${{ outputs.status == 'running' }}
+        to: poll
+      - to: report
+  report:
+    type: script
+    env:
+      STATUS: ${{ steps.poll.outputs.status }}
+    run: echo "the build is $STATUS"
+    next: end
+```
+
+- `poll` は、ビルドがまだ `running` なら、もう一度確かめます
+- `maxVisits: 3` で、`poll` が動くのは 3 回までです。4 回目に進むと、動かさずにワークフローが失敗します
+- ループがあっても、どのステップからも `end` に着ける道が要ります
+
+何回目かの `outputs` の参照と、繰り返しの上限は、[リファレンスのループ](../reference/workflow-definition.md#ループ)にあります。
 
 ## 定義を確かめる
 

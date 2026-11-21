@@ -10,7 +10,6 @@ refinement ValidateTransitionsRefinesWorkflowTransitions {
     if phase[d] == Waiting then Draft
     else if phase[d] == Built then Written
     else if phase[d] == Valid then Accepted
-    else if phase[d] == Dropped then Discarded
     else Rejected
   map definition_p0[d: Definition] = p0[d]
   map definition_p1[d: Definition] = p1[d]
@@ -28,5 +27,4 @@ refinement ValidateTransitionsRefinesWorkflowTransitions {
   action build(d, s) -> write(d, s)
   action validateOk(d) -> accept(d)
   action validateFails(d) -> reject(d)
-  action discard(d) -> discard(d)
 }

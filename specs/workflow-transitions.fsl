@@ -11,10 +11,10 @@ fsl 5
 //                branch or next without branches, and alt, a branch with if. More branches go to
 //                these two in the same way. Which branch a run takes is in workflow-run.fsl, and
 //                the rules of the branches themselves are in branches.fsl.
-// MODEL-TRN-006: a definition with a loop, whose transitions go back to a step on their path,
-//                is outside this spec, and so is one that goes back to start. Loops are described
-//                with the loops of the definition. The author writes only definitions without
-//                loops, and the rules here decide which of them are accepted.
+// MODEL-TRN-006: a transition can go back to a step on its path, start included, which makes a
+//                loop. Every step must still have a path to end (REQ-TRN-003). How often a loop runs
+//                is in loops.fsl. A transition to start names the ID of the step, because start is
+//                a reserved word, and next: start names an unknown step.
 // MODEL-TRN-005: a step that the definition does not have goes to end, and the two targets of a
 //                step are written with the smaller one first (to <= alt). Neither changes which
 //                definitions the rules accept, and they keep the definitions few enough to check.
@@ -43,7 +43,6 @@ requirements WorkflowTransitions {
     filled: Count = 0
     lifecycle Draft -> Written -> Accepted
     lifecycle Written -> Rejected
-    lifecycle Draft -> Discarded
   }
 
   // A definition is the steps it has (p0 to p2), where each goes next (n0 to n2), and start.
@@ -102,18 +101,6 @@ requirements WorkflowTransitions {
   def allCanEnd(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node) =
     forall x: Node { has(p0, p1, p2, x) => canEnd(p0, p1, p2, n0, n1, n2, c0, c1, c2, x) }
 
-  // No path goes back to a step on it, which three steps show within three moves. Definitions with
-  // such a loop are outside these specs (MODEL-TRN-006 of workflow-transitions.fsl).
-  def acyclic(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node) =
-    forall x: Node {
-      has(p0, p1, p2, x) => not (
-        moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, x, x)
-          or (exists m: Node { moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, x, m) and moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, m, x) })
-          or (exists m: Node {
-            exists k: Node { moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, x, m) and moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, m, k) and moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, k, x) }
-          }))
-    }
-
   // Every rule of the transitions.
   def transitionsOk(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node, s: Node) =
     targetsKnown(p0, p1, p2, n0, n1, n2, c0, c1, c2, s) and allReachable(p0, p1, p2, n0, n1, n2, c0, c1, c2, s) and allCanEnd(p0, p1, p2, n0, n1, n2, c0, c1, c2)
@@ -138,17 +125,10 @@ requirements WorkflowTransitions {
 
   // MODEL-TRN-004: the author writes the steps one by one and then start, so that each event has
   // few inputs. One event with all of them would make every state try thousands of inputs.
-  // MODEL-TRN-006: a definition with a loop is outside this spec, so it is not written.
-  event discard = Author discards Definition (Draft -> Discarded)
-    covers REQ-TRN-009 "ループのある定義は、ここでは扱わない。ループの決まりで扱う"
-  rule REQ-TRN-009 "ループのある定義は、ここでは扱わない。ループの決まりで扱う" {
-    allow Author discards Definition only when filled == 3 and not acyclic(p0, p1, p2, n0, n1, n2, c0, c1, c2)
-  }
   rule REQ-DEF-011 "ワークフローは、YAML のファイルに定義する" {
     allow Author fills Definition only when filled < 3
       and input n <= input c and (input p or (input n == END and input c == END))
-    // MODEL-TRN-006: only definitions without loops are written.
-    allow Author writes Definition only when filled == 3 and acyclic(p0, p1, p2, n0, n1, n2, c0, c1, c2)
+    allow Author writes Definition only when filled == 3
   }
   rule REQ-TRN-001 "start と next が指すステップは、定義になければならない" {
     never Ugoke accepts Definition when not targetsKnown(p0, p1, p2, n0, n1, n2, c0, c1, c2, start)
@@ -249,6 +229,22 @@ requirements WorkflowTransitions {
     then d1 is Accepted
   }
 
+  scenario AC-TRN-011 "end に抜けられるループのある定義を受け付ける" {
+    Author fills d1 with p true, n 1, c 1
+    Author fills d1 with p true, n 2, c 2
+    Author fills d1 with p true, n 1, c 3
+    Author writes d1 with start 0
+    Ugoke accepts d1
+    then d1 is Accepted
+  }
+  scenario AC-TRN-012 "start に戻るループのある定義を受け付ける" {
+    Author fills d1 with p true, n 1, c 1
+    Author fills d1 with p true, n 0, c 3
+    Author fills d1 with p false, n 3, c 3
+    Author writes d1 with start 0
+    Ugoke accepts d1
+    then d1 is Accepted
+  }
   forbidden FB-TRN-001 "存在しないステップを指す定義を受け付けない" {
     Author fills d1 with p true, n 1, c 1
     Author fills d1 with p false, n 3, c 3
@@ -263,20 +259,6 @@ requirements WorkflowTransitions {
     Author fills d1 with p false, n 3, c 3
     Author writes d1 with start 0
     Ugoke accepts d1
-    then rejected
-  }
-  forbidden FB-TRN-016 "ループのない定義を、捨てない" {
-    Author fills d1 with p true, n 3, c 3
-    Author fills d1 with p false, n 3, c 3
-    Author fills d1 with p false, n 3, c 3
-    Author discards d1
-    then rejected
-  }
-  forbidden FB-TRN-017 "ループのある定義を、書かない" {
-    Author fills d1 with p true, n 1, c 1
-    Author fills d1 with p true, n 0, c 0
-    Author fills d1 with p false, n 3, c 3
-    Author writes d1 with start 0
     then rejected
   }
   forbidden FB-TRN-005 "決まりを満たす定義を断らない" {
@@ -331,6 +313,14 @@ requirements WorkflowTransitions {
     Author fills d1 with p true, n 3, c 3
     Author writes d1 with start 0
     Ugoke rejects d1
+    then rejected
+  }
+  forbidden FB-TRN-018 "end に抜けられないループのある定義を受け付けない" {
+    Author fills d1 with p true, n 1, c 1
+    Author fills d1 with p true, n 0, c 0
+    Author fills d1 with p false, n 3, c 3
+    Author writes d1 with start 0
+    Ugoke accepts d1
     then rejected
   }
 }

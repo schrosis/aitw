@@ -10,7 +10,7 @@ spec ValidateTransitions {
   const END = 3
   type Node = 0..3
   type Count = 0..4
-  enum TransitionPhase { Waiting, Built, Valid, Invalid, Dropped }
+  enum TransitionPhase { Waiting, Built, Valid, Invalid }
 
   state {
     phase: Map<Definition, TransitionPhase>,
@@ -100,18 +100,6 @@ spec ValidateTransitions {
   def allCanEnd(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node) =
     forall x: Node { has(p0, p1, p2, x) => canEnd(p0, p1, p2, n0, n1, n2, c0, c1, c2, x) }
 
-  // No path goes back to a step on it, which three steps show within three moves. Definitions with
-  // such a loop are outside these specs (MODEL-TRN-006 of workflow-transitions.fsl).
-  def acyclic(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node) =
-    forall x: Node {
-      has(p0, p1, p2, x) => not (
-        moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, x, x)
-          or (exists m: Node { moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, x, m) and moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, m, x) })
-          or (exists m: Node {
-            exists k: Node { moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, x, m) and moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, m, k) and moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, k, x) }
-          }))
-    }
-
   // Every rule of the transitions.
   def transitionsOk(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node, s: Node) =
     targetsKnown(p0, p1, p2, n0, n1, n2, c0, c1, c2, s) and allReachable(p0, p1, p2, n0, n1, n2, c0, c1, c2, s) and allCanEnd(p0, p1, p2, n0, n1, n2, c0, c1, c2)
@@ -139,20 +127,9 @@ spec ValidateTransitions {
   action build(d: Definition, s: Node) {
     requires phase[d] == Waiting
     requires filled[d] == 3
-    // MODEL-TRN-006 of workflow-transitions.fsl: only definitions without loops are modeled.
-    requires acyclic(p0[d], p1[d], p2[d], n0[d], n1[d], n2[d], c0[d], c1[d], c2[d])
     phase[d] = Built
     start[d] = s
     ok[d] = transitionsOk(p0[d], p1[d], p2[d], n0[d], n1[d], n2[d], c0[d], c1[d], c2[d], s)
-  }
-
-  // A definition with a loop is outside this spec (MODEL-TRN-006 of workflow-transitions.fsl).
-  @requirement("REQ-TRN-009", "ループのある定義は、ここでは扱わない。ループの決まりで扱う")
-  action discard(d: Definition) {
-    requires phase[d] == Waiting
-    requires filled[d] == 3
-    requires not acyclic(p0[d], p1[d], p2[d], n0[d], n1[d], n2[d], c0[d], c1[d], c2[d])
-    phase[d] = Dropped
   }
 
   @requirement("REQ-TRN-005", "つながりの決まりを満たす定義は受け付ける")
@@ -174,7 +151,7 @@ spec ValidateTransitions {
     forall d: Definition { phase[d] == Valid => ok[d] }
   }
 
-  terminal { forall d: Definition { phase[d] == Valid or phase[d] == Invalid or phase[d] == Dropped } }
+  terminal { forall d: Definition { phase[d] == Valid or phase[d] == Invalid } }
 }
 verify {
   instances Definition = 1

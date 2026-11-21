@@ -2,8 +2,8 @@ fsl 5
 // Design of ugoke run (packages/cli/src/commands/run.ts and packages/cli/src/follow.ts). It
 // starts a run of a checked definition and follows it. At Ctrl+C, it detaches at once when the
 // resident process runs the steps, and otherwise it stops its own Worker, which waits for the
-// running step, and detaches. A second Ctrl+C exits at once (packages/cli/src/program.ts). A run
-// that ugoke cancel cancels ends the command as cancelled.
+// running step, a script or an AI step, and detaches. A second Ctrl+C exits at once
+// (packages/cli/src/program.ts). A run that ugoke cancel cancels ends the command as cancelled.
 //
 // openCommandServer (packages/cli/src/daemon/connect.ts) chooses the server: the options of the
 // command, then temporal.address of the configuration file, then the server of the resident

@@ -7,14 +7,15 @@ fsl 5
 spec ValidateExpressions {
   entity Reference
   enum CheckPhase { Unchecked, Lexed, RootChecked, OrderChecked, NameChecked, RefsPassed, RefsFailed }
-  enum Site { AtInputs, AtRun, AtWith, AtStepEnv, AtOutputs, AtWorkflowEnv }
-  enum Target { ToStep, ToWorkflow, ToOwn, ToResult, ToAnswer, ToOther }
+  enum Site { AtInputs, AtRun, AtPrompt, AtWith, AtStepEnv, AtOutputs, AtWorkflowEnv }
+  enum StepKind { OfScript, OfWait, OfAi, OfWorkflow }
+  enum Target { ToStep, ToWorkflow, ToOwn, ToResult, ToAnswer, ToData, ToOther }
   enum Message { NoMessage, CanReferenceOnly, FieldOfValue, NotBefore, NotDeclared }
 
   state {
     phase: Map<Reference, CheckPhase>,
     site: Map<Reference, Site>,
-    inWait: Map<Reference, Bool>,
+    kind: Map<Reference, StepKind>,
     target: Map<Reference, Target>,
     declared: Map<Reference, Bool>,
     earlier: Map<Reference, Bool>,
@@ -26,7 +27,7 @@ spec ValidateExpressions {
     forall r: Reference {
       phase[r] = Unchecked
       site[r] = AtInputs
-      inWait[r] = false
+      kind[r] = OfScript
       target[r] = ToStep
       declared[r] = false
       earlier[r] = false
@@ -36,23 +37,29 @@ spec ValidateExpressions {
   }
 
   // The roots of each place: step outputs and workflow inputs everywhere but env of the workflow,
-  // which has only workflow inputs, own inputs in run, with, env of a step, and outputs, the script
-  // result in the outputs of a script step, and the answers in the outputs of a wait step.
-  def rootAllowed(s: Site, w: Bool, t: Target) =
+  // which has only workflow inputs, own inputs in every place of a step but inputs, and in the
+  // outputs, the result of the kind of the step: the script result, the answers, or result.data.
+  def rootAllowed(s: Site, k: StepKind, t: Target) =
     (t == ToStep and s != AtWorkflowEnv) or t == ToWorkflow
       or (t == ToOwn and s != AtInputs and s != AtWorkflowEnv)
-      or (t == ToResult and s == AtOutputs and not w) or (t == ToAnswer and s == AtOutputs and w)
+      or (t == ToResult and s == AtOutputs and k == OfScript)
+      or (t == ToAnswer and s == AtOutputs and k == OfWait)
+      or (t == ToData and s == AtOutputs and k == OfAi)
 
   @requirement("REQ-REF-001", "式は、${{ }} で囲んで、ほかの値を参照する")
-  action read(r: Reference, s: Site, w: Bool, t: Target, d: Bool, e: Bool, n: Bool) {
+  action read(r: Reference, s: Site, k: StepKind, t: Target, d: Bool, e: Bool, n: Bool) {
     requires phase[r] == Unchecked
-    // A wait step has with and no run, and a script step has run, env, and no with. env of the
-    // workflow belongs to no step.
-    requires (s != AtWith or w) and (s != AtRun or not w) and (s != AtStepEnv or not w)
-      and (s != AtWorkflowEnv or not w)
+    // A script step has run and env, a wait step has with, and an AI step has prompt, with, and
+    // env. env of the workflow belongs to no step.
+    requires (s != AtRun or k == OfScript) and (s != AtPrompt or k == OfAi)
+      and (s != AtWith or k == OfWait or k == OfAi) and (s != AtStepEnv or k == OfScript or k == OfAi)
+      and ((s == AtWorkflowEnv) == (k == OfWorkflow))
+    // checkAiResult checks the fields after result.data against the schema, and reports them as
+    // not declared.
+    requires t != ToData or not n
     phase[r] = Lexed
     site[r] = s
-    inWait[r] = w
+    kind[r] = k
     target[r] = t
     declared[r] = d
     earlier[r] = e
@@ -62,15 +69,15 @@ spec ValidateExpressions {
   @requirement("REQ-REF-004", "スクリプトの結果は、outputs だけが参照できる")
   action rootFails(r: Reference) {
     requires phase[r] == Lexed
-    requires not rootAllowed(site[r], inWait[r], target[r])
+    requires not rootAllowed(site[r], kind[r], target[r])
     phase[r] = RefsFailed
     message[r] = CanReferenceOnly
   }
 
-  @requirement("REQ-REF-003", "inputs は自分の inputs を参照できない。run、with、ステップの env、outputs は自分の inputs を参照できる")
+  @requirement("REQ-REF-003", "inputs は自分の inputs を参照できない。run、prompt、with、ステップの env、outputs は自分の inputs を参照できる")
   action rootPasses(r: Reference) {
     requires phase[r] == Lexed
-    requires rootAllowed(site[r], inWait[r], target[r])
+    requires rootAllowed(site[r], kind[r], target[r])
     phase[r] = RootChecked
   }
 

@@ -3,8 +3,8 @@ fsl 5
 // Source: docs/reference/workflow-definition.md
 //
 // MODEL-TPL-001: a template has one reference. Whether it is the whole template, whether it is
-//                written in run or env, and the kind of the value it names are given when it is
-//                written. Arrays count as objects.
+//                written in run, prompt, or env, and the kind of the value it names are given
+//                when it is written. Arrays count as objects.
 requirements TemplateValues {
   enum Kind { NoKind, TextKind, NumberKind, BooleanKind, NullKind, ObjectKind }
   enum Embedding { NoEmbedding, AsIs, AsEmpty, AsJson }
@@ -22,7 +22,7 @@ requirements TemplateValues {
   def embeddingOf(k: Kind) =
     if k == NullKind then AsEmpty else if k == ObjectKind then AsJson else AsIs
 
-  // run and env take only text, so a whole template there is embedded like a mixed one.
+  // run, prompt, and env take only text, so a whole template there is embedded like a mixed one.
   def keepsKind(w: Bool, t: Bool) = w and not t
   def correct(w: Bool, t: Bool, k: Kind, p: Kind, e: Embedding) =
     (keepsKind(w, t) and p == k and e == NoEmbedding)
@@ -38,7 +38,7 @@ requirements TemplateValues {
     MixedIsText: always Template in Evaluated has (keepsKind(whole, textOnly) or produced == TextKind)
     EmbeddedByKind: always Template in Evaluated has (if keepsKind(whole, textOnly) then embedding == NoEmbedding else embedding == embeddingOf(kind))
   }
-  rule REQ-TPL-003 "run と env の値は、式だけで書いても、いつも文字列。null は空の文字列に、オブジェクトと配列は JSON になる" {
+  rule REQ-TPL-003 "run、prompt、env の値は、式だけで書いても、いつも文字列。null は空の文字列に、オブジェクトと配列は JSON になる" {
     TextOnlyIsText: always Template in Evaluated has (not textOnly or produced == TextKind)
   }
 

@@ -6,8 +6,8 @@ fsl 5
 // MODEL-PRJ-001: one project is modeled. Whether it has .ugoke and whether its Worker can start
 //                are given when a command registers it, and again when the resident process
 //                restarts.
-// MODEL-PRJ-002: whether a script of the project is running is given when the resident process
-//                is asked to stop.
+// MODEL-PRJ-002: whether a script or an AI step of the project is running is given when the
+//                resident process is asked to stop. scriptRunning stands for both.
 // MODEL-PRJ-003: the command that asks ends with 1 when the project is refused, as run-command.fsl
 //                and attach-cancel.fsl end a command whose server cannot be prepared.
 // MODEL-PRJ-004: the resident process stops in the same way when it receives SIGTERM or SIGINT,
@@ -44,10 +44,10 @@ requirements DaemonProjects {
   event register = Daemon registers Project with serving, commandFails (Asked -> Registered)
     set listed = true
   event stop = User stops Project with scriptRunning (Registered -> Stopping)
-    covers REQ-PRJ-004 "常駐プロセスは、止めるときに、実行中のスクリプトが終わるのを待つ"
+    covers REQ-PRJ-004 "常駐プロセスは、止めるときに、実行中のスクリプトや AI ステップが終わるのを待つ"
   event finishScript = Daemon finishesScript Project (Stopping -> Stopping)
     set scriptRunning = false
-    covers REQ-PRJ-004 "常駐プロセスは、止めるときに、実行中のスクリプトが終わるのを待つ"
+    covers REQ-PRJ-004 "常駐プロセスは、止めるときに、実行中のスクリプトや AI ステップが終わるのを待つ"
   event halt = Daemon halts Project (Stopping -> Stopped)
     set serving = false
   event restore = User restores Project with hasUgoke, workerStarts (Stopped -> Asked)
@@ -67,7 +67,7 @@ requirements DaemonProjects {
     allow Daemon drops Project only when restarting and listed and not hasUgoke
     DroppedIsNotListed: always Project in Dropped has not listed
   }
-  rule REQ-PRJ-004 "常駐プロセスは、止めるときに、実行中のスクリプトが終わるのを待つ" {
+  rule REQ-PRJ-004 "常駐プロセスは、止めるときに、実行中のスクリプトや AI ステップが終わるのを待つ" {
     allow Daemon halts Project only when not scriptRunning
     allow Daemon finishesScript Project only when scriptRunning
     StoppedRunsNoScript: always Project in Stopped has not scriptRunning
@@ -90,7 +90,7 @@ requirements DaemonProjects {
     Daemon registers p1 with serving true, commandFails false
     then p1 is Registered
   }
-  scenario AC-PRJ-004 "止めるときは、実行中のスクリプトが終わるのを待つ" {
+  scenario AC-PRJ-004 "止めるときは、実行中のスクリプトや AI ステップが終わるのを待つ" {
     User asks p1 with hasUgoke true, workerStarts true
     Daemon registers p1 with serving true, commandFails false
     User stops p1 with scriptRunning true
@@ -127,7 +127,7 @@ requirements DaemonProjects {
     Daemon registers p1 with serving true, commandFails false
     then rejected
   }
-  forbidden FB-PRJ-003 "実行中のスクリプトを待たずに、止めない" {
+  forbidden FB-PRJ-003 "実行中のスクリプトや AI ステップを待たずに、止めない" {
     User asks p1 with hasUgoke true, workerStarts true
     Daemon registers p1 with serving true, commandFails false
     User stops p1 with scriptRunning true

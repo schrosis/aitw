@@ -3,10 +3,12 @@ fsl 5
 // Source: docs/reference/workflow-definition.md ("実行", "ステップのつながり").
 //
 // MODEL-RUN-001: a run is described by the steps it has left before end, which the run of an
-//                accepted definition knows when it starts. workflow-transitions.fsl decides
-//                which definitions are accepted, and workflow-pipeline.fsl checks that their runs
-//                have one to three steps before end.
-// MODEL-RUN-002: whether a script succeeds is not decided by ugoke, so a failure is a fault event.
+//                accepted definition knows when it starts. workflow-transitions.fsl and the
+//                checks that validate-command.fsl names decide which definitions are accepted,
+//                and workflow-pipeline.fsl checks that their runs have one to three steps before
+//                end.
+// MODEL-RUN-002: whether a script or an AI step succeeds is not decided by ugoke, so a failure is
+//                a fault event.
 requirements WorkflowRun {
   number Count
   actor Ugoke, Script, User

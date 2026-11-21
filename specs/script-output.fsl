@@ -4,6 +4,8 @@ fsl 5
 //
 // MODEL-OUT-001: each piece of output is shown as it arrives, so one piece stands for what the
 //                script wrote at one time.
+// MODEL-OUT-002: what the AI of an AI step says and does is output of the step on standard
+//                output, so it is shown in the same way as output of a script.
 requirements ScriptOutput {
   enum Stream { NoStream, Stdout, Stderr }
   actor Ugoke

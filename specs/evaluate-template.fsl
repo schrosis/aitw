@@ -2,9 +2,9 @@ fsl 5
 // Design of the evaluation of a template. evaluateTemplate
 // (packages/core/src/expression/evaluate.ts) returns the value of a template that is one
 // expression with only whitespace around it, and otherwise joins the parts with embedValue, which
-// keeps a string, writes null as nothing, and writes an object or an array as JSON. run and env
-// take only text, so the activities embed their value with embedValue also when the template is
-// one expression (packages/engine/src/activities/index.ts).
+// keeps a string, writes null as nothing, and writes an object or an array as JSON. run, prompt,
+// and env take only text, so the activities embed their value with embedValue also when the
+// template is one expression (packages/engine/src/activities/index.ts).
 //
 // It refines the requirements of template-values.fsl.
 spec EvaluateTemplate {

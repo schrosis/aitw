@@ -96,7 +96,7 @@ compose WorkflowPipeline {
   // A definition whose transitions are valid has its references checked next.
   @requirement("REQ-TRN-005", "つながりの決まりを満たす定義は受け付ける")
   fair action checkReferences(d: parse.Definition, e: Bool) =
-    links.validateOk(d) || refs.read(d, AtInputs, false, ToStep, true, e, false) {
+    links.validateOk(d) || refs.read(d, AtInputs, OfScript, ToStep, true, e, false) {
   }
 
   @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")

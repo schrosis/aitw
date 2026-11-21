@@ -4,8 +4,8 @@ fsl 5
 //
 // - it validates the representation again, and refuses one that is not valid (InvalidIntermediate)
 // - it runs the steps from start along next, one Activity at a time
-// - a step whose script exits with a nonzero status or passes its timeout fails, and the
-//   Activity is not retried (maximumAttempts: 1), so the run fails there
+// - a step whose script exits with a nonzero status, whose AI fails, or that passes its timeout
+//   fails, and the Activity is not retried (maximumAttempts: 1), so the run fails there
 //
 // It refines the run requirements of workflow-run.fsl.
 spec InterpretWorkflow {

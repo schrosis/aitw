@@ -10,8 +10,8 @@
 | `start`   | はい | 最初に実行するステップの ID です                          |
 | `steps`   | はい | ステップの一覧です。キーがステップの ID、値がステップです |
 | `inputs`  | いいえ | ワークフローの入力の宣言です。[ワークフローの入力](#ワークフローの入力)を見てください |
-| `env`     | いいえ | すべての script ステップの環境変数です。名前と値の組で書きます。値の[式](#式)は、`workflow.inputs` だけを参照できます |
-| `dotenv`  | いいえ | script ステップが読む dotenv のファイルです。プロジェクトのルートからの相対パスで書きます |
+| `env`     | いいえ | すべての script ステップと ai ステップの環境変数です。名前と値の組で書きます。値の[式](#式)は、`workflow.inputs` だけを参照できます |
+| `dotenv`  | いいえ | script ステップと ai ステップが読む dotenv のファイルです。プロジェクトのルートからの相対パスで書きます |
 
 ## ステップの ID
 
@@ -90,6 +90,40 @@
 
 答える前にターミナルの入力が終わると、ワークフローは失敗します。
 
+## ai ステップ
+
+AI に指示を実行させるステップです。AI は、プラグインが足すプロバイダーが動かします。
+
+| 項目       | 必須   | 内容                                                                                       |
+| ---------- | ------ | ------------------------------------------------------------------------------------------ |
+| `type`     | はい   | `ai` です                                                                                  |
+| `provider` | はい   | AI を動かすプロバイダーの名前です                                                          |
+| `prompt`   | はい   | AI への指示です。[式](#式)を書けます                                                       |
+| `model`    | いいえ | 使うモデルです。プロバイダーにそのまま渡します。書かなければ、プロバイダーが選びます       |
+| `schema`   | いいえ | 結果の JSON Schema です。書かなければ、結果はテキストです                                  |
+| `session`  | いいえ | `reuse` か `new` です。既定は `reuse` です                                                 |
+| `with`     | プロバイダーによる | プロバイダーのオプションです。文字列には[式](#式)を書けます                  |
+| `next`     | はい   | 次に実行するステップの ID か、`end` です                                                   |
+| `timeout`  | いいえ | ステップの最大の実行時間です。既定は `30m` です。書き方は script ステップと同じです        |
+| `inputs`   | いいえ | ステップが受け取る値です。名前と[式](#式)の組で書きます                                    |
+| `outputs`  | いいえ | ステップが出す値です。AI の結果を `result.data` で参照できます                             |
+| `env`      | いいえ | このステップの環境変数です。名前と値の組で書きます。値には[式](#式)を書けます              |
+
+- 作業ディレクトリは、プロジェクトのルートです
+- 環境変数は、script ステップと同じように、ワークフローの `env`、ステップの `env`、`dotenv` のファイルを渡します
+- AI が言ったことやしたことを、ステップの出力として表示します
+- `schema` を書くと、結果は `schema` に合う値です。`outputs` では、`result.data.<名前>` のように中の項目も参照できます
+- 同じ実行の中でステップがもう一度動くとき、`session` が `reuse` なら前のセッションを続け、`new` なら新しく始めます
+- `timeout` を過ぎると、ステップは失敗します。失敗した ai ステップは、やり直しません。ファイルを変えたあとに失敗したかもしれないためです
+- `outputs` が参照した `result.data` の項目が AI の結果になければ、AI を動かしたあとにステップは失敗します
+- 知らないプロバイダーと、プロバイダーの決まりに合わない `with` は、定義のエラーです。`with` の式を評価した値が決まりに合わないときは、AI を動かさずにステップが失敗します
+
+`result.data` の中の項目は、`schema` の `properties` に書いた名前だけを参照できます。ただし、次の `schema` では、ほかの名前も参照できます。
+
+- `additionalProperties` を `false` 以外で書いた
+- `$ref`、`allOf`、`anyOf`、`oneOf`、`if`、`patternProperties`、`dependentSchemas`、`unevaluatedProperties` のどれかを書いた
+- `properties` を書いていない
+
 ## 式
 
 `${{ <参照> }}` の形で、ほかの値を参照します。参照は、`steps.fetch.outputs.title` のように `.` で区切った名前です。
@@ -98,17 +132,18 @@
 
 | 参照できる値                                                              | 使える場所                   |
 | ------------------------------------------------------------------------- | ---------------------------- |
-| 前に実行するステップの `outputs`（`steps.<ステップ>.outputs.<名前>`）     | `inputs`、`run`、`with`、ステップの `env`、`outputs`   |
-| ワークフローの入力（`workflow.inputs.<名前>`）                            | `inputs`、`run`、`with`、ステップの `env`、`outputs`、ワークフローの `env`   |
-| 自分の `inputs`（`inputs.<名前>`）                                        | `run`、`with`、ステップの `env`、`outputs`             |
+| 前に実行するステップの `outputs`（`steps.<ステップ>.outputs.<名前>`）     | `inputs`、`run`、`prompt`、`with`、ステップの `env`、`outputs`   |
+| ワークフローの入力（`workflow.inputs.<名前>`）                            | `inputs`、`run`、`prompt`、`with`、ステップの `env`、`outputs`、ワークフローの `env`   |
+| 自分の `inputs`（`inputs.<名前>`）                                        | `run`、`prompt`、`with`、ステップの `env`、`outputs`             |
 | スクリプトの結果（`result.exitCode`、`result.stdout`、`result.stderr`）   | script ステップの `outputs`                    |
 | 待機ステップの答え（`result.<名前>`）                                     | wait ステップの `outputs`                      |
+| AI の結果（`result.data`）                                                | ai ステップの `outputs`                        |
 
-- 宣言していない値は参照できません。参照した値の中の項目（`steps.fetch.outputs.title.text` など）も参照できません
+- 宣言していない値は参照できません。参照した値の中の項目（`steps.fetch.outputs.title.text` など）も参照できません。`result.data` の中の項目は、[ai ステップ](#ai-ステップ)の `schema` で決まります
 - 式だけで書いた値は、参照した値の型のままです。ほかの文字と続けて書いた値は、文字列になります。そのとき、`null` は空の文字列に、オブジェクトと配列は JSON になります
-- `run` と `env` の値は、式だけで書いても、いつも文字列です。`null` とオブジェクトと配列は、ほかの文字と続けて書いたときと同じように文字列にします
+- `run`、`prompt`、`env` の値は、式だけで書いても、いつも文字列です。`null` とオブジェクトと配列は、ほかの文字と続けて書いたときと同じように文字列にします
 - `result.stdout` と `result.stderr` は、最後の改行を 1 つ取り除いた値です
-- ステップが受け取る値（`inputs`、`run`、`env`、`outputs` が参照する値と、ワークフローの `env`）と出す値は、それぞれ JSON で 512 KiB までです。受け取る値が超えるとスクリプトを実行せずに、出す値が超えると実行したあとに、ステップは失敗します
+- ステップが受け取る値（`inputs`、`run`、`prompt`、`env`、`outputs` が参照する値と、ワークフローの `env`、ai ステップの `with`）と出す値は、それぞれ JSON で 512 KiB までです。受け取る値が超えるとスクリプトや AI を動かさずに、出す値が超えると動かしたあとに、ステップは失敗します
 
 `ugoke validate` と `ugoke run` は、実行する前に式を確かめます。
 
@@ -157,6 +192,9 @@
 | `Must be a decimal number such as 1.5, without exponent notation` | `number` の `default` を、`1e3`、`0x10`、`.inf` のような、10 進数でない書き方で書いた |
 | `Unknown wait method: <method>. <案内>` | 使えない待ち方を書いた。案内は、使える待ち方の一覧などです |
 | `Step <step> does not declare the answer <name>` | 待ち方が宣言していない答えを参照している |
+| `Unknown AI provider: <provider>. <案内>` | 使えないプロバイダーを書いた。案内は、使えるプロバイダーの一覧などです |
+| `Step <step> has no schema, so result.data is text` | `schema` のない ai ステップで、`result.data` の中の項目を参照している |
+| `The schema of step <step> does not declare the property <name>` | `schema` の `properties` にない項目を参照している |
 | `Invalid input` | `env` の値が、文字列、数、真偽値ではない |
 | `Must start with a letter or _ and contain only letters, digits, or _` | 環境変数の名前が決まりに合わない |
 | `Must be a path relative to the project root`、`Must not leave the project root` | `dotenv` のパスが決まりに合わない |
@@ -169,6 +207,9 @@
 | ------------------------------------- | ---------------------------------------- |
 | `Script exited with code <code>`      | スクリプトが 0 以外の終了ステータスで終わった |
 | `Script timed out after <ms> ms`      | スクリプトが `timeout` を過ぎた          |
+| `AI step timed out after <ms> ms`     | ai ステップが `timeout` を過ぎた         |
+| `outputs.<name>: Unknown reference: <式>` | `outputs` が参照した `result.data` の項目が、AI の結果になかった |
+| `Invalid options of AI provider <provider>: <理由>` | `with` の式を評価した値が、プロバイダーの決まりに合わない |
 | `Failed to read the dotenv file <path>: <理由>` | `dotenv` のファイルを読めなかった。プロジェクトのルートの外を指しているときも、このエラーになる |
 | `The input ended before the answer was entered` | `terminal` で答える前に、ターミナルの入力が終わった |
 | `... bytes, which exceeds the limit of 524288 bytes` | ステップが受け取る値か出す値が、512 KiB を超えた |

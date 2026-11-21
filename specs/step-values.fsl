@@ -7,8 +7,9 @@ fsl 5
 //                newlines end the standard output of its script, are given when the step is
 //                written. More than two newlines behave as two.
 // MODEL-SVL-002: the values that the step receives are its inputs together with the values of
-//                earlier steps and of the workflow input that its run, env, and outputs reference,
-//                and env of the workflow.
+//                earlier steps and of the workflow input that its run, prompt, env, and outputs
+//                reference, and env of the workflow. For an AI step, they also include the
+//                options of with after their expressions are evaluated.
 requirements StepValues {
   type Newlines = 0..2
   actor Author, Worker

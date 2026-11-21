@@ -159,13 +159,17 @@ steps:
     next: report
   report:
     type: script
-    run: echo "${{ steps.review.outputs.verdict }} - ${{ steps.review.outputs.summary }}"
+    env:
+      VERDICT: ${{ steps.review.outputs.verdict }}
+      SUMMARY: ${{ steps.review.outputs.summary }}
+    run: echo "$VERDICT - $SUMMARY"
     next: end
 ```
 
 - `review` は、プロジェクトのルートで Claude Code を動かします。`with` の `allowedTools` で、AI に使わせるツールを決めます
 - `schema` で結果の形を決めると、`outputs` で `${{ result.data.verdict }}` のように中の項目を受け取れます。`schema` を書かなければ、結果は AI の返事のテキストで、`${{ result.data }}` で受け取ります
 - AI が言ったことやしたことは、ステップの出力として表示します
+- AI の結果は、`run` に式で直接書かずに、`env` で渡します。`run` の式はそのままコマンドに入るため、AI が書いた文に `$(...)` などがあると、コマンドとして実行されてしまいます
 
 項目の一覧は、[リファレンスの ai ステップ](../reference/workflow-definition.md#ai-ステップ)と「[claude-code](../reference/providers/claude-code.md)」にあります。
 

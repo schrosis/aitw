@@ -29,18 +29,19 @@ requirements WorkflowRun {
   event complete = Ugoke completes Run (Running -> Completed)
     set executed = executed + 1
     covers REQ-TRN-007 "行き先が end のステップが成功すると、ワークフローが終わる"
+  // A run that has failed, been cancelled, or completed has no event, so a failed step does not
+  // run again (FB-RUN-001).
   fault event fail = Script fails Run (Running -> Failed)
     set executed = executed + 1
     covers REQ-RUN-001 "ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する"
+    covers REQ-RUN-002 "失敗したステップは、やり直さない"
   event cancel = User cancels Run (Running -> Cancelled)
     set executed = executed + 1
     covers REQ-RUN-006 "取り消すと、ワークフローはそれ以降のステップを実行しない"
 
-  // A run that has failed, been cancelled, or completed has no event, so it runs no more steps.
-  rule REQ-RUN-002 "失敗したステップは、やり直さない" {
-    // MODEL-RUN-003.
+  // MODEL-RUN-003: the bound of six steps stands for maxVisits and the history limit.
+  rule REQ-TRN-004 "受け付けた定義は、実行すると必ず終わる。ループは maxVisits か履歴の上限で止まる" {
     allow Ugoke advances Run only when executed < 6
-    EndedRanAStep: always Run in Failed, Completed, Cancelled has executed >= 1
   }
 
   scenario AC-RUN-001 "ステップが全部成功すると、end で終わる" {

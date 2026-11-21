@@ -6,7 +6,10 @@ fsl 5
 // MODEL-REF-001: one reference is checked at a time. Where it is written, what it names, and
 //                whether the named value is declared are given when it is written.
 // MODEL-REF-002: whether the step it names runs before comes from the transitions of the
-//                definition (workflow-transitions.fsl).
+//                definition (workflow-transitions.fsl). A step later in a loop, or on another
+//                branch, can run before, and reads as null until it has run. A reference to
+//                steps.<id>.visits[n].outputs.<name>, where n is a whole number, is a step output
+//                in the same way (loops.fsl).
 // MODEL-REF-003: the kind of the step that has the reference is given when it is written. A
 //                script step has run and env, a wait step has with, and an AI step has prompt,
 //                with, and env. env of the workflow belongs to no step.

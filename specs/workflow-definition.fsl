@@ -3,6 +3,7 @@ fsl 5
 // The shape is a necessary condition: a definition that fails here is rejected, and one that
 // passes goes on to the checks of workflow-transitions.fsl, branches.fsl, condition.fsl,
 // step-references.fsl, wait-step.fsl, ai-step.fsl, and ai-result.fsl, which accept or reject it.
+// How often a step of a loop runs is in loops.fsl.
 // Source: docs/reference/workflow-definition.md
 //
 // MODEL-DEF-001: a definition is modelled by the problems it has, not by its text.
@@ -12,7 +13,8 @@ fsl 5
 //                such as run of a script step, or provider and prompt of an AI step. An empty
 //                provider, model, or prompt, and a session other than reuse or new, are shape
 //                problems of the same kind, and so is a next that is neither the name of a step
-//                nor a list of branches with if and to.
+//                nor a list of branches with if and to, and a maxVisits that is not a positive
+//                whole number.
 requirements WorkflowDefinition {
   actor Author, Ugoke
 

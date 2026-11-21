@@ -1,9 +1,9 @@
 import { PassThrough, Readable } from "node:stream";
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { CommandContext } from "./commands/load.ts";
-import { createTerminal, followRun, fromAiNeedsDurableServer } from "./follow.ts";
+import { createTerminal, followRun } from "./follow.ts";
 import type { OpenedServer } from "./server.ts";
 import { fixtureProject } from "./testing.ts";
 
@@ -64,13 +64,8 @@ describe("createTerminal", () => {
   });
 });
 
-/** A server that the command connected to, which keeps its runs or not. */
-const server = (durable: boolean): OpenedServer => ({
-  address: "127.0.0.1:7233",
-  durable,
-  options: durable ? " --dev --dev-db state.db" : " --dev",
-  stop: async () => {},
-});
+/** A server that the command connected to. */
+const server: OpenedServer = { address: "127.0.0.1:7233", options: " --address 127.0.0.1:7233" };
 
 describe("followRun", () => {
   it("prepares the engine right before it follows the run", async () => {
@@ -85,39 +80,12 @@ describe("followRun", () => {
         name: "run-success",
         prepareEngine: () => calls.push("prepareEngine"),
         root: fixtureProject,
-        server: server(true),
+        server,
       },
       createContext(Readable.from([])),
     );
 
     expect(exitCode).toBe(0);
     expect(calls).toEqual(["prepareEngine", "follow"]);
-  });
-
-  // An installed runtime would keep the process alive, because no Worker shuts it down.
-  it("does not prepare the engine when --from-ai cannot follow on the server", async () => {
-    const prepareEngine = vi.fn();
-    const follow = vi.fn();
-    const context = createContext(Readable.from([]));
-    const exitCode = await followRun(
-      {
-        follow,
-        fromAi: true,
-        interrupt: new AbortController().signal,
-        name: "run-success",
-        prepareEngine,
-        root: fixtureProject,
-        server: server(false),
-      },
-      context,
-    );
-
-    expect(exitCode).toBe(1);
-    expect(JSON.parse(context.written())).toEqual({
-      message: fromAiNeedsDurableServer,
-      type: "failed",
-    });
-    expect(prepareEngine).not.toHaveBeenCalled();
-    expect(follow).not.toHaveBeenCalled();
   });
 });

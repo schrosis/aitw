@@ -251,9 +251,9 @@ hello: valid
 .ugoke/workflows/hello.yaml:7:11 steps.first.next: Unknown step: missing
 ```
 
-定義にない項目、重複したキー、YAML のアンカーとエイリアスなども、エラーになります。定義の決まりは、リファレンスの「[ワークフローの定義](../reference/workflow-definition.md)」にあります。
+定義にない項目、重複したキー、YAML のアンカーとエイリアスなども、エラーになります。定義の決まりは、リファレンスの「[ワークフローの定義](../reference/workflow-definition.md)」にあります。コマンドの詳細は「[ugoke validate](../reference/commands/validate.md)」にあります。
 
-`ugoke docs` で、つながりを図にした文書を、定義の隣に作れます（「[ugoke docs](../reference/commands/docs.md)」）。コマンドの詳細は「[ugoke validate](../reference/commands/validate.md)」にあります。
+`ugoke docs` で、つながりを図にした文書を、定義の隣に作れます。コマンドの詳細は「[ugoke docs](../reference/commands/docs.md)」にあります。
 
 ## ステップが失敗したとき
 

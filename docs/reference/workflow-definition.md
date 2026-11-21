@@ -11,7 +11,7 @@
 | `steps`   | はい | ステップの一覧です。キーがステップの ID、値がステップです |
 | `inputs`  | いいえ | ワークフローの入力の宣言です。[ワークフローの入力](#ワークフローの入力)を見てください |
 | `env`     | いいえ | すべての script ステップと ai ステップの環境変数です。名前と値の組で書きます。値の[式](#式)は、`workflow.inputs` だけを参照できます |
-| `dotenv`  | いいえ | script ステップと ai ステップが読む dotenv のファイルです。プロジェクトのルートからの相対パスで書きます |
+| `dotenv`  | いいえ | script ステップと ai ステップが読む dotenv のファイルです。プロジェクトのルートからの相対パスで書き、ルートの外は指せません |
 
 ## ステップの ID
 
@@ -54,7 +54,7 @@
 
 - 作業ディレクトリは、プロジェクトのルートです
 - 環境変数は、ステップを実行するプロセスのものを引き継ぎます。常駐プロセスで実行するときは、常駐プロセスを起動したときのものです
-- `dotenv` のファイルは、スクリプトを実行するたびに読みます。その値は、実行の記録に残りません。`env` の値は、実行の記録に残ります
+- `dotenv` のファイルは、スクリプトを実行するたびに読みます。読めないときは、ステップは失敗します。その値は、実行の記録に残りません。`env` の値は、実行の記録に残ります
 - 同じ名前の環境変数は、`dotenv` のファイル、引き継いだ環境変数、ワークフローの `env`、ステップの `env` の順に、あとのものが使われます
 - 環境変数の名前は、英字か `_` で始め、英字、数字、`_` だけで書きます。値は、文字列、数、真偽値で書き、数や真偽値は文字列にします
 - 途中のコマンドが失敗すると、スクリプトが止まります。パイプラインの途中のコマンドと、`if`、`&&`、`||` の条件として書いたコマンドは除きます
@@ -195,57 +195,3 @@ next:
 - 同じマップの中で重複したキー
 - 1 つのファイルに複数のドキュメント（`---` で区切ったもの）
 - YAML のアンカー（`&name`）とエイリアス（`*name`）
-
-## エラー
-
-`ugoke validate` は、`ファイル:行:列 項目のパス: メッセージ` の形で表示します。YAML の構文のエラーと、アンカーとエイリアスのエラーには、項目のパスが付きません。
-
-| メッセージ                                                                                                  | 原因                                                       |
-| ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `Unknown field: <name>`                                                                                     | 定義にない項目がある                                       |
-| `Map keys must be unique`                                                                                   | 同じマップの中で、キーが重複している                       |
-| `Source contains multiple documents; please use YAML.parseAllDocuments()`                                   | 1 つのファイルに、複数のドキュメントがある                 |
-| `YAML anchors are not supported`、`YAML aliases are not supported`                                         | アンカーかエイリアスがある                                 |
-| `Must start with a letter, contain only letters, digits, or _, and not be a reserved word: end or start`    | ステップの ID が決まりに合わない                           |
-| `Must be a positive duration such as 30s, 5m, or 1h`                                                        | `timeout` の書き方が決まりに合わない                       |
-| `Unknown step: <step>`                                                                                      | `start` か `next` か分岐の `to` が、定義にないステップを指している |
-| `Must be the name of a step, end, or a list of branches with if and to`                                     | `next` の書き方が正しくない                                |
-| `The last branch must have no if, so that a branch is always taken. Use to: end to finish`                  | 最後の分岐に `if` がある                                   |
-| `Only the last branch can have no if`                                                                       | 最後でない分岐に `if` がない                               |
-| `A condition must be one ${{ }} expression: <条件>`、`Invalid condition: <条件>. <理由>`                    | 条件の書き方が正しくない                                   |
-| `Step is not reachable from start`                                                                          | `start` からたどれないステップがある                       |
-| `Step <step> cannot reach end, so the workflow could never finish`                                          | `end` に着けないステップがある                             |
-| `Step <step> does not run before <step>`                                                                    | 前に動くことがないステップの `outputs` を参照している          |
-| `Step <step> does not declare the output <name>`、`Step <step> does not declare the input <name>`、`The workflow does not declare the input <name>` | 宣言していない値を参照している |
-| `Can reference only <参照できるもの>`                                                                       | その場所では参照できない値を参照している                   |
-| `Cannot reference a field of an output value`、`Cannot reference a field of an input value`、`Cannot reference a field of a workflow input value`、`Cannot reference a field of an environment variable` | 値の中の項目を参照している |
-| `A required input cannot have a default`                                                                    | `required: true` の入力に `default` を書いた               |
-| `Duplicate option: <option>`                                                                                | `options` に同じ値を重ねて書いた                           |
-| `Must be one of <options>` | `choice` の `default` が `options` にない |
-| `Invalid input: expected <型>, received <型>` | `default` が `type` に合わない |
-| `Must be a decimal number such as 1.5, without exponent notation` | `number` の `default` を、`1e3`、`0x10`、`.inf` のような、10 進数でない書き方で書いた |
-| `Unknown wait method: <method>. <案内>` | 使えない待ち方を書いた。案内は、使える待ち方の一覧などです |
-| `Step <step> does not declare the answer <name>` | 待ち方が宣言していない答えを参照している |
-| `Unknown AI provider: <provider>. <案内>` | 使えないプロバイダーを書いた。案内は、使えるプロバイダーの一覧などです |
-| `Step <step> has no schema, so result.data is text` | `schema` のない ai ステップで、`result.data` の中の項目を参照している |
-| `The schema of step <step> does not declare the property <name>` | `schema` の `properties` にない項目を参照している |
-| `The schema must have type: object` | ai ステップの `schema` が `type: object` ではない |
-| `Invalid input` | `env` の値が、文字列、数、真偽値ではない |
-| `Must start with a letter or _ and contain only letters, digits, or _` | 環境変数の名前が決まりに合わない |
-| `Must be a path relative to the project root`、`Must not leave the project root` | `dotenv` のパスが決まりに合わない |
-| `The environment of the workflow can reference only workflow.inputs.<name>` | ワークフローの `env` で、`workflow.inputs` 以外を参照している |
-| `Invalid expression: <式>. <理由>`、`Unterminated expression: <式>`                                         | 式の書き方が正しくない                                     |
-
-実行したときのエラー:
-
-| メッセージ                            | 原因                                     |
-| ------------------------------------- | ---------------------------------------- |
-| `Script exited with code <code>`      | スクリプトが 0 以外の終了ステータスで終わった |
-| `Script timed out after <ms> ms`      | スクリプトが `timeout` を過ぎた          |
-| `AI step timed out after <ms> ms`     | ai ステップが `timeout` を過ぎた         |
-| `next[<番号>].if: Expected true or false but found <型>` | 分岐の条件か、`!`、`&&`、`\|\|` に使った値が、`true` か `false` ではない |
-| `outputs.<name>: Unknown reference: <式>` | `outputs` が参照した `result.data` の項目が、AI の結果になかった |
-| `Invalid options of AI provider <provider>: <理由>` | `with` の式を評価した値が、プロバイダーの決まりに合わない |
-| `Failed to read the dotenv file <path>: <理由>` | `dotenv` のファイルを読めなかった。プロジェクトのルートの外を指しているときも、このエラーになる |
-| `The input ended before the answer was entered` | `terminal` で答える前に、ターミナルの入力が終わった |
-| `... bytes, which exceeds the limit of 524288 bytes` | ステップが受け取る値か出す値が、512 KiB を超えた |

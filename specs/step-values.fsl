@@ -1,7 +1,7 @@
 fsl 5
 // Requirements for the values that a step receives and gives: their size limit, and the trailing
 // newline of the output of a script.
-// Source: docs/reference/workflow-definition.md ("式", "エラー")
+// Source: docs/reference/workflow-definition.md ("式")
 //
 // MODEL-SVL-001: whether the values that the step receives or gives are over 512 KiB, and how many
 //                newlines end the standard output of its script, are given when the step is

@@ -41,12 +41,3 @@ deploy: valid
 | --- | -------------------------------------------- |
 | `0` | 定義が正しい                                 |
 | `1` | 定義に問題があるか、定義が見つからなかった   |
-
-## エラー
-
-| メッセージ                                                                      | 原因                                             |
-| ------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `Invalid workflow name: <name>. Use letters, digits, _, and -, separated by /` | 名前が決まりに合わない。プロジェクトを探す前に確かめる |
-| `No .ugoke directory found in <directory> or its parents`                       | 実行したディレクトリとその上に `.ugoke` がない   |
-| `Workflow not found: <name>`                                                    | 名前の `.yaml` と `.yml` のどちらもない          |
-| `Workflow <name> has both .yaml and .yml files`                                 | 名前の `.yaml` と `.yml` の両方がある            |

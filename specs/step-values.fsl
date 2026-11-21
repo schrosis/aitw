@@ -1,7 +1,7 @@
 fsl 5
 // Requirements for the values that a step receives and gives: their size limit, and the trailing
 // newline of the output of a script.
-// Source: docs/reference/workflow-definition.md ("式", "エラー")
+// Source: docs/reference/workflow-definition.md ("式")
 //
 // MODEL-SVL-001: whether the values that the step receives or gives are over 512 KiB, and how many
 //                newlines end the standard output of its script, are given when the step is
@@ -9,7 +9,8 @@ fsl 5
 // MODEL-SVL-002: the values that the step receives are its inputs together with the values of
 //                earlier steps and of the workflow input that its run, prompt, env, and outputs
 //                reference, and env of the workflow. For an AI step, they also include the
-//                options of with after their expressions are evaluated.
+//                options of with after their expressions are evaluated, and for a wait step with
+//                branches, the values that its conditions reference.
 requirements StepValues {
   type Newlines = 0..2
   actor Author, Worker

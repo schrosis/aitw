@@ -1,8 +1,8 @@
 fsl 5
 // Requirements for the shape of a workflow definition.
 // The shape is a necessary condition: a definition that fails here is rejected, and one that
-// passes goes on to the checks of workflow-transitions.fsl, step-references.fsl, wait-step.fsl,
-// ai-step.fsl, and ai-result.fsl, which accept or reject it.
+// passes goes on to the checks of workflow-transitions.fsl, branches.fsl, condition.fsl,
+// step-references.fsl, wait-step.fsl, ai-step.fsl, and ai-result.fsl, which accept or reject it.
 // Source: docs/reference/workflow-definition.md
 //
 // MODEL-DEF-001: a definition is modelled by the problems it has, not by its text.
@@ -11,7 +11,8 @@ fsl 5
 // MODEL-DEF-003: missingScriptField stands for a missing required field of a step of any kind,
 //                such as run of a script step, or provider and prompt of an AI step. An empty
 //                provider, model, or prompt, and a session other than reuse or new, are shape
-//                problems of the same kind.
+//                problems of the same kind, and so is a next that is neither the name of a step
+//                nor a list of branches with if and to.
 requirements WorkflowDefinition {
   actor Author, Ugoke
 

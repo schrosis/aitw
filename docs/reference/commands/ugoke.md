@@ -23,10 +23,3 @@ ugoke のコマンドの入り口です。コマンドを指定しないと、�
 | `1` | エラーがありました。コマンドの指定がないとき、知らないコマンド、引数の不足を含みます |
 
 ワークフローを実行するコマンドは、ほかの値も使います。たとえば「[ugoke run](run.md#終了ステータス)」です。
-
-## エラー
-
-```text
-error: unknown command 'nosuch'
-error: missing required argument 'workflow'
-```

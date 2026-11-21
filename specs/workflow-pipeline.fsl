@@ -62,9 +62,14 @@ compose WorkflowPipeline {
   }
 
   @requirement("REQ-DEF-011", "ワークフローは、YAML のファイルに定義する")
-  fair action fill(d: parse.Definition, p: Bool, n: links.Node) =
-    links.fill(d, p, n) || run.fill(d, p, n) {
+  fair action fill(d: parse.Definition, p: Bool, n: links.Node, c: links.Node) =
+    links.fill(d, p, n, c) || run.fill(d, p, n, c) {
     requires parse.phase[d] == AliasesChecked
+  }
+
+  // A definition with a loop is outside these specs (MODEL-TRN-006 of workflow-transitions.fsl).
+  @requirement("REQ-TRN-009", "ループのある定義は、ここでは扱わない。ループの決まりで扱う")
+  fair action discard(d: parse.Definition) = parse.schemaOk(d) || links.discard(d) {
   }
 
   @requirement("MODEL-VAL-001", "形のチェックを通った定義から、中間表現を作る")
@@ -104,10 +109,11 @@ compose WorkflowPipeline {
     refs.orderFails(d) || cmd.run(d, false, a, false, dr, true) {
   }
 
-  // Only an accepted definition is handed to the interpreter, and ugoke run follows it.
+  // Only an accepted definition is handed to the interpreter, and ugoke run follows it. Whether
+  // the condition of the branch of each step holds (j0 to j2) is given here.
   @requirement("REQ-REF-006", "参照できる値は、受け付ける")
-  fair action launch(d: parse.Definition, a: Bool, dr: Bool) =
-    refs.shapePasses(d) || run.aim(d, links.start[d]) || cmd.run(d, true, a, false, dr, true) {
+  fair action launch(d: parse.Definition, a: Bool, dr: Bool, j0: Bool, j1: Bool, j2: Bool) =
+    refs.shapePasses(d) || run.aim(d, links.start[d], j0, j1, j2) || cmd.run(d, true, a, false, dr, true) {
   }
 
   @requirement("REQ-TRN-008", "ワークフローは start のステップから始まる")
@@ -115,20 +121,20 @@ compose WorkflowPipeline {
   }
 
   // A step ends while ugoke run follows the run, or after it detached.
-  @requirement("REQ-TRN-006", "ステップが成功すると、その next に進む")
+  @requirement("REQ-TRN-006", "ステップが成功すると、その next に進む。分岐があれば、条件が成り立つ最初の分岐の行き先に進む")
   fair action advance(d: parse.Definition) = cmd.stepEnds(d) || run.succeed(d) {
   }
 
-  @requirement("REQ-TRN-006", "ステップが成功すると、その next に進む")
+  @requirement("REQ-TRN-006", "ステップが成功すると、その next に進む。分岐があれば、条件が成り立つ最初の分岐の行き先に進む")
   fair action advanceDetached(d: parse.Definition) = run.succeed(d) {
     requires cmd.phase[d] == Left
   }
 
-  @requirement("REQ-TRN-007", "next に end を書いたステップが成功すると、ワークフローが終わる")
+  @requirement("REQ-TRN-007", "行き先が end のステップが成功すると、ワークフローが終わる")
   fair action complete(d: parse.Definition) = cmd.stepEnds(d) || run.succeedLast(d) {
   }
 
-  @requirement("REQ-TRN-007", "next に end を書いたステップが成功すると、ワークフローが終わる")
+  @requirement("REQ-TRN-007", "行き先が end のステップが成功すると、ワークフローが終わる")
   fair action completeDetached(d: parse.Definition) = run.succeedLast(d) {
     requires cmd.phase[d] == Left
   }
@@ -170,6 +176,7 @@ compose WorkflowPipeline {
   internal parse.aliasesFail
   internal parse.schemaFails
   internal links.fill
+  internal links.discard
   internal links.build
   internal links.validateOk
   internal links.validateFails
@@ -222,12 +229,22 @@ compose WorkflowPipeline {
     forall d: parse.Definition { run.executed[d] <= 3 }
   }
 
+  // A run of a definition without branches runs every step. With branches, it runs the steps of
+  // the branches that it takes.
   @requirement("REQ-TRN-002", "どのステップも、start からたどれなければならない")
   invariant EveryStepRuns {
     forall d: parse.Definition {
-      run.phase[d] == Succeeded => (
+      (run.phase[d] == Succeeded and links.c0[d] == links.n0[d] and links.c1[d] == links.n1[d]
+        and links.c2[d] == links.n2[d]) => (
         (run.v0[d] or not links.p0[d]) and (run.v1[d] or not links.p1[d])
           and (run.v2[d] or not links.p2[d]))
+    }
+  }
+
+  @requirement("REQ-TRN-006", "ステップが成功すると、その next に進む。分岐があれば、条件が成り立つ最初の分岐の行き先に進む")
+  reachable BranchedRunReachesEnd {
+    exists d: parse.Definition {
+      run.phase[d] == Succeeded and (run.k0[d] or run.k1[d] or run.k2[d])
     }
   }
 
@@ -250,7 +267,9 @@ compose WorkflowPipeline {
   // marks those states as ends: any other state where nothing can happen is a deadlock.
   @requirement("MODEL-CMP-002", "ワークフローが見つからないか、定義が拒否されるか、実行が終わると、コマンドは終わる")
   action rest(d: parse.Definition) {
-    requires find.phase[d] == NameRejected or find.phase[d] == NoRoot
+    // A definition with a loop is outside these specs (MODEL-TRN-006 of workflow-transitions.fsl).
+    requires links.phase[d] == Dropped
+      or find.phase[d] == NameRejected or find.phase[d] == NoRoot
       or find.phase[d] == FileMissing or find.phase[d] == FileDoubled
       or cmd.phase[d] == Rejected or cmd.phase[d] == Unserved
       or ((cmd.phase[d] == Finished or cmd.phase[d] == Broke or cmd.phase[d] == Left

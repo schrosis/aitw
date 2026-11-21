@@ -3,8 +3,8 @@ fsl 5
 // process starts it, how it starts and stops, and how it is kept away from other users and web
 // pages.
 // Source: docs/reference/commands/daemon.md ("ugoke daemon start"). The retry, the way that the
-// server is stopped, its local address, its closed HTTP API and Web UI, and the permissions of its
-// SQLite file are kept here only, and not in the docs.
+// server is stopped, its local address, its closed HTTP API and Web UI, and the place and the
+// permissions of its SQLite file are kept here only, and not in the docs.
 //
 // MODEL-DEV-001: whether ugoke daemon start has --address is given when the resident process
 //                starts. The resident process itself, such as its socket and its lock, is

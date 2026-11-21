@@ -1,7 +1,8 @@
 fsl 5
 // Requirements for ugoke daemon start, stop, and status: how each ends, and that one resident
 // process runs on a host.
-// Source: docs/reference/commands/daemon.md
+// Source: docs/reference/commands/daemon.md. The limit of the socket path is kept here only, and
+// not in the docs, because the message of the error says how to shorten it.
 //
 // MODEL-DMN-001: whether a resident process runs, whether its ugoke version and server options
 //                are the ones that start asks for, and whether it answers or stops within 60

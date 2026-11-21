@@ -1,7 +1,9 @@
 fsl 5
 // Design of the progress events of a step. The activity of a script or AI step
 // (packages/engine/src/activities/index.ts) emits stepStarted, then the output of the step while
-// it runs, then one stepFinished, and the CLI shows each event as it arrives.
+// it runs, then one stepFinished, and the CLI shows each event as it arrives. A step with
+// continueOnError that fails returns its failure as its result, and its stepFinished says that
+// the run goes on (continue-on-error.fsl).
 //
 // It refines the requirements of step-progress.fsl.
 spec EmitStepEvents {
@@ -16,6 +18,8 @@ spec EmitStepEvents {
     // from outside.
     fails: Map<StepRun, Bool>,
     stopped: Map<StepRun, Bool>,
+    // Whether the step has continueOnError.
+    continues: Map<StepRun, Bool>,
     // Output that arrives after the step settled is dropped.
     settled: Map<StepRun, Bool>,
     finished: Map<StepRun, Count>,
@@ -28,6 +32,7 @@ spec EmitStepEvents {
       phase[s] = Ready
       fails[s] = false
       stopped[s] = false
+      continues[s] = false
       settled[s] = false
       finished[s] = 0
       outcome[s] = NoOutcome
@@ -37,11 +42,12 @@ spec EmitStepEvents {
 
   // The activity emits stepStarted before it runs the step.
   @requirement("REQ-PRG-001", "ステップを始めると、ステップの ID を表示する")
-  action begin(s: StepRun, f: Bool, st: Bool) {
+  action begin(s: StepRun, f: Bool, st: Bool, c: Bool) {
     requires phase[s] == Ready
     phase[s] = Busy
     fails[s] = f
     stopped[s] = st
+    continues[s] = c
   }
 
   // The step writes output, which is emitted as stepOutput until the step settles.
@@ -76,8 +82,21 @@ spec EmitStepEvents {
   @requirement("REQ-PRG-004", "失敗したステップは ✗ の行で終わり、理由を表示する")
   action throwsFailure(s: StepRun) {
     requires phase[s] == Busy
-    requires fails[s] and not stopped[s]
+    requires fails[s] and not stopped[s] and not continues[s]
     phase[s] = Threw
+    settled[s] = true
+    finished[s] = finished[s] + 1
+    outcome[s] = Broke
+    hasMessage[s] = true
+  }
+
+  // A failing step with continueOnError returns its failure, and the stepFinished of a failure
+  // says that the run goes on.
+  @requirement("REQ-PRG-004", "失敗したステップは ✗ の行で終わり、理由を表示する")
+  action returnsFailure(s: StepRun) {
+    requires phase[s] == Busy
+    requires fails[s] and not stopped[s] and continues[s]
+    phase[s] = Returned
     settled[s] = true
     finished[s] = finished[s] + 1
     outcome[s] = Broke
@@ -106,6 +125,11 @@ spec EmitStepEvents {
   @requirement("MODEL-EVT-003", "stepFinished は 1 度だけ出す")
   invariant OneFinishedEvent {
     forall s: StepRun { finished[s] <= 1 and ((phase[s] == Returned or phase[s] == Threw) => finished[s] == 1) }
+  }
+
+  @requirement("MODEL-EVT-004", "例外を投げずに失敗で終わるのは、continueOnError のステップだけ")
+  invariant ReturnedFailureContinues {
+    forall s: StepRun { (phase[s] == Returned and outcome[s] == Broke) => continues[s] }
   }
 
   terminal { forall s: StepRun { phase[s] == Returned or phase[s] == Threw } }

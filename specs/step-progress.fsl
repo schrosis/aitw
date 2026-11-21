@@ -6,6 +6,9 @@ fsl 5
 //                is given when it starts.
 // MODEL-PRG-002: ugoke shows each event as it arrives, so the order of the lines is the order
 //                of the events.
+// MODEL-PRG-003: a step with continueOnError that fails ends with the ✗ line and its reason too,
+//                marked as continued before its time, such as "· continued · 0.0s"
+//                (continue-on-error.fsl).
 requirements StepProgress {
   enum Result { Ok, Error, Stopped }
   enum Mark { NoMark, Check, Cross, Square }

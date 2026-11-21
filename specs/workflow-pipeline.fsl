@@ -162,16 +162,16 @@ compose WorkflowPipeline {
     requires run.phase[d] == Succeeded
   }
 
-  @requirement("REQ-RUN-001", "ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
+  @requirement("REQ-RUN-001", "continueOnError のないステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
   fair action stepFails(d: parse.Definition) = cmd.breaks(d) || run.exitNonzero(d) {
   }
 
-  @requirement("REQ-RUN-001", "ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
+  @requirement("REQ-RUN-001", "continueOnError のないステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
   fair action stepFailsWhileStopping(d: parse.Definition) = cmd.stepEnds(d) || run.exitNonzero(d) {
     requires cmd.phase[d] == Stopping
   }
 
-  @requirement("REQ-RUN-001", "ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
+  @requirement("REQ-RUN-001", "continueOnError のないステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
   fair action stepFailsDetached(d: parse.Definition) = run.exitNonzero(d) {
     requires cmd.phase[d] == Left
   }

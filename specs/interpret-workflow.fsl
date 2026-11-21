@@ -6,7 +6,9 @@ fsl 5
 // - it runs the steps from start along next, one Activity at a time, and after a step with
 //   branches, it goes to the target of the first branch whose condition holds
 // - a step whose script exits with a nonzero status, whose AI fails, or that passes its timeout
-//   fails, and the Activity is not retried (maximumAttempts: 1), so the run fails there
+//   fails, and the Activity is not retried (maximumAttempts: 1), so the run fails there. The
+//   Activity of a step with continueOnError returns such a failure as its result instead, so the
+//   run goes on as after a step that succeeds (continue-on-error.fsl)
 //
 // It refines the run requirements of workflow-run.fsl.
 spec InterpretWorkflow {
@@ -231,7 +233,7 @@ spec InterpretWorkflow {
     executed[d] = executed[d] + 1
   }
 
-  @requirement("REQ-RUN-001", "ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
+  @requirement("REQ-RUN-001", "continueOnError のないステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
   action exitNonzero(d: Definition) {
     requires phase[d] == Executing
     phase[d] = Aborted
@@ -239,7 +241,7 @@ spec InterpretWorkflow {
     executed[d] = executed[d] + 1
   }
 
-  @requirement("REQ-RUN-001", "ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
+  @requirement("REQ-RUN-001", "continueOnError のないステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
   action timeOut(d: Definition) {
     requires phase[d] == Executing
     phase[d] = Aborted
@@ -249,7 +251,7 @@ spec InterpretWorkflow {
 
   // The Worker that runs the step exits before the step ends, for example at the second Ctrl+C of
   // ugoke run. The step fails, and the run cannot be continued.
-  @requirement("REQ-RUN-001", "ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
+  @requirement("REQ-RUN-001", "continueOnError のないステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗する")
   action loseWorker(d: Definition) {
     requires phase[d] == Executing
     phase[d] = Aborted

@@ -11,6 +11,9 @@ fsl 5
 //                reference, and env of the workflow. For an AI step, they also include the
 //                options of with after their expressions are evaluated, and for a wait step with
 //                branches, the values that its conditions reference.
+// MODEL-SVL-003: with continueOnError, outputs over 512 KiB end the step as a failure that goes
+//                on, with every output null. Received values over 512 KiB fail the run still,
+//                because the workflow checks them before the step starts (continue-on-error.fsl).
 requirements StepValues {
   type Newlines = 0..2
   actor Author, Worker

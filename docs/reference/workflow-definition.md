@@ -204,6 +204,7 @@ test:
 ```
 
 - 失敗したステップの `result.ok` は `false` です。`result.error` は、失敗した理由です
+- 結果の行には、`continued` が付きます（「[ugoke run の出力](commands/run.md#出力)」）
 - `outputs` と分岐の条件は、失敗したあとも評価します
 - 次のときは、`result.exitCode` は `null` で、`result.stdout` と `result.stderr` は空です。途中まで出した出力も入りません
   - スクリプトが `timeout` を過ぎた
@@ -213,6 +214,7 @@ test:
 - 出す値が 512 KiB を超えると、`outputs` はすべて `null` です
 - 次のときは、`continueOnError` があっても、ワークフローは失敗します
   - 式を評価できない。たとえば、分岐の条件の値が `true` か `false` でない
+  - 分岐の条件が `env` を参照していて、環境を読めない。たとえば、`dotenv` のファイルが読めない
   - 受け取る値が 512 KiB を超える
 - 取り消したステップは、取り消しで終わります
 - wait ステップには書けません

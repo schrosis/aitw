@@ -12,7 +12,10 @@ fsl 5
 //                that could not start, such as when the dotenv file cannot be read. TooLargeOut is
 //                outputs over 512 KiB. BadExpression is an expression that cannot be evaluated in
 //                run, prompt, env, with, outputs, or a condition, such as a field of result.data
-//                that the result of the AI does not have. TooLargeIn is received values over
+//                that the result of the AI does not have. A condition that references env and
+//                cannot read the environment, such as when the dotenv file cannot be read, is
+//                BadExpression too, even when the script of the step went on without the file.
+//                TooLargeIn is received values over
 //                512 KiB, which the workflow checks before the step starts. A Worker without an AI
 //                runner, which the CLI never has, stops the workflow like BadExpression.
 // MODEL-COE-002: for the workflow, a step that continues ends like one that succeeded, and goes to

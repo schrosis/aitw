@@ -37,10 +37,9 @@ ugoke は、ワークフローを [Temporal](https://temporal.io/) の Workflow 
 
 ### Temporal Server
 
-使う Temporal Server は、次の 3 種類です。
+使う Temporal Server は、次の 2 種類です。
 
 - 常駐プロセスが子プロセスとして起動する開発サーバー。実行の記録を残します
-- `ugoke run --dev` が、その実行のあいだだけ起動する開発サーバー。`--dev-db` を付けない限り、記録を残しません
 - `--address` や `.ugoke/config.yaml` の `temporal.address` で指定した、外の Temporal Server
 
 開発サーバーは、ugoke がバージョンを決めて取得した Temporal CLI で起動します。

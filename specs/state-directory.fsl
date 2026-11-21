@@ -2,8 +2,10 @@ fsl 5
 // Requirements for the state directory of ugoke, which keeps the socket of the resident process,
 // the locks of runs, and their logs: only the user can use it, or a command that uses it fails.
 // The cache directory of the Temporal CLI keeps the same rules (temporal-cli.fsl, REQ-TCL-004).
-// Source: packages/cli/src/private-directory.ts. The docs do not describe these rules, because
-// the message of the error says what is wrong and how to fix it.
+// Source: packages/cli/src/private-directory.ts. The docs do not describe the state directory.
+// It is $XDG_STATE_HOME/ugoke, or ~/.local/state/ugoke without XDG_STATE_HOME. The resident
+// process keeps its socket, lock, and log in daemon/ there, and its development server keeps its
+// runs in temporal.db there. The message of the error says what is wrong and how to fix it.
 //
 // MODEL-SDR-001: whether the system has owners and permissions, whether the directory exists, and,
 //                when it does, whether it is a directory, whether the user owns it, whether others

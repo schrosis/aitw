@@ -12,9 +12,9 @@ $ ugoke daemon start
 
 常駐プロセスの状態は `ugoke daemon status` で確認できます。止めるときは `ugoke daemon stop` です（「[ugoke daemon](../reference/commands/daemon.md)」）。
 
-常駐プロセスを使わずに試すときは、`ugoke run` に `--dev` を付けます。その実行のあいだだけ、一時的な Temporal Server を起動します。
+常駐プロセスは、初めて起動するときに、Temporal Server を起動する Temporal CLI をダウンロードします（「[Temporal CLI](../reference/commands/daemon.md#temporal-cli)」）。
 
-常駐プロセスも `--dev` も、Temporal Server を初めて起動するときは、それを起動する Temporal CLI をダウンロードします（「[Temporal CLI](../reference/commands/run.md#temporal-cli)」）。
+常駐プロセスを使わないときは、用意した Temporal Server を `--address` で指定します。
 
 ## 実行する
 
@@ -64,13 +64,7 @@ fail: failed: Script exited with code 1
 wait: detached. Run "ugoke attach" to continue
 ```
 
-`--dev` の一時的な Temporal Server は、実行の記録を残しません。このため、Ctrl+C を押すと、ワークフローを取り消します。
-
-```text
-wait: cancelled. A development server without --dev-db keeps no runs to attach to later
-```
-
-`ugoke run` が自分でステップを実行していて、Temporal Server が実行の記録を残すとき（`--dev --dev-db` など）は、実行中のステップが終わるのを待ってから切り離れます。待っているあいだにもう 1 度 Ctrl+C を押すと、すぐに終了します。このとき、実行中のステップは失敗し、そのワークフローは続けられなくなります。
+`ugoke run` が自分でステップを実行しているとき（`--address` など）は、実行中のステップが終わるのを待ってから切り離れます。待っているあいだにもう 1 度 Ctrl+C を押すと、すぐに終了します。このとき、実行中のステップは失敗し、そのワークフローは続けられなくなります。
 
 ```text
 Waiting for the running step to finish, so that you can attach to the run later.
@@ -98,4 +92,4 @@ Select a run (1-1): 1
 deploy: cancelled
 ```
 
-`--dev` で実行したときは、`ugoke run` と同じ `--dev --dev-db <path>` を、`ugoke attach` と `ugoke cancel` にも付けます。オプションは、リファレンスの「[ugoke attach](../reference/commands/attach.md)」と「[ugoke cancel](../reference/commands/cancel.md)」にあります。
+`--address` で実行したときは、`ugoke run` と同じ `--address` を、`ugoke attach` と `ugoke cancel` にも付けます。オプションは、リファレンスの「[ugoke attach](../reference/commands/attach.md)」と「[ugoke cancel](../reference/commands/cancel.md)」にあります。

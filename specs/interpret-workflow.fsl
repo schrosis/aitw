@@ -203,7 +203,7 @@ spec InterpretWorkflow {
     executed[d] = executed[d] + 1
   }
 
-  // The run is cancelled, for example by Ctrl+C on a development server that keeps no runs.
+  // The run is cancelled, for example by ugoke cancel.
   @requirement("REQ-RUN-006", "取り消すと、ワークフローはそれ以降のステップを実行しない")
   action withdraw(d: Definition) {
     requires phase[d] == Executing

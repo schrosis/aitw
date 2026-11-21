@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -196,4 +196,26 @@ describe("ugoke with an unsafe state directory", () => {
       rmSync(base, { force: true, recursive: true });
     }
   });
+});
+
+describe("ugoke with a broken encryption key", () => {
+  it("exits when a run cannot start", async () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "ugoke-state-")));
+    try {
+      mkdirSync(join(base, "ugoke"), { mode: 0o700 });
+      writeFileSync(join(base, "ugoke", "encryption.key"), "broken\n", { mode: 0o600 });
+
+      // Port 1 is reserved, so the run fails at the key before it reaches a server.
+      const { exitCode, output } = await execute(
+        ["run", "valid", "--address", "127.0.0.1:1"],
+        fixtureProject,
+        { env: { ...process.env, XDG_STATE_HOME: base } },
+      );
+
+      expect(exitCode, output).toBe(1);
+      expect(output).toContain("The encryption key in");
+    } finally {
+      rmSync(base, { force: true, recursive: true });
+    }
+  }, 20_000);
 });

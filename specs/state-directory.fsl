@@ -10,8 +10,8 @@ fsl 5
 //                can use it, and whether others can replace an ancestor are given when a command
 //                opens it. An ancestor is safe when the user or root owns it, and others cannot
 //                write to it unless it is sticky, such as /tmp. A directory that does not exist is
-//                created with 700, so it is a private directory of the user. Symbolic links in the ancestors are followed before the check, so
-//                that what is checked is what is used.
+//                created with 700, so it is a private directory of the user. Symbolic links in the
+//                ancestors are followed before the check, so that what is checked is what is used.
 requirements StateDirectory {
   enum Exit { Pending, Zero, One }
   actor User, Ugoke

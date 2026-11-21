@@ -1,0 +1,46 @@
+# プロジェクトとワークフローのファイル
+
+## プロジェクトの構成
+
+ugoke のファイルは、プロジェクトのルートの `.ugoke` ディレクトリに置きます。
+
+```text
+my-project/                 プロジェクトのルート
+├── .ugoke/
+│   └── workflows/          ワークフローの定義と、ugoke docs の文書
+│       ├── deploy.yaml     ワークフロー deploy
+│       └── release/
+│           └── notes.yaml  ワークフロー release/notes
+└── src/                    プロジェクトのほかのファイル
+```
+
+## プロジェクト
+
+ugoke は、コマンドを実行したディレクトリから上へたどり、`.ugoke` ディレクトリのある最も近いディレクトリを、プロジェクトのルートにします。プロジェクトのサブディレクトリで実行しても、同じプロジェクトを使います。
+
+途中のディレクトリにも `.ugoke` があるときは、より近い方をルートにします。どのディレクトリにも `.ugoke` がなければ、次のエラーになります。
+
+```text
+No .ugoke directory found in /home/user/scratch or its parents
+```
+
+## ワークフローの名前とファイル
+
+ワークフローは、名前で指定します。名前が `deploy` のワークフローは、`.ugoke/workflows/deploy.yaml` か `.ugoke/workflows/deploy.yml` に定義します。`/` で区切った名前は、サブディレクトリの定義を指します。たとえば `release/notes` は、`.ugoke/workflows/release/notes.yaml` です。
+
+名前の `/` で区切った各部分は、英字で始め、英字、数字、`_`、`-` だけで書きます。決まりに合わない名前は、プロジェクトを探す前にエラーになります。
+
+```text
+Invalid workflow name: ../deploy. Use letters, digits, _, and -, separated by /
+```
+
+同じ名前の `.yaml` と `.yml` の両方があるときと、どちらもないときは、エラーになります。
+
+```text
+Workflow deploy has both .yaml and .yml files
+Workflow not found: deploy
+```
+
+## ワークフローを確かめる
+
+定義を書いたら、`ugoke validate` で確かめられます。書き方は「[ワークフローの定義](workflow-definition.md)」で、コマンドの詳細は「[ugoke validate](../reference/commands/validate.md)」で説明します。実行するときは「[ワークフローを実行する](run.md)」を読んでください。

@@ -14,7 +14,9 @@ fsl 5
 //                allows it, is not such a tool. Nobody can answer during a step, so the provider
 //                never asks, and denies what is not allowed (permissionMode: dontAsk).
 // MODEL-CCD-003: whether Claude Code succeeds, and whether it returns a result, are given when it
-//                ends. A result without a schema is the text of its last answer.
+//                ends. A result without a schema is the text of its last answer. With a schema,
+//                hasResult also tells whether the result has the structured output, which the AI
+//                can leave out, such as in a session that it continues.
 // MODEL-CCD-004: one block of what the AI says or does is modeled for the progress. Whether it is
 //                text, a use of a tool, or something else, whether its text is blank, whether a
 //                subagent wrote it, and whether its first line is longer than 200 characters are
@@ -73,7 +75,7 @@ requirements ClaudeCode {
     allow Claude uses ClaudeStep only when usable(input allowed, input inUgoke)
     allow Claude denies ClaudeStep only when not usable(input allowed, input inUgoke)
   }
-  rule REQ-CCD-004 "Claude Code が失敗したときと、結果を返さずに終わったときは、ステップは失敗する" {
+  rule REQ-CCD-004 "Claude Code が失敗したときと、結果を返さずに終わったときは、ステップは失敗する。schema があるのに、その形の結果がないときも同じ" {
     allow Claude finishes ClaudeStep only when input succeeded and input hasResult
     allow Claude fails ClaudeStep only when not (input succeeded and input hasResult)
   }

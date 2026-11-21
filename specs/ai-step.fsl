@@ -16,7 +16,10 @@ fsl 5
 //                step, and the end of the step, a failure, or the timeout, come from the
 //                provider. Only the declared outputs enter the history of the run. Whether the
 //                result has every field after result.data that the outputs reference is given
-//                when the step ends.
+//                when the step ends. A reference that goes through null, such as result.data.a.b
+//                where a is null, reads as null. A step with continueOnError that fails has
+//                result.data null, whose fields read as null, so REQ-AIS-007 does not apply to it
+//                (continue-on-error.fsl).
 requirements AiStep {
   enum Session { Reuse, New }
   actor Author, Ugoke, Worker, Provider, Clock

@@ -30,6 +30,7 @@ refinement ValidateExpressionsRefinesStepReferences {
     else if target[r] == ToResult then ScriptResult
     else if target[r] == ToAnswer then Answer
     else if target[r] == ToData then AiData
+    else if target[r] == ToOutcome then Outcome
     else Unknown
   map reference_declared[r: Reference] = declared[r]
   map reference_earlier[r: Reference] = earlier[r]
@@ -39,7 +40,7 @@ refinement ValidateExpressionsRefinesStepReferences {
     r,
     if s == AtInputs then InInputs else if s == AtRun then InRun else if s == AtPrompt then InPrompt else if s == AtWith then InWith else if s == AtIf then InIf else if s == AtStepEnv then InStepEnv else if s == AtWorkflowEnv then InWorkflowEnv else InOutputs,
     if k == OfScript then ScriptKind else if k == OfWait then WaitKind else if k == OfAi then AiKind else NoStepKind,
-    if t == ToStep then StepOutput else if t == ToWorkflow then WorkflowValue else if t == ToOwn then OwnInput else if t == ToOwnOutput then OwnOutput else if t == ToEnv then EnvVar else if t == ToResult then ScriptResult else if t == ToAnswer then Answer else if t == ToData then AiData else Unknown,
+    if t == ToStep then StepOutput else if t == ToWorkflow then WorkflowValue else if t == ToOwn then OwnInput else if t == ToOwnOutput then OwnOutput else if t == ToEnv then EnvVar else if t == ToResult then ScriptResult else if t == ToAnswer then Answer else if t == ToData then AiData else if t == ToOutcome then Outcome else Unknown,
     d, e, n)
   action rootFails(r) -> reject(r)
   action rootPasses(r) -> stutter

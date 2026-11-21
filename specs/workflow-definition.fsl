@@ -13,8 +13,9 @@ fsl 5
 //                such as run of a script step, or provider and prompt of an AI step. An empty
 //                provider, model, or prompt, and a session other than reuse or new, are shape
 //                problems of the same kind, and so is a next that is neither the name of a step
-//                nor a list of branches with if and to, and a maxVisits that is not a positive
-//                whole number.
+//                nor a list of branches with if and to, a maxVisits that is not a positive whole
+//                number, and a continueOnError that is not true or false. continueOnError on a
+//                wait step is an unknown field (continue-on-error.fsl).
 requirements WorkflowDefinition {
   actor Author, Ugoke
 

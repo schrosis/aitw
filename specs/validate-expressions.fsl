@@ -9,7 +9,7 @@ spec ValidateExpressions {
   enum CheckPhase { Unchecked, Lexed, RootChecked, OrderChecked, NameChecked, RefsPassed, RefsFailed }
   enum Site { AtInputs, AtRun, AtPrompt, AtWith, AtStepEnv, AtOutputs, AtIf, AtWorkflowEnv }
   enum StepKind { OfScript, OfWait, OfAi, OfWorkflow }
-  enum Target { ToStep, ToWorkflow, ToOwn, ToOwnOutput, ToEnv, ToResult, ToAnswer, ToData, ToOther }
+  enum Target { ToStep, ToWorkflow, ToOwn, ToOwnOutput, ToEnv, ToResult, ToAnswer, ToData, ToOutcome, ToOther }
   enum Message { NoMessage, CanReferenceOnly, FieldOfValue, NotBefore, NotDeclared }
 
   state {
@@ -48,6 +48,7 @@ spec ValidateExpressions {
       or (t == ToResult and afterStep(s) and k == OfScript)
       or (t == ToAnswer and afterStep(s) and k == OfWait)
       or (t == ToData and afterStep(s) and k == OfAi)
+      or (t == ToOutcome and afterStep(s) and (k == OfScript or k == OfAi))
       or ((t == ToOwnOutput or t == ToEnv) and s == AtIf)
 
   @requirement("REQ-REF-001", "式は、${{ }} で囲んで、ほかの値を参照する")
@@ -61,6 +62,9 @@ spec ValidateExpressions {
     // checkAiResult checks the fields after result.data against the schema, and reports them as
     // not declared.
     requires t != ToData or not n
+    // result.ok and result.error of a script or an AI step have no fields. checkResult reports
+    // a field after them as a reference that cannot be used, which is ToOther.
+    requires t != ToOutcome or not n
     // The names of env are not checked, because the variables can come from outside.
     requires t != ToEnv or d
     phase[r] = Lexed

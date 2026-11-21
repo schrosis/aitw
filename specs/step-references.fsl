@@ -18,10 +18,13 @@ fsl 5
 //                reference to env is declared.
 // MODEL-REF-004: for result.data of an AI step, declared tells whether ai-result.fsl accepts the
 //                fields after data, which the schema of the step decides, so nested is false.
+// MODEL-REF-006: Outcome is result.ok or result.error, which tell whether a script or an AI step
+//                succeeded (continue-on-error.fsl). A field after them, such as result.ok.value,
+//                is reported as a reference that cannot be used, so it is Unknown.
 requirements StepReferences {
   enum Place { InInputs, InRun, InPrompt, InWith, InStepEnv, InOutputs, InIf, InWorkflowEnv }
   enum Kind { ScriptKind, WaitKind, AiKind, NoStepKind }
-  enum Root { StepOutput, WorkflowValue, OwnInput, OwnOutput, EnvVar, ScriptResult, Answer, AiData, Unknown }
+  enum Root { StepOutput, WorkflowValue, OwnInput, OwnOutput, EnvVar, ScriptResult, Answer, AiData, Outcome, Unknown }
   actor Author, Ugoke
 
   entity Reference {
@@ -47,6 +50,7 @@ requirements StepReferences {
       or (r == ScriptResult and afterStep(p) and k == ScriptKind)
       or (r == Answer and afterStep(p) and k == WaitKind)
       or (r == AiData and afterStep(p) and k == AiKind)
+      or (r == Outcome and afterStep(p) and (k == ScriptKind or k == AiKind))
       or ((r == OwnOutput or r == EnvVar) and p == InIf)
 
   // The places of each kind of step.
@@ -93,6 +97,11 @@ requirements StepReferences {
     allow Author writes Reference only when input root != EnvVar or input declared
     never Ugoke accepts Reference when (root == OwnOutput or root == EnvVar) and place != InIf
     never Ugoke accepts Reference when root == OwnInput and place == InIf
+  }
+  rule REQ-REF-012 "script ステップと ai ステップの outputs と分岐の条件は、成功したかを result.ok と result.error で参照できる" {
+    allow Author writes Reference only when input root != Outcome or not input nested
+    never Ugoke accepts Reference when root == Outcome and kind == WaitKind
+    never Ugoke accepts Reference when root == Outcome and not afterStep(place)
   }
   rule REQ-REF-009 "ステップの env は、run と同じ値を参照できる。ワークフローの env は、workflow.inputs だけを参照できる" {
     never Ugoke accepts Reference when place == InWorkflowEnv and root != WorkflowValue
@@ -210,6 +219,16 @@ requirements StepReferences {
   }
   scenario AC-REF-021 "分岐の条件で、スクリプトの結果を参照する" {
     Author writes r1 with place InIf, kind ScriptKind, root ScriptResult, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then r1 is Accepted
+  }
+  scenario AC-REF-022 "script ステップの outputs で、成功したかを参照する" {
+    Author writes r1 with place InOutputs, kind ScriptKind, root Outcome, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then r1 is Accepted
+  }
+  scenario AC-REF-023 "ai ステップの分岐の条件で、成功したかを参照する" {
+    Author writes r1 with place InIf, kind AiKind, root Outcome, declared true, earlier true, nested false
     Ugoke accepts r1
     then r1 is Accepted
   }
@@ -366,6 +385,21 @@ requirements StepReferences {
   forbidden FB-REF-032 "環境変数の中の項目を、受け付けない" {
     Author writes r1 with place InIf, kind ScriptKind, root EnvVar, declared true, earlier true, nested true
     Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-033 "wait ステップの outputs で、成功したかを受け付けない" {
+    Author writes r1 with place InOutputs, kind WaitKind, root Outcome, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-034 "run で、成功したかを受け付けない" {
+    Author writes r1 with place InRun, kind ScriptKind, root Outcome, declared true, earlier true, nested false
+    Ugoke accepts r1
+    then rejected
+  }
+  forbidden FB-REF-035 "成功したかを、ai ステップの outputs で拒まない" {
+    Author writes r1 with place InOutputs, kind AiKind, root Outcome, declared true, earlier true, nested false
+    Ugoke rejects r1
     then rejected
   }
 }

@@ -23,11 +23,12 @@ refinement EmitStepEventsRefinesStepProgress {
   // A cancelled step has a message too, but the CLI shows the reason only on the line of a failure.
   map steprun_reasonShown[s: StepRun] = hasMessage[s] and outcome[s] == Broke
 
-  action begin(s, f, st) -> start(s, if st then Stopped else if f then Error else Ok)
+  action begin(s, f, st, c) -> start(s, if st then Stopped else if f then Error else Ok)
   action output(s) -> print(s)
   action lateOutput(s) -> stutter
   action returnsOk(s) -> succeed(s)
   action throwsFailure(s) -> fail(s)
+  action returnsFailure(s) -> fail(s)
   action throwsCancel(s) -> cancel(s)
   action rest(s) -> stutter
 }

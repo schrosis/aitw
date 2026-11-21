@@ -257,7 +257,7 @@ hello: valid
 
 ## ステップが失敗したとき
 
-スクリプトは、プロジェクトのルートで実行します。途中のコマンドが失敗するとスクリプトが止まり、0 以外の終了ステータスで終わるか、`timeout` を過ぎると、そのステップは失敗します。ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗します。失敗したステップは、やり直しません。
+スクリプトは、プロジェクトのルートで実行します。途中のコマンドが失敗するとスクリプトが止まり、0 以外の終了ステータスで終わるか、`timeout` を過ぎると、そのステップは失敗します。ステップが失敗すると、ワークフローはそれ以降のステップを実行せずに失敗します。失敗したステップは、やり直しません。続けたいときは、あとで説明する `continueOnError` を書きます。
 
 次は、`fail` ワークフローの `first` ステップが、終了ステータス 1 で終わったときの表示です。最後の行の先頭は、ワークフローの名前です。
 
@@ -276,6 +276,31 @@ slow: failed: Script timed out after 2000 ms
 ```
 
 止まらない場合や、`timeout` を過ぎたときの止め方は、リファレンスの「[実行](../reference/workflow-definition.md#実行)」にあります。
+
+失敗しても続けたいステップには、`continueOnError: true` を書きます。`result.ok` で、成功したかを確かめられます。
+
+```yaml
+version: v0.1
+start: lint
+steps:
+  lint:
+    type: script
+    run: npm run lint
+    continueOnError: true
+    outputs:
+      passed: ${{ result.ok }}
+    next: test
+  test:
+    type: script
+    run: npm test
+    next: report
+  report:
+    type: script
+    run: echo "lint passed=${{ steps.lint.outputs.passed }}"
+    next: end
+```
+
+`lint` が失敗しても、`test` に進みます。決まりは、リファレンスの「[失敗しても続ける](../reference/workflow-definition.md#失敗しても続ける)」にあります。
 
 ## 環境変数
 

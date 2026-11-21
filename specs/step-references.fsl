@@ -163,7 +163,6 @@ requirements StepReferences {
     then r1 is Rejected
   }
 
-
   scenario AC-REF-015 "ai ステップの prompt で、自分の inputs を参照する" {
     Author writes r1 with place InPrompt, kind AiKind, root OwnInput, declared true, earlier true, nested false
     Ugoke accepts r1

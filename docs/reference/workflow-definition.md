@@ -92,7 +92,7 @@
 
 ## ai ステップ
 
-AI に指示を実行させるステップです。AI は、プラグインが足すプロバイダーが動かします。
+AI に指示を実行させるステップです。AI は、プロバイダーが動かします。使えるプロバイダーは、[リファレンス](README.md#ai-のプロバイダー)にあります。
 
 | 項目       | 必須   | 内容                                                                                       |
 | ---------- | ------ | ------------------------------------------------------------------------------------------ |
@@ -100,7 +100,7 @@ AI に指示を実行させるステップです。AI は、プラグインが�
 | `provider` | はい   | AI を動かすプロバイダーの名前です                                                          |
 | `prompt`   | はい   | AI への指示です。[式](#式)を書けます                                                       |
 | `model`    | いいえ | 使うモデルです。プロバイダーにそのまま渡します。書かなければ、プロバイダーが選びます       |
-| `schema`   | いいえ | 結果の JSON Schema です。書かなければ、結果はテキストです                                  |
+| `schema`   | いいえ | 結果の JSON Schema です。`type: object` で書きます。書かなければ、結果はテキストです       |
 | `session`  | いいえ | `reuse` か `new` です。既定は `reuse` です                                                 |
 | `with`     | プロバイダーによる | プロバイダーのオプションです。文字列には[式](#式)を書けます                  |
 | `next`     | はい   | 次に実行するステップの ID か、`end` です                                                   |
@@ -110,7 +110,7 @@ AI に指示を実行させるステップです。AI は、プラグインが�
 | `env`      | いいえ | このステップの環境変数です。名前と値の組で書きます。値には[式](#式)を書けます              |
 
 - 作業ディレクトリは、プロジェクトのルートです
-- 環境変数は、script ステップと同じように、ワークフローの `env`、ステップの `env`、`dotenv` のファイルを渡します
+- 環境変数は、script ステップと同じです。ステップを実行するプロセスの環境変数を引き継ぎ、ワークフローの `env`、ステップの `env`、`dotenv` のファイルを渡します。同じ名前の順も同じです
 - AI が言ったことやしたことを、ステップの出力として表示します
 - `schema` を書くと、結果は `schema` に合う値です。`outputs` では、`result.data.<名前>` のように中の項目も参照できます
 - 同じ実行の中でステップがもう一度動くとき、`session` が `reuse` なら前のセッションを続け、`new` なら新しく始めます
@@ -195,6 +195,7 @@ AI に指示を実行させるステップです。AI は、プラグインが�
 | `Unknown AI provider: <provider>. <案内>` | 使えないプロバイダーを書いた。案内は、使えるプロバイダーの一覧などです |
 | `Step <step> has no schema, so result.data is text` | `schema` のない ai ステップで、`result.data` の中の項目を参照している |
 | `The schema of step <step> does not declare the property <name>` | `schema` の `properties` にない項目を参照している |
+| `The schema must have type: object` | ai ステップの `schema` が `type: object` ではない |
 | `Invalid input` | `env` の値が、文字列、数、真偽値ではない |
 | `Must start with a letter or _ and contain only letters, digits, or _` | 環境変数の名前が決まりに合わない |
 | `Must be a path relative to the project root`、`Must not leave the project root` | `dotenv` のパスが決まりに合わない |

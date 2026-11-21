@@ -4,7 +4,8 @@ fsl 5
 // Source: docs/reference/workflow-definition.md ("ai ステップ")
 //
 // MODEL-AIS-001: whether a plugin provides the provider that the step names, whether with keeps
-//                the rules of the provider, and session are given when the definition is written.
+//                the rules of the provider, whether a schema, when the step has one, has type:
+//                object, and session are given when the definition is written.
 //                The references of prompt, with, env, and outputs are described in
 //                step-references.fsl and ai-result.fsl.
 // MODEL-AIS-002: one visit of the step is modeled. Whether an earlier visit of the step in the
@@ -23,6 +24,7 @@ requirements AiStep {
   entity AiRun {
     providerKnown: Bool = false
     withOk: Bool = false
+    schemaOk: Bool = false
     mode: Session = Reuse
     withStillOk: Bool = false
     hasSession: Bool = false
@@ -34,11 +36,12 @@ requirements AiStep {
     lifecycle Prepared -> Failed
     lifecycle Started -> Failed
     lifecycle Started -> Cancelled
+    lifecycle Prepared -> Cancelled
   }
 
   def continues(m: Session, h: Bool) = m == Reuse and h
 
-  event write = Author writes AiRun with providerKnown, withOk, mode (Unwritten -> Written)
+  event write = Author writes AiRun with providerKnown, withOk, schemaOk, mode (Unwritten -> Written)
     covers REQ-AIS-001 "ai ステップは、プラグインが足すプロバイダーで、prompt の指示を AI に実行させる"
   event accept = Ugoke accepts AiRun (Written -> Accepted)
   event reject = Ugoke rejects AiRun (Written -> Invalid)
@@ -48,8 +51,10 @@ requirements AiStep {
   event start = Worker starts AiRun with continued (Prepared -> Started)
   event finish = Provider finishes AiRun with dataHasFields (Started -> Succeeded)
     covers REQ-AIS-001 "ai ステップは、プラグインが足すプロバイダーで、prompt の指示を AI に実行させる"
+  event withhold = Worker withholds AiRun (Prepared -> Cancelled)
+    covers REQ-AIS-006 "実行を取り消すと、動いている AI を止め、まだ始めていなければ始めずに、ステップは取り消しで終わる"
   event cancel = Worker cancels AiRun (Started -> Cancelled)
-    covers REQ-AIS-006 "実行を取り消すと、動いている AI を止め、ステップは取り消しで終わる"
+    covers REQ-AIS-006 "実行を取り消すと、動いている AI を止め、まだ始めていなければ始めずに、ステップは取り消しで終わる"
   event miss = Worker misses AiRun with dataHasFields (Started -> Failed)
     covers REQ-AIS-007 "outputs が参照した result.data の項目が AI の結果になければ、AI を動かしたあとにステップは失敗する"
   fault event fail = Provider fails AiRun (Started -> Failed)
@@ -59,9 +64,12 @@ requirements AiStep {
     covers REQ-AIS-005 "失敗した ai ステップは、やり直さない。timeout を過ぎると、失敗する"
 
   rule REQ-AIS-002 "知らないプロバイダーと、プロバイダーの決まりに合わない with は、定義のエラーにする" {
-    allow Ugoke accepts AiRun only when providerKnown and withOk
-    allow Ugoke rejects AiRun only when not (providerKnown and withOk)
+    allow Ugoke accepts AiRun only when providerKnown and withOk and schemaOk
+    allow Ugoke rejects AiRun only when not (providerKnown and withOk and schemaOk)
     AcceptedIsKnown: always AiRun in Prepared, Started, Succeeded has (providerKnown and withOk)
+  }
+  rule REQ-AIS-008 "schema は type: object で書く。プロバイダーは、構造のある結果をオブジェクトで返すため" {
+    never Ugoke accepts AiRun when not schemaOk
   }
   rule REQ-AIS-003 "with の式を評価した値が、プロバイダーの決まりに合わなければ、AI を動かさずに失敗する" {
     allow Worker refuses AiRun only when not withStillOk
@@ -84,7 +92,7 @@ requirements AiStep {
   }
 
   scenario AC-AIS-008 "outputs が参照した項目が結果になければ、失敗する" {
-    Author writes a1 with providerKnown true, withOk true, mode Reuse
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode Reuse
     Ugoke accepts a1
     Worker prepares a1 with withStillOk true, hasSession false
     Worker starts a1 with continued false
@@ -92,15 +100,22 @@ requirements AiStep {
     then a1 is Failed
   }
   scenario AC-AIS-007 "実行を取り消すと、動いている AI を止める" {
-    Author writes a1 with providerKnown true, withOk true, mode Reuse
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode Reuse
     Ugoke accepts a1
     Worker prepares a1 with withStillOk true, hasSession false
     Worker starts a1 with continued false
     Worker cancels a1
     then a1 is Cancelled
   }
+  scenario AC-AIS-009 "始める前に取り消すと、AI を始めない" {
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode Reuse
+    Ugoke accepts a1
+    Worker prepares a1 with withStillOk true, hasSession false
+    Worker withholds a1
+    then a1 is Cancelled
+  }
   scenario AC-AIS-001 "知っているプロバイダーで、AI を動かして終わる" {
-    Author writes a1 with providerKnown true, withOk true, mode Reuse
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode Reuse
     Ugoke accepts a1
     Worker prepares a1 with withStillOk true, hasSession false
     Worker starts a1 with continued false
@@ -108,26 +123,26 @@ requirements AiStep {
     then a1 is Succeeded
   }
   scenario AC-AIS-002 "知らないプロバイダーは、定義のエラーになる" {
-    Author writes a1 with providerKnown false, withOk true, mode Reuse
+    Author writes a1 with providerKnown false, withOk true, schemaOk true, mode Reuse
     Ugoke rejects a1
     then a1 is Invalid
   }
   scenario AC-AIS-003 "もう一度動くときは、前のセッションを続ける" {
-    Author writes a1 with providerKnown true, withOk true, mode Reuse
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode Reuse
     Ugoke accepts a1
     Worker prepares a1 with withStillOk true, hasSession true
     Worker starts a1 with continued true
     then a1 is Started
   }
   scenario AC-AIS-004 "session が new なら、前のセッションがあっても新しく始める" {
-    Author writes a1 with providerKnown true, withOk true, mode New
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode New
     Ugoke accepts a1
     Worker prepares a1 with withStillOk true, hasSession true
     Worker starts a1 with continued false
     then a1 is Started
   }
   scenario AC-AIS-005 "timeout を過ぎると、失敗する" {
-    Author writes a1 with providerKnown true, withOk true, mode Reuse
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode Reuse
     Ugoke accepts a1
     Worker prepares a1 with withStillOk true, hasSession false
     Worker starts a1 with continued false
@@ -135,58 +150,63 @@ requirements AiStep {
     then a1 is Failed
   }
   scenario AC-AIS-006 "評価した with が決まりに合わなければ、AI を動かさずに失敗する" {
-    Author writes a1 with providerKnown true, withOk true, mode Reuse
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode Reuse
     Ugoke accepts a1
     Worker prepares a1 with withStillOk false, hasSession false
     Worker refuses a1
     then a1 is Failed
   }
 
+  forbidden FB-AIS-010 "type: object でない schema を、受け付けない" {
+    Author writes a1 with providerKnown true, withOk true, schemaOk false, mode Reuse
+    Ugoke accepts a1
+    then rejected
+  }
   forbidden FB-AIS-001 "知らないプロバイダーの定義を、受け付けない" {
-    Author writes a1 with providerKnown false, withOk true, mode Reuse
+    Author writes a1 with providerKnown false, withOk true, schemaOk true, mode Reuse
     Ugoke accepts a1
     then rejected
   }
   forbidden FB-AIS-002 "決まりに合わない with を、受け付けない" {
-    Author writes a1 with providerKnown true, withOk false, mode Reuse
+    Author writes a1 with providerKnown true, withOk false, schemaOk true, mode Reuse
     Ugoke accepts a1
     then rejected
   }
   forbidden FB-AIS-003 "正しい定義を、拒まない" {
-    Author writes a1 with providerKnown true, withOk true, mode New
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode New
     Ugoke rejects a1
     then rejected
   }
   forbidden FB-AIS-004 "評価した with が決まりに合わないのに、AI を動かさない" {
-    Author writes a1 with providerKnown true, withOk true, mode Reuse
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode Reuse
     Ugoke accepts a1
     Worker prepares a1 with withStillOk false, hasSession false
     Worker starts a1 with continued false
     then rejected
   }
   forbidden FB-AIS-005 "session が reuse なのに、前のセッションを捨てない" {
-    Author writes a1 with providerKnown true, withOk true, mode Reuse
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode Reuse
     Ugoke accepts a1
     Worker prepares a1 with withStillOk true, hasSession true
     Worker starts a1 with continued false
     then rejected
   }
   forbidden FB-AIS-006 "session が new なのに、前のセッションを続けない" {
-    Author writes a1 with providerKnown true, withOk true, mode New
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode New
     Ugoke accepts a1
     Worker prepares a1 with withStillOk true, hasSession true
     Worker starts a1 with continued true
     then rejected
   }
   forbidden FB-AIS-007 "前のセッションがないのに、続けたことにしない" {
-    Author writes a1 with providerKnown true, withOk true, mode Reuse
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode Reuse
     Ugoke accepts a1
     Worker prepares a1 with withStillOk true, hasSession false
     Worker starts a1 with continued true
     then rejected
   }
   forbidden FB-AIS-009 "outputs が参照した項目がないのに、成功にしない" {
-    Author writes a1 with providerKnown true, withOk true, mode Reuse
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode Reuse
     Ugoke accepts a1
     Worker prepares a1 with withStillOk true, hasSession false
     Worker starts a1 with continued false
@@ -194,7 +214,7 @@ requirements AiStep {
     then rejected
   }
   forbidden FB-AIS-008 "決まりに合う with で、失敗にしない" {
-    Author writes a1 with providerKnown true, withOk true, mode Reuse
+    Author writes a1 with providerKnown true, withOk true, schemaOk true, mode Reuse
     Ugoke accepts a1
     Worker prepares a1 with withStillOk true, hasSession false
     Worker refuses a1

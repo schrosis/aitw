@@ -39,7 +39,7 @@ steps:
 
 この定義は、`build`、`test` の順に実行して終わります。`timeout` は、ステップの最大の実行時間です。書かなければ `30m` です。
 
-実行が必ず `end` で終わるように、`start` と `next` が指すステップは定義になければならず、どのステップも `start` からたどれて、`end` に着ける必要があります。このため、行き先を 1 つだけ書いた `next` では、輪を作れません。行き先を条件で分ける書き方は、このガイドではまだ説明していません。
+実行が必ず `end` で終わるように、`start` と `next` が指すステップは定義になければならず、どのステップも `start` からたどれて、`end` に着ける必要があります。このため、行き先を 1 つだけ書いた `next` では、輪を作れません。行き先を条件で分ける書き方は、「[条件で分ける](#条件で分ける)」で説明します。
 
 ## ステップ間で値を渡す
 
@@ -172,6 +172,37 @@ steps:
 - AI の結果は、`run` に式で直接書かずに、`env` で渡します。`run` の式はそのままコマンドに入るため、AI が書いた文に `$(...)` などがあると、コマンドとして実行されてしまいます
 
 項目の一覧は、[リファレンスの ai ステップ](../reference/workflow-definition.md#ai-ステップ)と「[claude-code](../reference/providers/claude-code.md)」にあります。
+
+## 条件で分ける
+
+`next` に `if` と `to` の一覧を書くと、ステップの結果で行き先を分けられます。
+
+```yaml
+version: v0.1
+start: check
+steps:
+  check:
+    type: script
+    run: git status --porcelain
+    outputs:
+      changes: ${{ result.stdout }}
+    next:
+      - if: ${{ outputs.changes != '' }}
+        to: commit
+      - to: end
+  commit:
+    type: script
+    run: git commit --all --message "Update files"
+    next: end
+```
+
+- `check` は、変更があれば `commit` に進み、なければそのまま終わります
+- ステップが成功したあとに、上から順に `if` の条件を確かめ、最初に成り立った分岐の `to` に進みます。どれも成り立たなければ、最後の分岐の `to` に進みます
+- 最後の分岐には `if` を書かず、それ以外の分岐には書きます
+- 条件では、`outputs.<名前>` で自分の `outputs` を、`result` で自分の結果を参照できます。前のステップの `outputs` と、ワークフローの入力、`env.<名前>` で環境変数も参照できます
+- いくつかのステップから、同じステップに進めます
+
+別の分岐にあって動かなかったステップの `outputs` を参照すると、その値は `null` です。条件の書き方は、[リファレンスの分岐](../reference/workflow-definition.md#分岐)にあります。
 
 ## 定義を確かめる
 

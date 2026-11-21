@@ -1,7 +1,8 @@
 fsl 5
 // Design of the transition check. compileDefinition (packages/definition/src/compile.ts) builds
 // the intermediate representation of a definition that passed parseDefinition, and
-// validateIntermediate (packages/core/src/intermediate/validate.ts) checks its transitions.
+// validateIntermediate (packages/core/src/intermediate/validate.ts) checks its transitions:
+// validateTransitions and the reachable steps.
 //
 // It refines the transition requirements of workflow-transitions.fsl.
 spec ValidateTransitions {
@@ -9,7 +10,7 @@ spec ValidateTransitions {
   const END = 3
   type Node = 0..3
   type Count = 0..4
-  enum TransitionPhase { Waiting, Built, Valid, Invalid }
+  enum TransitionPhase { Waiting, Built, Valid, Invalid, Dropped }
 
   state {
     phase: Map<Definition, TransitionPhase>,
@@ -19,6 +20,9 @@ spec ValidateTransitions {
     n0: Map<Definition, Node>,
     n1: Map<Definition, Node>,
     n2: Map<Definition, Node>,
+    c0: Map<Definition, Node>,
+    c1: Map<Definition, Node>,
+    c2: Map<Definition, Node>,
     start: Map<Definition, Node>,
     ok: Map<Definition, Bool>,
     filled: Map<Definition, Count>
@@ -33,6 +37,9 @@ spec ValidateTransitions {
       n0[d] = 3
       n1[d] = 3
       n2[d] = 3
+      c0[d] = 3
+      c1[d] = 3
+      c2[d] = 3
       start[d] = 0
       ok[d] = false
       filled[d] = 0
@@ -44,58 +51,87 @@ spec ValidateTransitions {
   // three the same.
   def has(p0: Bool, p1: Bool, p2: Bool, x: Node) = (x == 0 and p0) or (x == 1 and p1) or (x == 2 and p2)
 
+  // Where a step goes: to is the last branch, or next without branches, and alt is the branch
+  // with if. A step without branches, or whose branches go to one node, has alt equal to to.
   def to(n0: Node, n1: Node, n2: Node, x: Node) =
     if x == 0 then n0 else if x == 1 then n1 else if x == 2 then n2 else END
+  def alt(c0: Node, c1: Node, c2: Node, x: Node) =
+    if x == 0 then c0 else if x == 1 then c1 else if x == 2 then c2 else END
 
   // A node that next may name: end, or a step of the definition.
   def known(p0: Bool, p1: Bool, p2: Bool, x: Node) = x == END or has(p0, p1, p2, x)
 
-  // A step whose next is end or an unknown step ends a path. An unknown step is reported on its
-  // own, so it does not count as a path that never ends (validateTermination).
-  def endsPath(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, x: Node) =
-    to(n0, n1, n2, x) == END or not known(p0, p1, p2, to(n0, n1, n2, x))
+  // Whether step x of the definition can go to node y.
+  def moves(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node, x: Node, y: Node) =
+    has(p0, p1, p2, x) and (to(n0, n1, n2, x) == y or alt(c0, c1, c2, x) == y)
 
-  // Steps from which following next ends a path within three moves.
-  def canEnd(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, x: Node) =
+  // A step that can go to end or to an unknown step ends a path. An unknown step is reported on
+  // its own, so it does not count as a path that never ends.
+  def endsPath(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node, x: Node) =
+    to(n0, n1, n2, x) == END or alt(c0, c1, c2, x) == END
+      or not known(p0, p1, p2, to(n0, n1, n2, x)) or not known(p0, p1, p2, alt(c0, c1, c2, x))
+
+  // Steps from which some path ends within three moves.
+  def canEnd(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node, x: Node) =
     has(p0, p1, p2, x) and (
-      endsPath(p0, p1, p2, n0, n1, n2, x)
-        or (has(p0, p1, p2, to(n0, n1, n2, x))
-          and endsPath(p0, p1, p2, n0, n1, n2, to(n0, n1, n2, x)))
-        or (has(p0, p1, p2, to(n0, n1, n2, x))
-          and has(p0, p1, p2, to(n0, n1, n2, to(n0, n1, n2, x)))
-          and endsPath(p0, p1, p2, n0, n1, n2, to(n0, n1, n2, to(n0, n1, n2, x))))
+      endsPath(p0, p1, p2, n0, n1, n2, c0, c1, c2, x)
+        or (exists y: Node {
+          moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, x, y) and has(p0, p1, p2, y) and (
+            endsPath(p0, p1, p2, n0, n1, n2, c0, c1, c2, y)
+              or (exists z: Node {
+                moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, y, z) and has(p0, p1, p2, z) and endsPath(p0, p1, p2, n0, n1, n2, c0, c1, c2, z)
+              }))
+        })
     )
 
-  // Steps that following next from start visits; three steps need at most two moves.
-  def reachable(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, s: Node, x: Node) =
-    x == s
-      or (has(p0, p1, p2, s) and to(n0, n1, n2, s) == x)
-      or (has(p0, p1, p2, s) and has(p0, p1, p2, to(n0, n1, n2, s))
-        and to(n0, n1, n2, to(n0, n1, n2, s)) == x)
+  // Steps that some path from start visits; three steps need at most two moves.
+  def reachable(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node, s: Node, x: Node) =
+    x == s or moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, s, x)
+      or (exists m: Node { moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, s, m) and moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, m, x) })
 
-  def targetsKnown(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, s: Node) =
+  def targetsKnown(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node, s: Node) =
     has(p0, p1, p2, s) and (forall x: Node {
-      has(p0, p1, p2, x) => known(p0, p1, p2, to(n0, n1, n2, x))
+      has(p0, p1, p2, x) => (known(p0, p1, p2, to(n0, n1, n2, x)) and known(p0, p1, p2, alt(c0, c1, c2, x)))
     })
 
-  def allReachable(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, s: Node) =
-    forall x: Node { has(p0, p1, p2, x) => reachable(p0, p1, p2, n0, n1, n2, s, x) }
+  def allReachable(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node, s: Node) =
+    forall x: Node { has(p0, p1, p2, x) => reachable(p0, p1, p2, n0, n1, n2, c0, c1, c2, s, x) }
 
-  def allCanEnd(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node) =
-    forall x: Node { has(p0, p1, p2, x) => canEnd(p0, p1, p2, n0, n1, n2, x) }
+  def allCanEnd(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node) =
+    forall x: Node { has(p0, p1, p2, x) => canEnd(p0, p1, p2, n0, n1, n2, c0, c1, c2, x) }
 
+  // No path goes back to a step on it, which three steps show within three moves. Definitions with
+  // such a loop are outside these specs (MODEL-TRN-006 of workflow-transitions.fsl).
+  def acyclic(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node) =
+    forall x: Node {
+      has(p0, p1, p2, x) => not (
+        moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, x, x)
+          or (exists m: Node { moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, x, m) and moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, m, x) })
+          or (exists m: Node {
+            exists k: Node { moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, x, m) and moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, m, k) and moves(p0, p1, p2, n0, n1, n2, c0, c1, c2, k, x) }
+          }))
+    }
+
+  // Every rule of the transitions.
+  def transitionsOk(p0: Bool, p1: Bool, p2: Bool, n0: Node, n1: Node, n2: Node, c0: Node, c1: Node, c2: Node, s: Node) =
+    targetsKnown(p0, p1, p2, n0, n1, n2, c0, c1, c2, s) and allReachable(p0, p1, p2, n0, n1, n2, c0, c1, c2, s) and allCanEnd(p0, p1, p2, n0, n1, n2, c0, c1, c2)
 
   // The steps of the definition arrive one by one (MODEL-TRN-004 of workflow-transitions.fsl).
   @requirement("REQ-DEF-011", "ワークフローは、YAML のファイルに定義する")
-  action fill(d: Definition, p: Bool, n: Node) {
+  action fill(d: Definition, p: Bool, n: Node, c: Node) {
     requires phase[d] == Waiting
     requires filled[d] < 3
+    // MODEL-TRN-005 of workflow-transitions.fsl.
+    requires n <= c and (p or (n == END and c == END))
     p0[d] = if filled[d] == 0 then p else p0[d]
     p1[d] = if filled[d] == 1 then p else p1[d]
     p2[d] = if filled[d] == 2 then p else p2[d]
     n0[d] = if filled[d] == 0 then n else n0[d]
     n1[d] = if filled[d] == 1 then n else n1[d]
     n2[d] = if filled[d] == 2 then n else n2[d]
+    c0[d] = if filled[d] == 0 then c else c0[d]
+    c1[d] = if filled[d] == 1 then c else c1[d]
+    c2[d] = if filled[d] == 2 then c else c2[d]
     filled[d] = filled[d] + 1
   }
 
@@ -103,11 +139,20 @@ spec ValidateTransitions {
   action build(d: Definition, s: Node) {
     requires phase[d] == Waiting
     requires filled[d] == 3
+    // MODEL-TRN-006 of workflow-transitions.fsl: only definitions without loops are modeled.
+    requires acyclic(p0[d], p1[d], p2[d], n0[d], n1[d], n2[d], c0[d], c1[d], c2[d])
     phase[d] = Built
     start[d] = s
-    ok[d] = targetsKnown(p0[d], p1[d], p2[d], n0[d], n1[d], n2[d], s)
-      and allReachable(p0[d], p1[d], p2[d], n0[d], n1[d], n2[d], s)
-      and allCanEnd(p0[d], p1[d], p2[d], n0[d], n1[d], n2[d])
+    ok[d] = transitionsOk(p0[d], p1[d], p2[d], n0[d], n1[d], n2[d], c0[d], c1[d], c2[d], s)
+  }
+
+  // A definition with a loop is outside this spec (MODEL-TRN-006 of workflow-transitions.fsl).
+  @requirement("REQ-TRN-009", "ループのある定義は、ここでは扱わない。ループの決まりで扱う")
+  action discard(d: Definition) {
+    requires phase[d] == Waiting
+    requires filled[d] == 3
+    requires not acyclic(p0[d], p1[d], p2[d], n0[d], n1[d], n2[d], c0[d], c1[d], c2[d])
+    phase[d] = Dropped
   }
 
   @requirement("REQ-TRN-005", "つながりの決まりを満たす定義は受け付ける")
@@ -129,7 +174,7 @@ spec ValidateTransitions {
     forall d: Definition { phase[d] == Valid => ok[d] }
   }
 
-  terminal { forall d: Definition { phase[d] == Valid or phase[d] == Invalid } }
+  terminal { forall d: Definition { phase[d] == Valid or phase[d] == Invalid or phase[d] == Dropped } }
 }
 verify {
   instances Definition = 1

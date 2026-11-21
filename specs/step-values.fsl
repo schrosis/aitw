@@ -9,7 +9,8 @@ fsl 5
 // MODEL-SVL-002: the values that the step receives are its inputs together with the values of
 //                earlier steps and of the workflow input that its run, prompt, env, and outputs
 //                reference, and env of the workflow. For an AI step, they also include the
-//                options of with after their expressions are evaluated.
+//                options of with after their expressions are evaluated, and for a wait step with
+//                branches, the values that its conditions reference.
 requirements StepValues {
   type Newlines = 0..2
   actor Author, Worker

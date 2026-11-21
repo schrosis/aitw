@@ -16,8 +16,8 @@ refinement InterpretWorkflowRefinesWorkflowRun {
   map run_remaining[d: Run] = if phase[d] == Idle or phase[d] == Aimed or phase[d] == Refused then 0 else remaining[d]
   map run_executed[d: Run] = executed[d]
 
-  action fill(d, p, n) -> stutter
-  action aim(d, s) -> stutter
+  action fill(d, p, n, c) -> stutter
+  action aim(d, s, j0, j1, j2) -> stutter
   action refuse(d) -> stutter
   action load(d) -> start(d, remaining[d])
   action succeed(d) -> advance(d)

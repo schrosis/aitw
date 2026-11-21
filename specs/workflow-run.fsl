@@ -37,10 +37,10 @@ requirements WorkflowRun {
   rule REQ-RUN-005 "受け付けた定義の実行は、end までのステップを 1 つ以上持つ" {
     allow Ugoke starts Run only when input remaining >= 1 and input remaining <= 3
   }
-  rule REQ-TRN-006 "ステップが成功すると、その next に進む" {
+  rule REQ-TRN-006 "ステップが成功すると、その next に進む。分岐があれば、条件が成り立つ最初の分岐の行き先に進む" {
     allow Ugoke advances Run only when remaining >= 2
   }
-  rule REQ-TRN-007 "next に end を書いたステップが成功すると、ワークフローが終わる" {
+  rule REQ-TRN-007 "行き先が end のステップが成功すると、ワークフローが終わる" {
     allow Ugoke completes Run only when remaining == 1
   }
   rule REQ-RUN-002 "失敗したステップは、やり直さない" {

@@ -42,7 +42,7 @@
 | --------- | ------ | --------------------------------------------------------- |
 | `type`    | はい   | `script` です                                             |
 | `run`     | はい   | 実行するコマンドです                                      |
-| `next`    | はい   | 次に実行するステップの ID か、`end` です                  |
+| `next`    | はい   | 次に実行するステップの ID か、`end` か、[分岐](#分岐)の一覧です                  |
 | `timeout` | いいえ | ステップの最大の実行時間です。既定は `30m` です           |
 | `inputs`  | いいえ | ステップが受け取る値です。名前と[式](#式)の組で書きます |
 | `outputs` | いいえ | ステップが出す値です。名前と[式](#式)の組で書きます     |
@@ -71,7 +71,7 @@
 | `type`    | はい   | `wait` です                                                             |
 | `method`  | はい   | 待ち方です。`terminal` を使えます                                       |
 | `with`    | 待ち方による | 待ち方のオプションです。文字列には[式](#式)を書けます             |
-| `next`    | はい   | 次に実行するステップの ID か、`end` です                                |
+| `next`    | はい   | 次に実行するステップの ID か、`end` か、[分岐](#分岐)の一覧です                                |
 | `inputs`  | いいえ | ステップが受け取る値です。名前と[式](#式)の組で書きます                 |
 | `outputs` | いいえ | ステップが出す値です。答えを `result.<名前>` で参照できます             |
 
@@ -103,7 +103,7 @@ AI に指示を実行させるステップです。AI は、プロバイダー�
 | `schema`   | いいえ | 結果の JSON Schema です。`type: object` で書きます。書かなければ、結果はテキストです       |
 | `session`  | いいえ | `reuse` か `new` です。既定は `reuse` です                                                 |
 | `with`     | プロバイダーによる | プロバイダーのオプションです。文字列には[式](#式)を書けます                  |
-| `next`     | はい   | 次に実行するステップの ID か、`end` です                                                   |
+| `next`     | はい   | 次に実行するステップの ID か、`end` か、[分岐](#分岐)の一覧です                                                   |
 | `timeout`  | いいえ | ステップの最大の実行時間です。既定は `30m` です。書き方は script ステップと同じです        |
 | `inputs`   | いいえ | ステップが受け取る値です。名前と[式](#式)の組で書きます                                    |
 | `outputs`  | いいえ | ステップが出す値です。AI の結果を `result.data` で参照できます                             |
@@ -132,13 +132,16 @@ AI に指示を実行させるステップです。AI は、プロバイダー�
 
 | 参照できる値                                                              | 使える場所                   |
 | ------------------------------------------------------------------------- | ---------------------------- |
-| 前に実行するステップの `outputs`（`steps.<ステップ>.outputs.<名前>`）     | `inputs`、`run`、`prompt`、`with`、ステップの `env`、`outputs`   |
-| ワークフローの入力（`workflow.inputs.<名前>`）                            | `inputs`、`run`、`prompt`、`with`、ステップの `env`、`outputs`、ワークフローの `env`   |
+| 前に実行するステップの `outputs`（`steps.<ステップ>.outputs.<名前>`）     | `inputs`、`run`、`prompt`、`with`、ステップの `env`、`outputs`、分岐の `if`   |
+| ワークフローの入力（`workflow.inputs.<名前>`）                            | `inputs`、`run`、`prompt`、`with`、ステップの `env`、`outputs`、分岐の `if`、ワークフローの `env`   |
 | 自分の `inputs`（`inputs.<名前>`）                                        | `run`、`prompt`、`with`、ステップの `env`、`outputs`             |
-| スクリプトの結果（`result.exitCode`、`result.stdout`、`result.stderr`）   | script ステップの `outputs`                    |
-| 待機ステップの答え（`result.<名前>`）                                     | wait ステップの `outputs`                      |
-| AI の結果（`result.data`）                                                | ai ステップの `outputs`                        |
+| 自分の `outputs`（`outputs.<名前>`）                                      | 分岐の `if`                                    |
+| 環境変数（`env.<名前>`）                                                  | 分岐の `if`                                    |
+| スクリプトの結果（`result.exitCode`、`result.stdout`、`result.stderr`）   | script ステップの `outputs` と分岐の `if`      |
+| 待機ステップの答え（`result.<名前>`）                                     | wait ステップの `outputs` と分岐の `if`        |
+| AI の結果（`result.data`）                                                | ai ステップの `outputs` と分岐の `if`          |
 
+- 前に実行するステップは、`start` からたどって、そのステップより前に動くことがあるステップです。別の分岐にあって動かなかったステップの値は、`null` です
 - 宣言していない値は参照できません。参照した値の中の項目（`steps.fetch.outputs.title.text` など）も参照できません。`result.data` の中の項目は、[ai ステップ](#ai-ステップ)の `schema` で決まります
 - 式だけで書いた値は、参照した値の型のままです。ほかの文字と続けて書いた値は、文字列になります。そのとき、`null` は空の文字列に、オブジェクトと配列は JSON になります
 - `run`、`prompt`、`env` の値は、式だけで書いても、いつも文字列です。`null` とオブジェクトと配列は、ほかの文字と続けて書いたときと同じように文字列にします
@@ -147,13 +150,40 @@ AI に指示を実行させるステップです。AI は、プロバイダー�
 
 `ugoke validate` と `ugoke run` は、実行する前に式を確かめます。
 
+## 分岐
+
+`next` に `if` と `to` の一覧を書くと、ステップが成功したあとに、上から順に `if` の条件を確かめます。最初に成り立った分岐の `to` に進みます。どれも成り立たなければ、最後の分岐の `to` に進みます。
+
+```yaml
+next:
+  - if: ${{ outputs.verdict == 'approve' }}
+    to: deploy
+  - to: report
+```
+
+| 項目 | 必須 | 内容 |
+| ---- | ---- | ---- |
+| `if` | 最後の分岐では書かない。それ以外では必須 | 条件です |
+| `to` | はい | 進むステップの ID か、`end` です |
+
+条件は、`${{ }}` の式 1 つで書きます。
+
+- 書けるのは、参照、`'文字列'`、数（`1`、`-1`、`1.5`）、`true`、`false`、`null`、`==`、`!=`、`&&`、`||`、`!`、かっこです。文字列の中の `'` は、`''` と書きます
+- 強く結び付く順に、`!`、`==` と `!=`、`&&`、`||` です。`==` と `!=` は、1 度に 2 つの値を比べます。`a == b == c` は書けません
+- 値は、型を変えずに比べます。たとえば `1 == '1'` は成り立ちません。ない値は `null` です
+- オブジェクトと配列は、中身では比べません。中身が同じでも、別の値どうしは等しくありません
+- `!`、`&&`、`||` に使う値と、条件の値は、`true` か `false` でなければなりません。そうでなければ、ステップは失敗します。ただし、`&&` と `||` は、左の値で決まるときは右の値を見ません
+- 参照できる値は、[式](#式)の表のとおりです。`env.<名前>` は、ステップが引き継いだ環境変数、`dotenv` のファイル、ワークフローの `env`、ステップの `env` を、ステップと同じ順で見ます。`dotenv` のファイルは、`env` を参照する条件があるときだけ読みます
+
 ## ステップのつながり
 
-ワークフローは `start` のステップから始まり、各ステップの `next` をたどって進みます。`next` が `end` のステップで終わります。ステップのつながりは、次の 3 つを満たす必要があります。
+ワークフローは `start` のステップから始まり、各ステップの `next` をたどって進みます。行き先が `end` のステップで終わります。ステップのつながりは、次のことを満たす必要があります。
 
-- `start` と `next` が指すステップが、定義にある
-- どのステップも、`start` から `next` をたどって行ける
-- どのステップからも、`next` をたどって `end` に着ける
+- `start` と、`next` と分岐の `to` が指すステップが、定義にある
+- どのステップも、`start` からたどって行ける
+- どのステップからも、たどって `end` に着ける
+
+いくつかのステップから、同じステップに進めます。
 
 存在しないステップを指すステップは、`end` に着けないとは報告しません。`Unknown step` だけを報告します。
 
@@ -178,13 +208,17 @@ AI に指示を実行させるステップです。AI は、プロバイダー�
 | `YAML anchors are not supported`、`YAML aliases are not supported`                                         | アンカーかエイリアスがある                                 |
 | `Must start with a letter, contain only letters, digits, or _, and not be a reserved word: end or start`    | ステップの ID が決まりに合わない                           |
 | `Must be a positive duration such as 30s, 5m, or 1h`                                                        | `timeout` の書き方が決まりに合わない                       |
-| `Unknown step: <step>`                                                                                      | `start` か `next` が、定義にないステップを指している       |
+| `Unknown step: <step>`                                                                                      | `start` か `next` か分岐の `to` が、定義にないステップを指している |
+| `Must be the name of a step, end, or a list of branches with if and to`                                     | `next` の書き方が正しくない                                |
+| `The last branch must have no if, so that a branch is always taken. Use to: end to finish`                  | 最後の分岐に `if` がある                                   |
+| `Only the last branch can have no if`                                                                       | 最後でない分岐に `if` がない                               |
+| `A condition must be one ${{ }} expression: <条件>`、`Invalid condition: <条件>. <理由>`                    | 条件の書き方が正しくない                                   |
 | `Step is not reachable from start`                                                                          | `start` からたどれないステップがある                       |
 | `Step <step> cannot reach end, so the workflow could never finish`                                          | `end` に着けないステップがある                             |
-| `Step <step> does not run before <step>`                                                                    | 前に実行しないステップの `outputs` を参照している          |
+| `Step <step> does not run before <step>`                                                                    | 前に動くことがないステップの `outputs` を参照している          |
 | `Step <step> does not declare the output <name>`、`Step <step> does not declare the input <name>`、`The workflow does not declare the input <name>` | 宣言していない値を参照している |
 | `Can reference only <参照できるもの>`                                                                       | その場所では参照できない値を参照している                   |
-| `Cannot reference a field of an output value`、`Cannot reference a field of an input value`、`Cannot reference a field of a workflow input value` | 値の中の項目を参照している |
+| `Cannot reference a field of an output value`、`Cannot reference a field of an input value`、`Cannot reference a field of a workflow input value`、`Cannot reference a field of an environment variable` | 値の中の項目を参照している |
 | `A required input cannot have a default`                                                                    | `required: true` の入力に `default` を書いた               |
 | `Duplicate option: <option>`                                                                                | `options` に同じ値を重ねて書いた                           |
 | `Must be one of <options>` | `choice` の `default` が `options` にない |
@@ -209,6 +243,7 @@ AI に指示を実行させるステップです。AI は、プロバイダー�
 | `Script exited with code <code>`      | スクリプトが 0 以外の終了ステータスで終わった |
 | `Script timed out after <ms> ms`      | スクリプトが `timeout` を過ぎた          |
 | `AI step timed out after <ms> ms`     | ai ステップが `timeout` を過ぎた         |
+| `next[<番号>].if: Expected true or false but found <型>` | 分岐の条件か、`!`、`&&`、`\|\|` に使った値が、`true` か `false` ではない |
 | `outputs.<name>: Unknown reference: <式>` | `outputs` が参照した `result.data` の項目が、AI の結果になかった |
 | `Invalid options of AI provider <provider>: <理由>` | `with` の式を評価した値が、プロバイダーの決まりに合わない |
 | `Failed to read the dotenv file <path>: <理由>` | `dotenv` のファイルを読めなかった。プロジェクトのルートの外を指しているときも、このエラーになる |

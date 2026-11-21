@@ -23,7 +23,7 @@ ugoke run [options] <workflow>
 | `--dev`                 | この実行のあいだだけ、一時的な Temporal Server を起動します                             |
 | `--dev-db <path>`       | 一時的な Temporal Server の記録を、SQLite のファイルに残します。`--dev` と使います      |
 | `--temporal-bin <path>` | 一時的な Temporal Server を起動する Temporal CLI です。パスか、`PATH` にあるコマンドの名前です。`--dev` と使います |
-| `--dev-ui`              | Web UI も起動します。`--dev` と使います                                                 |
+| `--dev-ui`              | Web UI も起動します。開いた Web ページから、このマシンでコマンドを実行されるおそれがあります。`--dev` と使います                                                 |
 | `-h`, `--help`          | ヘルプを表示します                                                                      |
 
 ## 使う Temporal Server

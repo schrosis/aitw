@@ -17,7 +17,7 @@ ugoke daemon status
 | `--address <address>`   | 開発サーバーを起動せずに、このアドレスの Temporal Server を使います                               |
 | `--dev-db <path>`       | 開発サーバーの記録の SQLite のファイルです。今のディレクトリからのパスです。既定は、状態のディレクトリの `temporal.db` です        |
 | `--temporal-bin <path>` | 開発サーバーを起動する Temporal CLI です。パスか、`PATH` にあるコマンドの名前です                 |
-| `--dev-ui`              | Web UI も起動します                                                                                |
+| `--dev-ui`              | Web UI も起動します。開いた Web ページから、このマシンでコマンドを実行されるおそれがあります                                                                                |
 | `-h`, `--help`          | ヘルプを表示します                                                                                 |
 
 `--address` は、`--dev-db`、`--temporal-bin`、`--dev-ui` と一緒に使えません。ソケットのパスは 103 バイトまでです。長すぎるときは、`XDG_STATE_HOME` を短いディレクトリにします。
@@ -33,7 +33,7 @@ ugoke daemon status
 
 ## ugoke daemon status
 
-常駐プロセスのプロセス ID、サーバー、ugoke のバージョン、起動した時刻、ログのファイル、登録したプロジェクトを表示します。
+常駐プロセスのプロセス ID、サーバー、ugoke のバージョン、起動した時刻、ログのファイル、Web UI の URL（`--dev-ui` で起動したとき）、登録したプロジェクトを表示します。
 
 ## プロジェクトの登録
 

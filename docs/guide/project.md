@@ -7,7 +7,7 @@ ugoke のファイルは、プロジェクトのルートの `.ugoke` ディレ�
 ```text
 my-project/                 プロジェクトのルート
 ├── .ugoke/
-│   └── workflows/          ワークフローの定義
+│   └── workflows/          ワークフローの定義と、ugoke docs の文書
 │       ├── deploy.yaml     ワークフロー deploy
 │       └── release/
 │           └── notes.yaml  ワークフロー release/notes

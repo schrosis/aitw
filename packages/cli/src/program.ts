@@ -301,7 +301,6 @@ ${daemonHelp}`,
           {
             fromAi,
             server: toServerOptions(address),
-            signal: context.interruptSignal(),
             version,
           },
           context,

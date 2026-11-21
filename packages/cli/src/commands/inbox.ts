@@ -29,8 +29,6 @@ export interface InboxOptions {
    * resident process is used.
    */
   server?: ServerOptions | undefined;
-  /** Aborted when the user interrupts. */
-  signal: AbortSignal;
   /** Version of this ugoke, which the resident process must have to serve the project. */
   version: string;
   /** Writes JSON lines for a program such as an AI agent. */
@@ -45,6 +43,8 @@ export interface AnswerOptions extends InboxOptions {
   visit?: number | undefined;
   /** Value of `--values`: a JSON object, or the path of a `.json` file. */
   values: string;
+  /** Aborted when the user interrupts, which detaches the run that the command follows. */
+  signal: AbortSignal;
   /**
    * With `fromAi`, follows the run after the answer until its next question or its end, with a
    * Worker of this process unless the resident process runs it. Otherwise, exits after the

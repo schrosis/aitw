@@ -137,11 +137,6 @@ requirements Encryption {
     Ugoke creates k1
     then rejected
   }
-  forbidden FB-ENC-007 "ある鍵で、失敗しない" {
-    Ugoke loads k1 with file Holds
-    Ugoke rejects k1
-    then rejected
-  }
   forbidden FB-ENC-003 "暗号化されていない値を、Worker は受け付けない" {
     Worker receives v1 with sealed Plain
     Worker accepts v1
@@ -160,6 +155,11 @@ requirements Encryption {
   forbidden FB-ENC-006 "ほかの鍵で始めた実行を、一覧に出さない" {
     Ugoke finds r1 with memo OtherKey
     Ugoke shows r1
+    then rejected
+  }
+  forbidden FB-ENC-007 "ある鍵で、失敗しない" {
+    Ugoke loads k1 with file Holds
+    Ugoke rejects k1
     then rejected
   }
 }

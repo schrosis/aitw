@@ -242,6 +242,9 @@ export const followRun = async (
         });
     // Plugins load before the run starts, so that a broken one stops nothing.
     const loaded = await loadConfiguredPlugins(read, root);
+    // The key is read first, because a process with a prepared engine does not exit by itself
+    // until it reaches the server.
+    const encryptionKey = loadEncryptionKey();
     prepareEngine?.();
     const following = follow({
       address: server.address,
@@ -257,7 +260,7 @@ export const followRun = async (
         context.stderr(`${name}: warning: ${message}\n`);
       },
       aiRunner: createAiRunner({ cwd: root, plugins: createRegistry(undefined, loaded) }),
-      encryptionKey: loadEncryptionKey(),
+      encryptionKey,
       plugins: fromAi
         ? createRegistryWith(
             createAiTerminalPlugin((question) => {

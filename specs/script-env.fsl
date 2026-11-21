@@ -1,7 +1,9 @@
 fsl 5
 // Requirements for the environment variables of a script step: env of the workflow and of the
 // step, dotenv, and which value a script sees for a name. An AI step gets env of the workflow and
-// of the step, and dotenv, in the same way, and its provider passes them to the AI.
+// of the step, and dotenv, in the same way, and its provider passes them to the AI over the
+// variables that it inherits from the process that runs the step, as a script does (script-run.fsl,
+// REQ-SCR-002).
 // Source: docs/reference/workflow-definition.md ("最上位の項目", "script ステップ", "実行")
 //
 // MODEL-ENV-001: one name of an environment variable is modeled. Whether the name and the type of

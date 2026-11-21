@@ -130,6 +130,49 @@ steps:
 
 `schema` を書かなければ、Enter を押すまで待ちます。詳しくは、[リファレンスの wait ステップ](../reference/workflow-definition.md#wait-ステップ)を見てください。
 
+## AI に任せる
+
+`type: ai` のステップは、`prompt` の指示を AI に実行させます。`provider: claude-code` は、Claude Code で実行します。
+
+```yaml
+version: v0.1
+start: review
+steps:
+  review:
+    type: ai
+    provider: claude-code
+    prompt: Review the changes in this repository and judge whether they can be merged.
+    schema:
+      type: object
+      properties:
+        verdict:
+          type: string
+          enum: [approve, request_changes]
+        summary:
+          type: string
+      required: [verdict, summary]
+    with:
+      allowedTools: [Read, Grep, Glob]
+    outputs:
+      verdict: ${{ result.data.verdict }}
+      summary: ${{ result.data.summary }}
+    next: report
+  report:
+    type: script
+    env:
+      VERDICT: ${{ steps.review.outputs.verdict }}
+      SUMMARY: ${{ steps.review.outputs.summary }}
+    run: echo "$VERDICT - $SUMMARY"
+    next: end
+```
+
+- `review` は、プロジェクトのルートで Claude Code を動かします。`with` の `allowedTools` で、AI に使わせるツールを決めます
+- `schema` で結果の形を決めると、`outputs` で `${{ result.data.verdict }}` のように中の項目を受け取れます。`schema` を書かなければ、結果は AI の返事のテキストで、`${{ result.data }}` で受け取ります
+- AI が言ったことやしたことは、ステップの出力として表示します
+- AI の結果は、`run` に式で直接書かずに、`env` で渡します。`run` の式はそのままコマンドに入るため、AI が書いた文に `$(...)` などがあると、コマンドとして実行されてしまいます
+
+項目の一覧は、[リファレンスの ai ステップ](../reference/workflow-definition.md#ai-ステップ)と「[claude-code](../reference/providers/claude-code.md)」にあります。
+
 ## 定義を確かめる
 
 `ugoke validate` で、定義を実行する前に確かめられます。
@@ -171,7 +214,7 @@ slow: failed: Script timed out after 2000 ms
 
 ## 環境変数
 
-script ステップは、ステップを実行するプロセスの環境変数を引き継ぎます。常駐プロセスで実行するときは、常駐プロセスを起動したときの環境変数です。
+script ステップと ai ステップは、ステップを実行するプロセスの環境変数を引き継ぎます。常駐プロセスで実行するときは、常駐プロセスを起動したときの環境変数です。
 
 ワークフローに渡したい値は、定義の `env` と `dotenv` で渡します。
 
@@ -196,7 +239,7 @@ steps:
     next: end
 ```
 
-- 一番上の `env` は、すべての script ステップの環境変数です
+- 一番上の `env` は、すべての script ステップと ai ステップの環境変数です
 - ステップの `env` は、そのステップだけの環境変数です。値には式を書けます
 - `dotenv` には、プロジェクトのルートからの相対パスで、dotenv のファイルを書きます。ファイルがないと、ステップは失敗します。この例では、プロジェクトのルートに `.env` を用意してから実行します
 

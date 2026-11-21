@@ -15,7 +15,7 @@ fsl 5
 //                Here .ugoke is in the directory where the command runs and the name has a .yaml
 //                file, and only whether the name is valid varies.
 // MODEL-PIP-005: follow-run.fsl checks every combination of server options on its own. Here only
-//                --dev, --dev-db and whether the resident process runs vary.
+//                --address and whether the resident process runs vary.
 // MODEL-PIP-006: validate-expressions.fsl checks every place and kind of reference on its own.
 //                Here the definition has one reference to the output of a step, and only whether
 //                that step runs before varies.
@@ -74,23 +74,23 @@ compose WorkflowPipeline {
 
   // A definition that fails a check is not run, and ugoke run exits with 1.
   @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")
-  fair action syntaxFails(d: parse.Definition, dv: Bool, db: Bool, dr: Bool) =
-    parse.syntaxFails(d) || cmd.run(d, false, false, dv, dv and db, false, dr, true) {
+  fair action syntaxFails(d: parse.Definition, a: Bool, dr: Bool) =
+    parse.syntaxFails(d) || cmd.run(d, false, a, false, dr, true) {
   }
 
   @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")
-  fair action aliasesFail(d: parse.Definition, dv: Bool, db: Bool, dr: Bool) =
-    parse.aliasesFail(d) || cmd.run(d, false, false, dv, dv and db, false, dr, true) {
+  fair action aliasesFail(d: parse.Definition, a: Bool, dr: Bool) =
+    parse.aliasesFail(d) || cmd.run(d, false, a, false, dr, true) {
   }
 
   @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")
-  fair action schemaFails(d: parse.Definition, dv: Bool, db: Bool, dr: Bool) =
-    parse.schemaFails(d) || cmd.run(d, false, false, dv, dv and db, false, dr, true) {
+  fair action schemaFails(d: parse.Definition, a: Bool, dr: Bool) =
+    parse.schemaFails(d) || cmd.run(d, false, a, false, dr, true) {
   }
 
   @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")
-  fair action rejectTransitions(d: parse.Definition, dv: Bool, db: Bool, dr: Bool) =
-    links.validateFails(d) || cmd.run(d, false, false, dv, dv and db, false, dr, true) {
+  fair action rejectTransitions(d: parse.Definition, a: Bool, dr: Bool) =
+    links.validateFails(d) || cmd.run(d, false, a, false, dr, true) {
   }
 
   // A definition whose transitions are valid has its references checked next.
@@ -100,14 +100,14 @@ compose WorkflowPipeline {
   }
 
   @requirement("REQ-CMD-002", "定義に問題があるときは、エラーを表示し、何も実行しない")
-  fair action rejectReferences(d: parse.Definition, dv: Bool, db: Bool, dr: Bool) =
-    refs.orderFails(d) || cmd.run(d, false, false, dv, dv and db, false, dr, true) {
+  fair action rejectReferences(d: parse.Definition, a: Bool, dr: Bool) =
+    refs.orderFails(d) || cmd.run(d, false, a, false, dr, true) {
   }
 
   // Only an accepted definition is handed to the interpreter, and ugoke run follows it.
   @requirement("REQ-REF-006", "参照できる値は、受け付ける")
-  fair action launch(d: parse.Definition, dv: Bool, db: Bool, dr: Bool) =
-    refs.shapePasses(d) || run.aim(d, links.start[d]) || cmd.run(d, true, false, dv, dv and db, false, dr, true) {
+  fair action launch(d: parse.Definition, a: Bool, dr: Bool) =
+    refs.shapePasses(d) || run.aim(d, links.start[d]) || cmd.run(d, true, a, false, dr, true) {
   }
 
   @requirement("REQ-TRN-008", "ワークフローは start のステップから始まる")
@@ -152,9 +152,9 @@ compose WorkflowPipeline {
     requires cmd.phase[d] == Left
   }
 
-  // Ctrl+C on a development server that keeps no runs cancels the run.
-  @requirement("REQ-CMD-007", "実行の記録を残さないサーバーでは、ワークフローを取り消す")
-  fair action cancel(d: parse.Definition) = cmd.interruptEphemeral(d) || run.withdraw(d) {
+  // Another command, such as ugoke cancel, cancels the run.
+  @requirement("REQ-CMD-007", "ほかのコマンドの ugoke cancel で取り消されると、終了ステータス 130 で終わる")
+  fair action cancel(d: parse.Definition) = cmd.cancelled(d) || run.withdraw(d) {
   }
 
   // The second Ctrl+C exits ugoke run with its Worker, and the running step fails.
@@ -191,7 +191,7 @@ compose WorkflowPipeline {
   internal cmd.stepEnds
   internal cmd.finish
   internal cmd.breaks
-  internal cmd.interruptEphemeral
+  internal cmd.cancelled
   internal cmd.interruptAgain
   internal cmd.interruptDaemon
 
@@ -229,11 +229,6 @@ compose WorkflowPipeline {
         (run.v0[d] or not links.p0[d]) and (run.v1[d] or not links.p1[d])
           and (run.v2[d] or not links.p2[d]))
     }
-  }
-
-  @requirement("REQ-CMD-008", "実行の記録を残すサーバーでは、Ctrl+C でワークフローを取り消さない")
-  invariant DurableRunsAreNotCancelled {
-    forall d: parse.Definition { cmd.durable[d] => run.phase[d] != Withdrawn }
   }
 
   @requirement("REQ-CMD-003", "終了ステータスは、完了で 0、失敗か定義の問題で 1、切り離しで 3、取り消しか 2 度目の Ctrl+C で 130")

@@ -15,15 +15,12 @@ ugoke daemon status
 | オプション              | 内容                                                                                               |
 | ----------------------- | -------------------------------------------------------------------------------------------------- |
 | `--address <address>`   | 開発サーバーを起動せずに、このアドレスの Temporal Server を使います                               |
-| `--dev-db <path>`       | 開発サーバーの記録の SQLite のファイルです。今のディレクトリからのパスです。既定は、状態のディレクトリの `temporal.db` です        |
-| `--temporal-bin <path>` | 開発サーバーを起動する Temporal CLI です。パスか、`PATH` にあるコマンドの名前です                 |
-| `--dev-ui`              | Web UI も起動します。開いた Web ページから、このマシンでコマンドを実行されるおそれがあります                                                                                |
 | `-h`, `--help`          | ヘルプを表示します                                                                                 |
 
-`--address` は、`--dev-db`、`--temporal-bin`、`--dev-ui` と一緒に使えません。ソケットのパスは 103 バイトまでです。長すぎるときは、`XDG_STATE_HOME` を短いディレクトリにします。
+ソケットのパスは 103 バイトまでです。長すぎるときは、`XDG_STATE_HOME` を短いディレクトリにします。
 
-- `--address` を指定しなければ、開発サーバーを起動します。開発サーバーは実行の記録を残します
 - 常駐プロセスのファイル（ソケット、ログなど）は、状態のディレクトリの `daemon/` に置きます。状態のディレクトリは `$XDG_STATE_HOME/ugoke` で、`XDG_STATE_HOME` がなければ `~/.local/state/ugoke` です
+- `--address` を指定しなければ、開発サーバーを起動します。開発サーバーは、実行の記録を状態のディレクトリの `temporal.db` に残します。常駐プロセスを止めても、記録は消えません
 - すでに動いていれば、新しく起動せずに終わります。動いている常駐プロセスと ugoke のバージョンやサーバーのオプションが違うときは、そのことを表示します。変えるときは、`ugoke daemon stop` で止めてから起動し直します
 - script ステップは、常駐プロセスを起動したときの環境変数を引き継ぎます
 
@@ -33,7 +30,14 @@ ugoke daemon status
 
 ## ugoke daemon status
 
-常駐プロセスのプロセス ID、サーバー、ugoke のバージョン、起動した時刻、ログのファイル、Web UI の URL（`--dev-ui` で起動したとき）、登録したプロジェクトを表示します。
+常駐プロセスのプロセス ID、サーバー、ugoke のバージョン、起動した時刻、ログのファイル、登録したプロジェクトを表示します。
+
+## Temporal CLI
+
+開発サーバーは、ugoke が決めたバージョンの Temporal CLI で起動します。キャッシュになければ、ダウンロードします。キャッシュは `$XDG_CACHE_HOME/ugoke/temporal-cli` で、`XDG_CACHE_HOME` がなければ `~/.cache/ugoke/temporal-cli` です。`--address` を指定したときは、Temporal CLI を使いません。
+
+> [!NOTE]
+> Windows では、Temporal CLI をダウンロードしません。`ugoke daemon start --address` で、用意した Temporal Server を指定してください。
 
 ## プロジェクトの登録
 

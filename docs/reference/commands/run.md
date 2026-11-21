@@ -20,28 +20,15 @@ ugoke run [options] <workflow>
 | `--input <json-or-file>` | [ワークフローの入力](../workflow-definition.md#ワークフローの入力)です。JSON のオブジェクトか、`.json` のファイルのパスです |
 | `--detach`              | 実行を始めて、すぐに終了します。常駐プロセスが実行します                                |
 | `--from-ai`             | AI エージェントなどのプログラム向けに、JSON Lines で出力します                         |
-| `--dev`                 | この実行のあいだだけ、一時的な Temporal Server を起動します                             |
-| `--dev-db <path>`       | 一時的な Temporal Server の記録を、SQLite のファイルに残します。`--dev` と使います      |
-| `--temporal-bin <path>` | 一時的な Temporal Server を起動する Temporal CLI です。パスか、`PATH` にあるコマンドの名前です。`--dev` と使います |
-| `--dev-ui`              | Web UI も起動します。開いた Web ページから、このマシンでコマンドを実行されるおそれがあります。`--dev` と使います                                                 |
 | `-h`, `--help`          | ヘルプを表示します                                                                      |
 
 ## 使う Temporal Server
 
 次の順に決めます。
 
-1. `--address` か `--dev` を指定したときは、そのサーバー
+1. `--address` を指定したときは、そのサーバー
 2. `.ugoke/config.yaml` に `temporal.address` があるときは、そのサーバー
 3. それ以外は、`ugoke daemon start` で起動した常駐プロセスのサーバー
-
-## Temporal CLI
-
-`--dev` の一時的な Temporal Server と、常駐プロセスが起動する Temporal Server は、Temporal CLI で起動します。`--temporal-bin` を指定しないときは、ugoke が決めたバージョンの Temporal CLI を使います。
-
-キャッシュになければ、ダウンロードします。キャッシュは `$XDG_CACHE_HOME/ugoke/temporal-cli` で、`XDG_CACHE_HOME` がなければ `~/.cache/ugoke/temporal-cli` です。
-
-> [!NOTE]
-> Windows では、Temporal CLI をダウンロードしません。`--temporal-bin` で Temporal CLI を指定してください。
 
 ## 出力
 
@@ -62,14 +49,14 @@ ugoke run [options] <workflow>
 | 完了       | `<workflow>: completed (<実行したステップ>, ...)`     | 標準出力   |
 | 失敗       | `<workflow>: failed: <理由>`                          | 標準エラー |
 | 切り離した | `<workflow>: detached. Run "ugoke attach" to continue` | 標準エラー |
-| 取り消した | `<workflow>: cancelled. ...`                          | 標準エラー |
+| 取り消した | `<workflow>: cancelled`                               | 標準エラー |
 
 定義に問題があるときは、`ugoke validate` と同じ形で、標準エラーに表示します。
 
-切り離したときの `ugoke attach` には、`--address` や `--dev --dev-db <path>` のような、`ugoke run` に指定したサーバーのオプションが付きます。常駐プロセスや `.ugoke/config.yaml` の `temporal.address` のサーバーでは付きません。
+切り離したときの `ugoke attach` には、`ugoke run` に指定した `--address` が付きます。常駐プロセスや `.ugoke/config.yaml` の `temporal.address` のサーバーでは付きません。
 
 ```text
-wait: detached. Run "ugoke attach --dev --dev-db runs.db" to continue
+wait: detached. Run "ugoke attach --address localhost:7233" to continue
 ```
 
 ## 終了ステータス
@@ -79,15 +66,14 @@ wait: detached. Run "ugoke attach --dev --dev-db runs.db" to continue
 | `0`   | ワークフローが完了した。`--detach` では、実行を始めた                                                                |
 | `1`   | ワークフローが失敗したか、定義に問題があったか、入力やサーバーの準備に失敗した（`--input` が正しくない、常駐プロセスが動いていない、など） |
 | `3`   | ワークフローから切り離した。ワークフローは続いている                                                                 |
-| `130` | ワークフローを取り消したか、2 度目の Ctrl+C ですぐに終了した                                                         |
+| `130` | ワークフローが `ugoke cancel` で取り消されたか、実行を始める前に Ctrl+C を押したか、2 度目の Ctrl+C ですぐに終了した                                                        |
 
 ## Ctrl+C
 
 | ステップを実行しているところ                           | 1 度目の Ctrl+C                              | 2 度目の Ctrl+C                                    |
 | ------------------------------------------------------ | -------------------------------------------- | -------------------------------------------------- |
 | 常駐プロセス                                           | すぐに切り離す。ワークフローは続く           | —                                                  |
-| `ugoke run` 自身。記録を残すサーバー（`--dev-db` など） | 実行中のステップが終わるのを待って切り離す   | すぐに終了する。実行中のステップは失敗し、続けられない |
-| `ugoke run` 自身。`--dev`（`--dev-db` なし）           | ワークフローを取り消す                       | すぐに終了する                                     |
+| `ugoke run` 自身                                       | 実行中のステップが終わるのを待って切り離す   | すぐに終了する。実行中のステップは失敗し、続けられない |
 
 ## ワークフローの ID
 

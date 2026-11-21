@@ -3,7 +3,7 @@ import type { TemporalCliManifest } from "./types.js";
 
 /** The Temporal CLI release that ugoke downloads for the development server. */
 export const temporalCliManifest: TemporalCliManifest = {
-  version: "1.10.0",
+  version: "1.10.1",
   assets: {
     "darwin-arm64": {
       file: "temporal_cli_1.10.0_darwin_arm64.tar.gz",
